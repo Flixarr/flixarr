@@ -1,5 +1,5 @@
 <script lang="ts">
-	// Phone-only bottom tabs: Discover · Browse · Search · Requests (Marc, 2026-10-11). Profile lives in the avatar menu.
+	// Phone-only bottom tabs: Discover · Browse · Search · Requests. Profile lives in the avatar menu.
 	// Browse opens Movies or Series, whichever was used last (Browse.svelte remembers it).
 	import { page } from '$app/state';
 	import { lastBrowse } from './Browse.svelte';

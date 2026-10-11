@@ -23,7 +23,7 @@
 	let busy = $state('');
 
 	const total = $derived(st ? st.kinds.reduce((a, k) => ({ count: a.count + k.count, bytes: a.bytes + k.bytes }), { count: st.images.count, bytes: st.images.bytes }) : null);
-	// Average size of one saved result: this install's own once there's enough to measure, else a typical figure.
+	// Average size of one saved result, measured on whatever server this runs on once 50 are saved; a typical figure before that.
 	const results = $derived(st ? st.kinds.reduce((a, k) => ({ count: a.count + k.count, bytes: a.bytes + k.bytes }), { count: 0, bytes: 0 }) : { count: 0, bytes: 0 });
 	const measured = $derived(results.count >= 50);
 	const perResult = $derived(measured ? results.bytes / results.count : 12 * 1024);
@@ -159,7 +159,7 @@
 						<Tip label="How much space each size limit takes">
 							<span class="block pb-1 font-medium text-gray-200">Space used when full</span>
 							{#each MAX as n (n)}<span class="flex justify-between tabular-nums"><span>{fmtNum(n)} results</span><span>about {fmtBytes(n * perResult)}</span></span>{/each}
-							<span class="block pt-1.5 text-gray-500">{measured ? `Based on this install's average of ${fmtBytes(perResult)} per result.` : 'Estimated at about 12 KB per result until there are enough saved results to measure.'}</span>
+							<span class="block pt-1.5 text-gray-500">{measured ? `Based on the average size of your saved results (${fmtBytes(perResult)} each).` : 'Based on a typical result size of about 12 KB.'}</span>
 						</Tip>
 					</span>
 					<span class="mt-0.5 block text-xs text-gray-500">{st.settings.enabled ? 'Oldest results are removed first.' : API_OFF}</span>
