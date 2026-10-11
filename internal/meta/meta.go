@@ -33,14 +33,18 @@ var Kinds = []string{KindTitles, KindPeople, KindLists, KindSearches}
 // Config is the cache's settings (Settings → Cache).
 type Config struct {
 	Enabled     bool `json:"enabled"`
-	PagesMin    int  `json:"pagesMinutes"` // titles + people
+	PagesMin    int  `json:"pagesMinutes"` // titles + people; 0 = automatic (the API's time for each title)
 	ListsMin    int  `json:"listsMinutes"`
 	SearchesMin int  `json:"searchesMinutes"`
 	MaxResults  int  `json:"maxResults"`
 }
 
 // DefaultConfig is what a new install starts with.
-var DefaultConfig = Config{Enabled: true, PagesMin: 24 * 60, ListsMin: 3 * 60, SearchesMin: 60, MaxResults: 10000}
+var DefaultConfig = Config{Enabled: true, PagesMin: Auto, ListsMin: 3 * 60, SearchesMin: 60, MaxResults: 10000}
+
+// Auto keeps each title page as long as the API says it stays fresh: hours for airing series and
+// new or upcoming movies, days for ended series, older movies and people.
+const Auto = 0
 
 // Settings keys.
 const (
@@ -92,7 +96,7 @@ func (t uaTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 func (c *Client) loadConfig() Config {
 	d := DefaultConfig
 	num := func(key string, def int) int {
-		if n, err := strconv.Atoi(c.Store.Setting(key, "")); err == nil && n > 0 {
+		if n, err := strconv.Atoi(c.Store.Setting(key, "")); err == nil && (n > 0 || (key == keyPages && n == Auto)) {
 			return n
 		}
 		return def
@@ -115,7 +119,11 @@ func (c *Client) Config() Config {
 
 // SetConfig validates, saves and applies new cache settings.
 func (c *Client) SetConfig(cfg Config) error {
-	for _, m := range []int{cfg.PagesMin, cfg.ListsMin, cfg.SearchesMin} {
+	times := []int{cfg.ListsMin, cfg.SearchesMin}
+	if cfg.PagesMin != Auto {
+		times = append(times, cfg.PagesMin)
+	}
+	for _, m := range times {
 		if m < 5 || m > 30*24*60 {
 			return errors.New("keep times must be between 5 minutes and 30 days")
 		}
@@ -167,12 +175,19 @@ func kindOf(p string) string {
 	return KindTitles
 }
 
-func (cfg Config) keep(kind string) time.Duration {
+// keep is how long to save an answer of this kind. fresh is the API's own time for it (0 if it sent none).
+func (cfg Config) keep(kind string, fresh time.Duration) time.Duration {
 	switch kind {
 	case KindLists:
 		return time.Duration(cfg.ListsMin) * time.Minute
 	case KindSearches:
 		return time.Duration(cfg.SearchesMin) * time.Minute
+	}
+	if cfg.PagesMin == Auto {
+		if fresh > 0 {
+			return fresh
+		}
+		return 24 * time.Hour
 	}
 	return time.Duration(cfg.PagesMin) * time.Minute
 }
@@ -202,7 +217,7 @@ func (c *Client) Get(ctx context.Context, path string, q url.Values) ([]byte, in
 		c.misses.Add(1)
 	}
 
-	body, status, err := c.fetch(ctx, c.Base+"/v1/"+key)
+	body, status, fresh, err := c.fetch(ctx, c.Base+"/v1/"+key)
 	if err != nil || status >= 500 || status == http.StatusTooManyRequests {
 		// The API is down or throttling us: an expired copy beats an error page.
 		if saved != nil && saved.Status == http.StatusOK {
@@ -213,7 +228,7 @@ func (c *Client) Get(ctx context.Context, path string, q url.Values) ([]byte, in
 	}
 	if cfg.Enabled && (status == http.StatusOK || status == http.StatusNotFound) {
 		kind := kindOf(path)
-		keep := cfg.keep(kind)
+		keep := cfg.keep(kind, fresh)
 		if status == http.StatusNotFound {
 			keep = time.Minute
 		}
@@ -226,21 +241,34 @@ func (c *Client) Get(ctx context.Context, path string, q url.Values) ([]byte, in
 	return body, status, nil
 }
 
-func (c *Client) fetch(ctx context.Context, u string) ([]byte, int, error) {
+// fetch returns the body, the status and how long the API says the answer stays fresh (its s-maxage).
+func (c *Client) fetch(ctx context.Context, u string) ([]byte, int, time.Duration, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, 0, err
 	}
 	res, err := c.HTTP.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("Flixarr API: %w", err)
+		return nil, 0, 0, fmt.Errorf("Flixarr API: %w", err)
 	}
 	defer res.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(res.Body, 8<<20))
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, 0, err
 	}
-	return body, res.StatusCode, nil
+	return body, res.StatusCode, freshFor(res.Header.Get("Cache-Control")), nil
+}
+
+// freshFor reads s-maxage from a Cache-Control header.
+func freshFor(cc string) time.Duration {
+	for _, part := range strings.Split(cc, ",") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(part), "s-maxage="); ok {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				return time.Duration(n) * time.Second
+			}
+		}
+	}
+	return 0
 }
 
 // Cleanup removes expired answers (keeping a day of grace for the API-down fallback) and enforces the size limit.

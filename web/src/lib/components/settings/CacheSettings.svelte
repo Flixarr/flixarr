@@ -7,7 +7,7 @@
 	import Modal from '#lib/components/Modal.svelte';
 
 	const KINDS = { titles: ['Titles', 'Movies, series, seasons, collections'], people: ['People', 'Cast and crew pages'], lists: ['Lists', 'Discover rows, browse pages, genres'], searches: ['Searches', 'Search results'] };
-	const PAGES = [[60, '1 hour'], [360, '6 hours'], [720, '12 hours'], [1440, '1 day'], [4320, '3 days'], [10080, '7 days']] as const;
+	const PAGES = [[0, 'Automatic'], [60, '1 hour'], [360, '6 hours'], [720, '12 hours'], [1440, '1 day'], [4320, '3 days'], [10080, '7 days']] as const;
 	const LISTS = [[15, '15 minutes'], [60, '1 hour'], [180, '3 hours'], [360, '6 hours'], [720, '12 hours'], [1440, '1 day']] as const;
 	const SEARCHES = [[15, '15 minutes'], [60, '1 hour'], [180, '3 hours'], [360, '6 hours'], [1440, '1 day']] as const;
 	const MAX = [1000, 5000, 10000, 25000, 50000, 100000];
@@ -108,7 +108,7 @@
 			{@render pick('Searches', st.settings.searchesMinutes, SEARCHES, (s, v) => (s.settings.searchesMinutes = v))}
 			{@render pick('Size limit', st.settings.maxResults, MAX.map((n) => [n, fmtNum(n) + ' results'] as const), (s, v) => (s.settings.maxResults = v))}
 		</div>
-		<p class="mt-2 text-xs text-gray-500">When the limit is reached, the oldest results are dropped. Expired results are kept for a day so the app can still show them if the Flixarr API is down, then the "Clear expired cache" job removes them (Settings → Jobs).</p>
+		<p class="mt-2 text-xs text-gray-500"><span class="text-gray-400">Automatic</span> keeps each page as long as it's likely to stay the same: 6 hours for airing series and new or upcoming movies, 1 day for titles still settling, 7 days for ended series and older movies, 3 days for people. When the limit is reached, the oldest results are dropped. Expired results are kept for a day so the app can still show them if the Flixarr API is down, then the "Clear expired cache" job removes them (Settings → Jobs).</p>
 	</div>
 
 	<div>
