@@ -4,158 +4,253 @@
 	import type { ArrInfo, ServiceKind, ServiceView } from '#lib/types.ts';
 	import Toggle from '#lib/components/Toggle.svelte';
 	import Modal from '#lib/components/Modal.svelte';
+	import Icon from '#lib/components/Icon.svelte';
 
-	// One Radarr and one Sonarr. The server stores connections as a list, so more can be added later.
-	const KINDS: { kind: ServiceKind; name: string; what: string; port: number }[] = [
-		{ kind: 'radarr', name: 'Radarr', what: 'Movies', port: 7878 },
-		{ kind: 'sonarr', name: 'Sonarr', what: 'Series', port: 8989 }
+	// Each kind is a list of connection cards. Connections are stored as a list; for now each kind
+	// takes one, so "Add" shows only while a list is empty.
+	const KINDS: { kind: ServiceKind; name: string; what: string; port: number; about: string }[] = [
+		{ kind: 'radarr', name: 'Radarr', what: 'movies', port: 7878, about: 'Movie requests are sent here.' },
+		{ kind: 'sonarr', name: 'Sonarr', what: 'series', port: 8989, about: 'Series requests are sent here.' }
 	];
+	const nameOf = (kind: ServiceKind) => KINDS.find((k) => k.kind === kind)!.name;
 
-	type Form = { url: string; apiKey: string; rootFolder: string; qualityProfileId: number; seasonFolders: boolean; searchOnAdd: boolean; enabled: boolean };
-	type State = { saved: ServiceView | null; form: Form; info: ArrInfo | null; error: string; testing: boolean; saving: boolean };
+	type Form = { name: string; url: string; apiKey: string; rootFolder: string; qualityProfileId: number; seasonFolders: boolean; searchOnAdd: boolean; enabled: boolean };
+	type Check = { info: ArrInfo | null; error: string; busy: boolean };
 
-	const blank = (): Form => ({ url: '', apiKey: '', rootFolder: '', qualityProfileId: 0, seasonFolders: true, searchOnAdd: true, enabled: true });
-	const fromSaved = (v: ServiceView): Form => ({ url: v.url, apiKey: '', rootFolder: v.rootFolder, qualityProfileId: v.qualityProfileId, seasonFolders: v.seasonFolders, searchOnAdd: v.searchOnAdd, enabled: v.enabled });
+	let saved = $state<Record<ServiceKind, ServiceView | null> | null>(null);
+	let checks = $state<Record<ServiceKind, Check>>({ radarr: { info: null, error: '', busy: false }, sonarr: { info: null, error: '', busy: false } });
 
-	let st = $state<Record<ServiceKind, State> | null>(null);
-	let removing = $state<ServiceKind | null>(null);
-	let removeOpen = $state(false);
+	// The open modal.
+	let open = $state(false);
+	let kind = $state<ServiceKind>('radarr');
+	let form = $state<Form>(blank('radarr'));
+	let info = $state<ArrInfo | null>(null);
+	let error = $state('');
+	let testing = $state(false);
+	let saving = $state(false);
+	let showKey = $state(false);
+	let finding = $state(false);
+	let found = $state<string[] | null>(null);
+	let confirmRemove = $state(false);
+
+	function blank(k: ServiceKind): Form {
+		return { name: nameOf(k), url: '', apiKey: '', rootFolder: '', qualityProfileId: 0, seasonFolders: true, searchOnAdd: true, enabled: true };
+	}
 
 	$effect(() => {
 		api<Record<ServiceKind, ServiceView | null>>('/services').then((d) => {
-			st = {
-				radarr: { saved: d.radarr, form: d.radarr ? fromSaved(d.radarr) : blank(), info: null, error: '', testing: false, saving: false },
-				sonarr: { saved: d.sonarr, form: d.sonarr ? fromSaved(d.sonarr) : blank(), info: null, error: '', testing: false, saving: false }
-			};
-			// Saved connections are checked right away so their lists fill in.
-			for (const { kind } of KINDS) if (d[kind]) test(kind, true);
+			saved = d;
+			for (const { kind: k } of KINDS) if (d[k]) check(k);
 		});
 	});
 
-	async function test(kind: ServiceKind, quiet = false) {
-		const s = st![kind];
-		s.testing = true;
-		s.error = '';
+	// Background check of a saved connection, for the card's status dot.
+	async function check(k: ServiceKind) {
+		const v = saved![k]!;
+		checks[k] = { info: null, error: '', busy: true };
 		try {
-			s.info = await api<ArrInfo>(`/services/${kind}/test`, { method: 'POST', body: JSON.stringify(s.form) });
-			if (!s.form.rootFolder && s.info.folders.length) s.form.rootFolder = s.info.folders[0].path;
-			if (!s.info.profiles.some((p) => p.id === s.form.qualityProfileId)) s.form.qualityProfileId = s.info.profiles[0]?.id ?? 0;
-			if (!quiet) notify(`Connected to ${KINDS.find((k) => k.kind === kind)!.name} ${s.info.version}.`);
+			checks[k].info = await api<ArrInfo>(`/services/${k}/test`, { method: 'POST', body: JSON.stringify({ url: v.url, apiKey: '' }) });
 		} catch (e) {
-			s.info = null;
-			s.error = e instanceof Error ? e.message : 'Test failed.';
+			checks[k].error = e instanceof Error ? e.message : 'Not reachable.';
 		} finally {
-			s.testing = false;
+			checks[k].busy = false;
 		}
 	}
 
-	async function save(kind: ServiceKind) {
-		const s = st![kind];
-		s.saving = true;
+	function edit(k: ServiceKind) {
+		const v = saved![k];
+		kind = k;
+		form = v ? { name: v.name, url: v.url, apiKey: '', rootFolder: v.rootFolder, qualityProfileId: v.qualityProfileId, seasonFolders: v.seasonFolders, searchOnAdd: v.searchOnAdd, enabled: v.enabled } : blank(k);
+		info = v ? checks[k].info : null;
+		error = v ? checks[k].error : '';
+		showKey = false;
+		found = null;
+		open = true;
+	}
+
+	async function test() {
+		testing = true;
+		error = '';
 		try {
-			s.saved = await api<ServiceView>(`/services/${kind}`, { method: 'PUT', body: JSON.stringify(s.form) });
-			s.form.apiKey = '';
-			notify(`${s.saved.name} saved.`);
+			info = await api<ArrInfo>(`/services/${kind}/test`, { method: 'POST', body: JSON.stringify(form) });
+			if (!info.folders.some((f) => f.path === form.rootFolder)) form.rootFolder = info.folders[0]?.path ?? '';
+			if (!info.profiles.some((p) => p.id === form.qualityProfileId)) form.qualityProfileId = info.profiles[0]?.id ?? 0;
+		} catch (e) {
+			info = null;
+			error = e instanceof Error ? e.message : 'Test failed.';
+		} finally {
+			testing = false;
+		}
+	}
+
+	async function find() {
+		finding = true;
+		found = null;
+		try {
+			found = (await api<{ found: { url: string }[] }>(`/services/${kind}/discover`, { method: 'POST' })).found.map((f) => f.url);
+			if (found.length === 1) pick(found[0]);
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Search failed.', 'orange');
+		} finally {
+			finding = false;
+		}
+	}
+
+	function pick(url: string) {
+		form.url = url;
+		addressChanged();
+	}
+
+	// A new address may be a different server, so its folders and qualities have to be loaded again.
+	function addressChanged() {
+		info = null;
+		error = '';
+	}
+
+	async function save() {
+		saving = true;
+		try {
+			const v = await api<ServiceView>(`/services/${kind}`, { method: 'PUT', body: JSON.stringify(form) });
+			saved![kind] = v;
+			checks[kind] = { info, error: '', busy: false };
+			open = false;
+			notify(`${v.name} saved.`);
 		} catch (e) {
 			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
 		} finally {
-			s.saving = false;
+			saving = false;
 		}
 	}
 
-	async function remove(kind: ServiceKind) {
+	async function remove() {
 		try {
 			await api(`/services/${kind}`, { method: 'DELETE' });
-			st![kind] = { saved: null, form: blank(), info: null, error: '', testing: false, saving: false };
-			notify(`${KINDS.find((k) => k.kind === kind)!.name} removed.`);
+			const n = saved![kind]?.name ?? nameOf(kind);
+			saved![kind] = null;
+			checks[kind] = { info: null, error: '', busy: false };
+			confirmRemove = false;
+			open = false;
+			notify(`${n} removed.`);
 		} catch (e) {
 			notify(e instanceof Error ? e.message : 'Could not remove.', 'orange');
-		} finally {
-			removeOpen = false;
 		}
 	}
 
-	// The connection details changed since the last good test, so the lists may not match anymore.
-	function edited(kind: ServiceKind) {
-		st![kind].info = null;
-		st![kind].error = '';
-	}
+	const input = 'mt-1 w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/60';
+	const k = $derived(KINDS.find((x) => x.kind === kind)!);
 </script>
 
-{#snippet field(label: string, id: string, hint = '')}
-	<label for={id} class="block text-sm">{label}</label>
+{#snippet label(text: string, id: string, hint = '')}
+	<label for={id} class="block text-sm">{text}</label>
 	{#if hint}<span class="block text-xs text-gray-500">{hint}</span>{/if}
 {/snippet}
 
-{#if st}
-	{#each KINDS as k (k.kind)}
-		{@const s = st[k.kind]}
+{#if saved}
+	{#each KINDS as s (s.kind)}
+		{@const v = saved[s.kind]}
+		{@const c = checks[s.kind]}
 		<div>
-			<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{k.name}</div>
-			<div class="card divide-y divide-gray-700/40 px-4">
-				<div class="flex items-center gap-3 py-3">
-					<span class="size-2.5 shrink-0 rounded-full {s.info ? 'bg-green-500' : s.error ? 'bg-red-500' : 'bg-gray-600'}"></span>
-					<span class="min-w-0 flex-1 text-sm">
-						<span class="block">{k.what}</span>
-						<span class="block text-xs {s.error ? 'text-red-400' : 'text-gray-500'}">
-							{#if s.testing}Checking the connection…{:else if s.error}{s.error}{:else if s.info}Connected · {k.name} {s.info.version}{:else if s.saved}Saved, not checked yet{:else}Not connected{/if}
+			<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{s.name}</div>
+			<p class="-mt-1 mb-3 text-xs text-gray-500">{s.about}</p>
+			<div class="grid gap-3 tablet:grid-cols-2">
+				{#if v}
+					<button class="card flex items-start gap-3 p-4 text-left transition hover:border-gray-600" onclick={() => edit(s.kind)}>
+						<span class="mt-1.5 size-2.5 shrink-0 rounded-full {c.busy ? 'animate-pulse bg-gray-500' : c.info ? 'bg-green-500' : 'bg-red-500'}"></span>
+						<span class="min-w-0 flex-1 text-sm">
+							<span class="block font-medium">{v.name}</span>
+							<span class="block truncate text-xs text-gray-400">{v.url}</span>
+							<span class="mt-1 block text-xs text-gray-500">{v.qualityProfileName} · {v.rootFolder}</span>
+							{#if c.error}<span class="mt-1 block text-xs text-red-400">{c.error}</span>{:else if c.info}<span class="mt-1 block text-xs text-gray-500">{s.name} {c.info.version}</span>{/if}
 						</span>
-					</span>
-					<button class="btn-ghost px-3 py-1 text-xs" disabled={s.testing || !s.form.url} onclick={() => test(k.kind)}>{s.testing ? 'Testing…' : 'Test'}</button>
-				</div>
-
-				<div class="grid gap-3 py-3 tablet:grid-cols-2">
-					<div>
-						{@render field('Address', `${k.kind}-url`)}
-						<input id="{k.kind}-url" bind:value={s.form.url} oninput={() => edited(k.kind)} placeholder="http://192.168.1.10:{k.port}" autocomplete="off" spellcheck="false"
-							class="mt-1 w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/60" />
-					</div>
-					<div>
-						{@render field('API key', `${k.kind}-key`)}
-						<input id="{k.kind}-key" bind:value={s.form.apiKey} oninput={() => (s.error = '')} autocomplete="off" spellcheck="false" type="password"
-							placeholder={s.saved?.apiKeySet ? `Saved, ends in ${s.saved.apiKeyEnd}` : `${k.name} → Settings → General`}
-							class="mt-1 w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 font-mono text-sm outline-none focus:ring-2 focus:ring-primary/60" />
-					</div>
-				</div>
-
-				{#if s.info}
-					<div class="grid gap-3 py-3 tablet:grid-cols-2">
-						<div>
-							{@render field('Root folder', `${k.kind}-root`, `Where new ${k.what.toLowerCase()} are saved.`)}
-							<select id="{k.kind}-root" bind:value={s.form.rootFolder} class="mt-1 w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm">
-								{#each s.info.folders as f (f.id)}<option value={f.path}>{f.path}{f.accessible ? ` (${fmtBytes(f.freeSpace)} free)` : ' (not reachable)'}</option>{/each}
-							</select>
-							{#if !s.info.folders.length}<span class="mt-1 block text-xs text-yellow-400">Add a root folder in {k.name} first (Settings → Media Management).</span>{/if}
-						</div>
-						<div>
-							{@render field('Default quality', `${k.kind}-quality`, 'Used for requests unless another quality is picked.')}
-							<select id="{k.kind}-quality" bind:value={s.form.qualityProfileId} class="mt-1 w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm">
-								{#each s.info.profiles as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
-							</select>
-						</div>
-					</div>
-					<div class="space-y-3 py-3">
-						<Toggle checked={s.form.searchOnAdd} label="Search as soon as it's requested" about="{k.name} starts looking for a download right away instead of waiting for its next scheduled search." onchange={(on) => (s.form.searchOnAdd = on)} />
-						{#if k.kind === 'sonarr'}
-							<Toggle checked={s.form.seasonFolders} label="Season folders" about="Each season goes in its own folder inside the series folder." onchange={(on) => (s.form.seasonFolders = on)} />
-						{/if}
-					</div>
+						<span class="text-gray-500"><Icon name="chevron" class="size-4" /></span>
+					</button>
+				{:else}
+					<button class="flex items-center justify-center gap-2 rounded-xl border border-dashed border-gray-700 p-6 text-sm text-gray-400 transition hover:border-gray-500 hover:text-white" onclick={() => edit(s.kind)}>
+						<Icon name="plus" class="size-4" />Add {s.name} server
+					</button>
 				{/if}
-
-				<div class="flex flex-wrap items-center gap-2 py-3">
-					<button class="btn px-5 py-1.5 text-sm" disabled={!s.info || s.saving || !s.form.rootFolder || !s.form.qualityProfileId} onclick={() => save(k.kind)}>{s.saving ? 'Saving…' : 'Save'}</button>
-					{#if !s.info}<span class="text-xs text-gray-500">Test the connection to pick a folder and quality, then save.</span>{/if}
-					{#if s.saved}<button class="btn-ghost ml-auto px-3 py-1.5 text-xs" onclick={() => { removing = k.kind; removeOpen = true; }}>Remove</button>{/if}
-				</div>
 			</div>
 		</div>
 	{/each}
 
-	<Modal bind:open={removeOpen} title="Remove {KINDS.find((k) => k.kind === removing)?.name}?" sub="The connection and its settings are deleted from Flixarr.">
-		<p class="p-5 text-sm text-gray-300">Nothing changes inside {KINDS.find((k) => k.kind === removing)?.name}. New requests can't be sent there until it's connected again.</p>
+	<Modal bind:open title={saved[kind] ? `Edit ${saved[kind]!.name}` : `Add ${k.name} server`} sub="Sends {k.what} requests to {k.name}.">
+		<div class="space-y-4 p-5">
+			<div>
+				{@render label('Name', 'svc-name', 'Shown on the card. Handy once there is more than one server.')}
+				<input id="svc-name" bind:value={form.name} maxlength="60" class={input} />
+			</div>
+
+			<div>
+				<div class="flex items-end justify-between gap-3">
+					<span>{@render label('Address', 'svc-url', 'Include the port, and the URL base if one is set.')}</span>
+					<button class="btn-ghost shrink-0 px-3 py-1 text-xs" disabled={finding} onclick={find}>{finding ? 'Looking…' : 'Find automatically'}</button>
+				</div>
+				<input id="svc-url" bind:value={form.url} oninput={addressChanged} placeholder="http://192.168.1.10:{k.port}" autocomplete="off" spellcheck="false" class={input} />
+				{#if found}
+					{#if found.length > 1}
+						<div class="mt-2 flex flex-wrap gap-2">
+							{#each found as f (f)}<button class="rounded-full border px-3 py-1 text-xs {form.url === f ? 'border-primary bg-primary/15 text-white' : 'border-gray-700 text-gray-300 hover:text-white'}" onclick={() => pick(f)}>{f}</button>{/each}
+						</div>
+					{:else if found.length === 0}
+						<p class="mt-1 text-xs text-yellow-400">No {k.name} found nearby. Enter its address above.</p>
+					{:else}
+						<p class="mt-1 text-xs text-green-400">Found {k.name} at this address.</p>
+					{/if}
+				{/if}
+			</div>
+
+			<div>
+				{@render label('API key', 'svc-key', `In ${k.name}: Settings → General → Security.`)}
+				<div class="relative">
+					<input id="svc-key" bind:value={form.apiKey} oninput={() => (error = '')} type={showKey ? 'text' : 'password'} autocomplete="off" spellcheck="false"
+						placeholder={saved[kind]?.apiKeySet ? `Saved, ends in ${saved[kind]!.apiKeyEnd}` : ''} class="{input} pr-16 font-mono" />
+					<button class="absolute right-2 top-1/2 mt-0.5 -translate-y-1/2 px-2 text-xs text-gray-400 hover:text-white" onclick={() => (showKey = !showKey)}>{showKey ? 'Hide' : 'Show'}</button>
+				</div>
+			</div>
+
+			<div class="flex items-center gap-3">
+				<button class="btn-ghost px-4 py-1.5 text-sm" disabled={testing || !form.url} onclick={test}>{testing ? 'Testing…' : 'Test'}</button>
+				<span class="text-xs {error ? 'text-red-400' : info ? 'text-green-400' : 'text-gray-500'}">
+					{#if error}{error}{:else if info}Connected · {k.name} {info.version}{:else}Test the connection to pick a folder and quality.{/if}
+				</span>
+			</div>
+
+			{#if info}
+				<div class="grid gap-4 tablet:grid-cols-2">
+					<div>
+						{@render label('Root folder', 'svc-root', `Where new ${k.what} are saved.`)}
+						<select id="svc-root" bind:value={form.rootFolder} class={input}>
+							{#each info.folders as f (f.id)}<option value={f.path}>{f.path}{f.accessible ? ` (${fmtBytes(f.freeSpace)} free)` : ' (not reachable)'}</option>{/each}
+						</select>
+						{#if !info.folders.length}<span class="mt-1 block text-xs text-yellow-400">Add a root folder in {k.name} first (Settings → Media Management).</span>{/if}
+					</div>
+					<div>
+						{@render label('Default quality', 'svc-quality', 'Used for requests unless another quality is picked.')}
+						<select id="svc-quality" bind:value={form.qualityProfileId} class={input}>
+							{#each info.profiles as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
+						</select>
+					</div>
+				</div>
+				<div class="space-y-3">
+					<Toggle checked={form.searchOnAdd} label="Search as soon as it's requested" about="{k.name} starts looking for a download right away instead of waiting for its next scheduled search." onchange={(on) => (form.searchOnAdd = on)} />
+					{#if kind === 'sonarr'}
+						<Toggle checked={form.seasonFolders} label="Season folders" about="Each season goes in its own folder inside the series folder." onchange={(on) => (form.seasonFolders = on)} />
+					{/if}
+				</div>
+			{/if}
+		</div>
 		{#snippet footer()}
-			<button class="btn-ghost" onclick={() => (removeOpen = false)}>Cancel</button>
-			<button class="btn px-6" onclick={() => removing && remove(removing)}>Remove</button>
+			{#if saved?.[kind]}<button class="btn-ghost mr-auto text-red-300" onclick={() => (confirmRemove = true)}>Remove</button>{/if}
+			<button class="btn-ghost" onclick={() => (open = false)}>Cancel</button>
+			<button class="btn px-6" disabled={!info || saving || !form.rootFolder || !form.qualityProfileId} onclick={save}>{saving ? 'Saving…' : 'Save'}</button>
+		{/snippet}
+	</Modal>
+
+	<Modal bind:open={confirmRemove} title="Remove {saved[kind]?.name ?? k.name}?" sub="The connection and its settings are deleted from Flixarr.">
+		<p class="p-5 text-sm text-gray-300">Nothing changes inside {k.name}. New requests can't be sent there until it's connected again.</p>
+		{#snippet footer()}
+			<button class="btn-ghost" onclick={() => (confirmRemove = false)}>Cancel</button>
+			<button class="btn px-6" onclick={remove}>Remove</button>
 		{/snippet}
 	</Modal>
 {/if}
