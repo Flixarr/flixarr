@@ -1,5 +1,7 @@
 <script lang="ts">
 	// Discover: rotating spotlight + rows (layout D). Recent Requests / Recently Added arrive with requests.
+	import { tick } from 'svelte';
+	import { snapshot } from '$app/navigation';
 	import { meta } from '#lib/api.ts';
 	import type { Card, Page } from '#lib/types.ts';
 	import Spotlight from '#lib/components/Spotlight.svelte';
@@ -25,6 +27,24 @@
 			})
 			.catch((e) => (error = e.message));
 		return () => (alive = false);
+	});
+	// Going back to Discover: same rows, each row scrolled sideways where you left it (design rule 11), same page scroll.
+	snapshot({
+		id: 'discover',
+		capture: () => ({
+			lists: $state.snapshot(lists),
+			pages: $state.snapshot(pages),
+			rows: Object.fromEntries([...document.querySelectorAll<HTMLElement>('[data-row]')].map((r) => [r.dataset.row, r.scrollLeft])),
+			y: scrollY
+		}),
+		restore: async (v) => {
+			if (!Object.keys(v.lists).length) return;
+			lists = v.lists;
+			pages = v.pages;
+			await tick();
+			for (const r of document.querySelectorAll<HTMLElement>('[data-row]')) r.scrollLeft = v.rows[r.dataset.row!] ?? 0;
+			scrollTo(0, v.y);
+		}
 	});
 	const spot = $derived((lists.trending ?? []).filter((c) => c.backdrop).slice(0, 5));
 </script>

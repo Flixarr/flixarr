@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { replaceState } from '$app/navigation';
+	import { tick } from 'svelte';
+	import { replaceState, snapshot } from '$app/navigation';
 	import { page } from '$app/state';
 	import { meta } from '#lib/api.ts';
 	import type { Card, Page, SearchHit } from '#lib/types.ts';
@@ -33,6 +34,18 @@
 			meta<Page<SearchHit>>('search', { q: term }, show).then(show).finally(() => (busy = false));
 		}, 250);
 		return () => { clearTimeout(t); alive = false; };
+	});
+	// Going back to search brings back the results, the tab you picked and where you'd scrolled to.
+	snapshot({
+		id: 'search',
+		capture: () => ({ q, tab, hits: $state.snapshot(hits), y: scrollY }),
+		restore: async (v) => {
+			if (v.q !== q) return;
+			tab = v.tab;
+			hits = v.hits;
+			await tick();
+			scrollTo(0, v.y);
+		}
 	});
 	const shown = $derived(hits.filter((h) => tab === 'all' || h.type === tab));
 	const count = (t: string) => hits.filter((h) => h.type === t).length;
