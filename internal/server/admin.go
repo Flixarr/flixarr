@@ -85,7 +85,7 @@ func (s *Server) cacheSettings(w http.ResponseWriter, r *http.Request, _ *store.
 	s.writeCache(w)
 }
 
-// cacheFlush clears one kind of saved results, "images", or "all" (results only; images flush separately).
+// cacheFlush clears one kind of saved results, "images", or "all" (every saved result and image).
 func (s *Server) cacheFlush(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	kind := r.PathValue("kind")
 	var err error
@@ -93,7 +93,9 @@ func (s *Server) cacheFlush(w http.ResponseWriter, r *http.Request, _ *store.Use
 	case kind == "images":
 		_, err = s.Images.Flush()
 	case kind == "all":
-		_, err = s.Store.CacheFlush("")
+		if _, err = s.Store.CacheFlush(""); err == nil {
+			_, err = s.Images.Flush()
+		}
 	case contains(meta.Kinds, kind):
 		_, err = s.Store.CacheFlush(kind)
 	default:
