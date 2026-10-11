@@ -203,8 +203,8 @@ func (c *Client) Get(ctx context.Context, path string, q url.Values) ([]byte, in
 	}
 
 	body, status, err := c.fetch(ctx, c.Base+"/v1/"+key)
-	if err != nil || status >= 500 {
-		// The API is down: an expired copy beats an error page.
+	if err != nil || status >= 500 || status == http.StatusTooManyRequests {
+		// The API is down or throttling us: an expired copy beats an error page.
 		if saved != nil && saved.Status == http.StatusOK {
 			c.stale.Add(1)
 			return saved.Body, saved.Status, nil
