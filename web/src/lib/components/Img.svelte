@@ -34,6 +34,8 @@
 
 	let near = $state(false);
 	let loaded = $state(false);
+	let instant = $state(false); // already downloaded when shown: no fade at all
+	let faded = $state(false); // the full image has finished fading in, so the blurred copy underneath can go
 	let el = $state<HTMLImageElement>();
 	const show = () => (near = true);
 	const srcset = $derived(WIDTHS[kind].map((w) => `${img(path, 'w' + w)} ${w}w`).join(', '));
@@ -42,7 +44,7 @@
 
 	// An image the browser already has can finish before Svelte's onload is attached.
 	$effect(() => {
-		if (el?.complete && el.naturalWidth) loaded = true;
+		if (el?.complete && el.naturalWidth) loaded = faded = instant = true;
 	});
 </script>
 
@@ -52,13 +54,13 @@
 		onload={() => (loaded = true)} {onerror} class="{cls} transition-opacity duration-500 {loaded ? 'opacity-100' : 'opacity-0'}" />
 {:else}
 	<span class="relative block overflow-hidden {cls}" use:nearScreen={show}>
-		{#if (near || eager) && tiny && !loaded}
+		{#if (near || eager) && tiny && !faded}
 			<img src={tiny} alt="" aria-hidden="true" decoding="async" class="absolute inset-0 h-full w-full scale-110 object-cover blur-md" />
 		{/if}
 		{#if near || eager}
 			<img bind:this={el} src={largest} srcset={srcset} {sizes} {alt} decoding="async" fetchpriority={eager ? 'high' : 'auto'}
-				onload={() => (loaded = true)} {onerror}
-				class="absolute inset-0 h-full w-full object-cover transition-opacity duration-500 {loaded ? 'opacity-100' : 'opacity-0'} {imgClass}" />
+				onload={() => (loaded = true)} ontransitionend={() => (faded = true)} {onerror}
+				class="absolute inset-0 h-full w-full object-cover {instant ? '' : 'transition-opacity duration-500'} {loaded ? 'opacity-100' : 'opacity-0'} {imgClass}" />
 		{/if}
 	</span>
 {/if}
