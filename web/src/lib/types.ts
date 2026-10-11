@@ -103,6 +103,14 @@ export type ServiceKind = 'radarr' | 'sonarr';
 export interface ServiceView {
 	id: number; kind: ServiceKind; name: string; url: string; rootFolder: string; qualityProfileId: number; qualityProfileName: string;
 	seasonFolders: boolean; searchOnAdd: boolean; enabled: boolean; createdAt: string; updatedAt: string; apiKeySet: boolean; apiKeyEnd: string;
+	status: ArrStatus | null;
+}
+
+export interface QueueRow { title: string; quality: string; size: number; percent: number; timeLeft: string; state: 'downloading' | 'queued' | 'paused' | 'importing' | 'warning' | 'error'; message?: string }
+
+export interface ArrStatus {
+	connected: boolean; error?: string; version?: string; health: string[]; queue: QueueRow[]; folder: string; freeSpace: number; totalSpace: number;
+	indexers: number; indexersDown: number; clients: string[]; clientsDown: boolean; updatedAt: string; lastConnected: string | null;
 }
 
 export interface ArrInfo {

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { api, fmtBytes } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
-	import type { ArrInfo, ServiceKind, ServiceView } from '#lib/types.ts';
+	import type { ArrInfo, QueueRow, ServiceKind, ServiceView } from '#lib/types.ts';
 	import Toggle from '#lib/components/Toggle.svelte';
 	import Modal from '#lib/components/Modal.svelte';
 	import Icon from '#lib/components/Icon.svelte';
@@ -9,17 +9,15 @@
 
 	// Each kind is a list of connection cards. Connections are stored as a list; for now each kind
 	// takes one, so "Add" shows only while a list is empty.
-	const KINDS: { kind: ServiceKind; name: string; what: string; port: number; about: string }[] = [
-		{ kind: 'radarr', name: 'Radarr', what: 'movies', port: 7878, about: 'Movie requests are sent here.' },
-		{ kind: 'sonarr', name: 'Sonarr', what: 'series', port: 8989, about: 'Series requests are sent here.' }
+	const KINDS: { kind: ServiceKind; name: string; what: string; port: number; about: string; color: string }[] = [
+		{ kind: 'radarr', name: 'Radarr', what: 'movies', port: 7878, about: 'Movie requests are sent here.', color: '#ffc230' },
+		{ kind: 'sonarr', name: 'Sonarr', what: 'series', port: 8989, about: 'Series requests are sent here.', color: '#35c5f4' }
 	];
 	const nameOf = (kind: ServiceKind) => KINDS.find((k) => k.kind === kind)!.name;
 
 	type Form = { name: string; url: string; apiKey: string; rootFolder: string; qualityProfileId: number; seasonFolders: boolean; searchOnAdd: boolean; enabled: boolean };
-	type Check = { info: ArrInfo | null; error: string; busy: boolean };
-
 	let saved = $state<Record<ServiceKind, ServiceView | null> | null>(null);
-	let checks = $state<Record<ServiceKind, Check>>({ radarr: { info: null, error: '', busy: false }, sonarr: { info: null, error: '', busy: false } });
+	let now = $state(Date.now());
 
 	// The open modal.
 	let open = $state(false);
@@ -38,35 +36,47 @@
 		return { name: nameOf(k), url: '', apiKey: '', rootFolder: '', qualityProfileId: 0, seasonFolders: true, searchOnAdd: true, enabled: true };
 	}
 
+	// The cards show what the "Radarr / Sonarr: refresh status" job last read; reload while the page is open.
 	$effect(() => {
-		api<Record<ServiceKind, ServiceView | null>>('/services').then((d) => {
-			saved = d;
-			for (const { kind: k } of KINDS) if (d[k]) check(k);
-		});
+		const load = () => api<Record<ServiceKind, ServiceView | null>>('/services').then((d) => (saved = d));
+		load();
+		const t = setInterval(load, 20000);
+		const tick = setInterval(() => (now = Date.now()), 10000);
+		return () => {
+			clearInterval(t);
+			clearInterval(tick);
+		};
 	});
 
-	// Background check of a saved connection, for the card's status dot.
-	async function check(k: ServiceKind) {
-		const v = saved![k]!;
-		checks[k] = { info: null, error: '', busy: true };
-		try {
-			checks[k].info = await api<ArrInfo>(`/services/${k}/test`, { method: 'POST', body: JSON.stringify({ url: v.url, apiKey: '' }) });
-		} catch (e) {
-			checks[k].error = e instanceof Error ? e.message : 'Not reachable.';
-		} finally {
-			checks[k].busy = false;
-		}
+	function ago(iso: string | null | undefined) {
+		if (!iso) return 'never';
+		const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));
+		if (s < 60) return `${s} sec ago`;
+		if (s < 3600) return `${Math.round(s / 60)} min ago`;
+		if (s < 86400) return `${Math.round(s / 3600)} hr ago`;
+		return `${Math.round(s / 86400)} days ago`;
+	}
+	const short = (v?: string) => (v ? 'v' + v.split('.').slice(0, 2).join('.') : '');
+	const STATE_TEXT: Record<string, string> = { queued: 'Waiting', paused: 'Paused', importing: 'Importing', warning: 'Needs attention', error: 'Failed' };
+	const STATE_TONE: Record<string, string> = { warning: 'text-yellow-400', error: 'text-red-400', paused: 'text-gray-400', queued: 'text-gray-500', importing: 'text-green-400' };
+	function queueLabel(q: QueueRow[]) {
+		if (q.length && q.every((r) => r.state === 'paused')) return `${q.length} paused`;
+		const n = (f: (r: QueueRow) => boolean) => q.filter(f).length;
+		return ([[n((r) => r.state === 'downloading'), 'downloading'], [n((r) => r.state === 'importing'), 'importing'], [n((r) => r.state === 'queued'), 'waiting'],
+			[n((r) => r.state === 'warning' || r.state === 'error'), 'need attention'], [n((r) => r.state === 'paused'), 'paused']] as [number, string][])
+			.filter(([c]) => c).map(([c, w]) => `${c} ${w}`).join(' · ');
 	}
 
 	function edit(k: ServiceKind) {
 		const v = saved![k];
 		kind = k;
 		form = v ? { name: v.name, url: v.url, apiKey: '', rootFolder: v.rootFolder, qualityProfileId: v.qualityProfileId, seasonFolders: v.seasonFolders, searchOnAdd: v.searchOnAdd, enabled: v.enabled } : blank(k);
-		info = v ? checks[k].info : null;
-		error = v ? checks[k].error : '';
+		info = null;
+		error = '';
 		showKey = false;
 		found = null;
 		open = true;
+		if (v) test(); // fills the folder and quality lists
 	}
 
 	async function test() {
@@ -113,7 +123,6 @@
 		try {
 			const v = await api<ServiceView>(`/services/${kind}`, { method: 'PUT', body: JSON.stringify(form) });
 			saved![kind] = v;
-			checks[kind] = { info, error: '', busy: false };
 			open = false;
 			notify(`${v.name} saved.`);
 		} catch (e) {
@@ -128,7 +137,6 @@
 			await api(`/services/${kind}`, { method: 'DELETE' });
 			const n = saved![kind]?.name ?? nameOf(kind);
 			saved![kind] = null;
-			checks[kind] = { info: null, error: '', busy: false };
 			confirmRemove = false;
 			open = false;
 			notify(`${n} removed.`);
@@ -141,26 +149,74 @@
 	const k = $derived(KINDS.find((x) => x.kind === kind)!);
 </script>
 
+{#snippet chip(text: string, bad: boolean)}
+	<span class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] ring-1 {bad ? 'bg-yellow-500/10 text-yellow-300 ring-yellow-500/30' : 'bg-gray-900/60 text-gray-400 ring-gray-700/50'}"><span class="size-1.5 rounded-full {bad ? 'bg-yellow-400' : 'bg-green-500'}"></span>{text}</span>
+{/snippet}
+
 {#snippet section(title: string)}<div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</div>{/snippet}
 
 {#if saved}
 	{#each KINDS as s (s.kind)}
 		{@const v = saved[s.kind]}
-		{@const c = checks[s.kind]}
 		<div>
 			<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{s.name}</div>
 			<p class="-mt-1 mb-3 text-xs text-gray-500">{s.about}</p>
 			<div class="grid gap-3 tablet:grid-cols-2">
 				{#if v}
-					<button class="card flex items-start gap-3 p-4 text-left transition hover:border-gray-600" onclick={() => edit(s.kind)}>
-						<span class="mt-1.5 size-2.5 shrink-0 rounded-full {c.busy ? 'animate-pulse bg-gray-500' : c.info ? 'bg-green-500' : 'bg-red-500'}"></span>
-						<span class="min-w-0 flex-1 text-sm">
-							<span class="block font-medium">{v.name}</span>
-							<span class="block truncate text-xs text-gray-400">{v.url}</span>
-							<span class="mt-1 block text-xs text-gray-500">{v.qualityProfileName} · {v.rootFolder}</span>
-							{#if c.error}<span class="mt-1 block text-xs text-red-400">{c.error}</span>{:else if c.info}<span class="mt-1 block text-xs text-gray-500">{s.name} {c.info.version}</span>{/if}
+					{@const st = v.status}
+					{@const issues = st?.health.length ?? 0}
+					<button class="card block w-full p-4 text-left transition hover:border-gray-600" onclick={() => edit(s.kind)}>
+						<span class="flex items-center gap-3">
+							<img src="/logos/{s.kind}.svg" alt="" class="size-8 shrink-0" />
+							<span class="min-w-0 flex-1"><span class="block font-semibold">{v.name}</span><span class="block truncate text-[11px] text-gray-500">{v.url}{st?.version ? ` · ${short(st.version)}` : ''}</span></span>
+							{#if !st}<span class="text-xs text-gray-500">Checking…</span>
+							{:else if !st.connected}<span class="flex items-center gap-1.5 text-xs text-red-400"><span class="size-2 rounded-full bg-red-500"></span>Not connected</span>
+							{:else if issues}<span class="flex items-center gap-1.5 text-xs text-yellow-400"><span class="size-2 rounded-full bg-yellow-400"></span>{issues} issue{issues > 1 ? 's' : ''}</span>
+							{:else}<span class="flex items-center gap-1.5 text-xs text-green-400"><span class="size-2 rounded-full bg-green-500"></span>Healthy</span>{/if}
 						</span>
-						<span class="text-gray-500"><Icon name="chevron" class="size-4" /></span>
+
+						{#if st && !st.connected}
+							<span class="mt-4 flex items-center gap-2 rounded-lg bg-red-500/10 px-2.5 py-1.5 text-[11px] text-red-300 ring-1 ring-red-500/30">✕ {st.error}</span>
+							<span class="mt-3 flex justify-between text-[11px] text-gray-500"><span>Last connected {ago(st.lastConnected)}</span><span>Updated {ago(st.updatedAt)}</span></span>
+						{:else if st}
+							{#if !st.queue.length}
+								<span class="mt-4 flex items-center justify-between rounded-lg bg-gray-900/50 px-3 py-2 text-xs ring-1 ring-gray-700/40"><span class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Queue</span><span class="text-gray-500">Nothing downloading</span></span>
+							{:else}
+								<span class="mt-4 block rounded-lg bg-gray-900/50 px-3 pb-1 pt-2 ring-1 ring-gray-700/40">
+									<span class="flex items-center justify-between text-[11px]"><span class="font-semibold uppercase tracking-wide text-gray-500">Queue</span><span class="text-gray-400">{queueLabel(st.queue)}</span></span>
+									<span class="block divide-y divide-gray-700/30">
+										{#each st.queue.slice(0, 3) as q, i (i)}
+											<span class="block py-2">
+												<span class="flex items-baseline justify-between gap-3 text-xs"><span class="min-w-0 truncate text-gray-200">{q.title}</span>
+													<span class="shrink-0 tabular-nums {STATE_TONE[q.state] ?? 'text-gray-400'}">{q.state === 'downloading' ? `${q.percent}%${q.timeLeft ? ` · ${q.timeLeft}` : ''}` : STATE_TEXT[q.state]}</span></span>
+												<span class="mt-1 block h-1 overflow-hidden rounded-full bg-gray-700/60"><span class="block h-full rounded-full {q.state === 'importing' ? 'arr-stripes' : ''}"
+													style="width:{q.state === 'queued' ? 0 : Math.max(q.percent, 2)}%; background:{q.state === 'error' ? '#ef4444' : q.state === 'warning' ? '#facc15' : q.state === 'paused' ? '#6b7280' : s.color}"></span></span>
+												<span class="mt-1 block text-[11px] text-gray-500">{q.quality}{q.size ? ` · ${fmtBytes(q.size)}` : ''}</span>
+												{#if q.message}<span class="mt-1 block text-[11px] {STATE_TONE[q.state]}">⚠ {q.message}</span>{/if}
+											</span>
+										{/each}
+									</span>
+									{#if st.queue.length > 3}<span class="block border-t border-gray-700/30 py-2 text-[11px] text-gray-500">+ {st.queue.length - 3} more in the queue</span>{/if}
+								</span>
+							{/if}
+
+							<span class="mt-4 block">
+								<span class="flex justify-between gap-3 text-[11px]"><span class="truncate text-gray-400">{st.folder}</span>
+									<span class="shrink-0 tabular-nums text-gray-300">{st.totalSpace ? `${fmtBytes(st.totalSpace - st.freeSpace)} · ` : ''}{fmtBytes(st.freeSpace)} free</span></span>
+								{#if st.totalSpace}<span class="mt-1 block h-1.5 overflow-hidden rounded-full bg-gray-700/60"><span class="block h-full rounded-full" style="width:{Math.round((1 - st.freeSpace / st.totalSpace) * 100)}%; background:{s.color}"></span></span>{/if}
+							</span>
+							<span class="mt-3 flex flex-wrap items-center gap-1.5">
+								{#each st.clients as c (c)}{@render chip(c, st.clientsDown)}{/each}
+								{@render chip(`${st.indexers} indexer${st.indexers === 1 ? '' : 's'}${st.indexersDown ? ` · ${st.indexersDown} down` : ''}`, st.indexersDown > 0)}
+								<span class="ml-auto text-[11px] text-gray-500">Updated {ago(st.updatedAt)}</span>
+							</span>
+							{#if issues}
+								<span class="mt-3 block rounded-lg bg-yellow-500/10 px-2.5 py-1.5 text-[11px] text-yellow-300 ring-1 ring-yellow-500/30">
+									<span class="block">⚠ {st.health[0]}</span>
+									{#if issues > 1}<span class="mt-0.5 block pl-4 text-yellow-300/70">…and {issues - 1} more issue{issues > 2 ? 's' : ''}</span>{/if}
+								</span>
+							{/if}
+						{/if}
 					</button>
 				{:else}
 					<button class="flex items-center justify-center gap-2 rounded-xl border border-dashed border-gray-700 p-6 text-sm text-gray-400 transition hover:border-gray-500 hover:text-white" onclick={() => edit(s.kind)}>
