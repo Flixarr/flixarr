@@ -9,7 +9,6 @@
 	let { transparent = false }: { transparent?: boolean } = $props();
 	let scrolled = $state(false);
 	let menu = $state<'' | 'user' | 'notif'>('');
-	let q = $state('');
 
 	const NAV = [['Discover', '/'], ['Movies', '/movies'], ['Series', '/series'], ['Requests', '/requests']] as const;
 	const active = (h: string) => (h === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(h));
@@ -35,6 +34,13 @@
 
 	afterNavigate(() => (menu = ''));
 
+	// Already on the search page: just put the cursor back in its box.
+	function focusIfHere(e: MouseEvent) {
+		if (page.url.pathname !== '/search') return;
+		e.preventDefault();
+		dispatchEvent(new CustomEvent('flixarr:focus-search'));
+	}
+
 	async function out() {
 		menu = '';
 		await signOut();
@@ -50,13 +56,13 @@
 				<a href={h} class="rounded-lg px-3 py-1.5 {active(h) ? 'bg-white/10 font-semibold text-white' : 'text-gray-300 hover:text-white'}">{label}</a>
 			{/each}
 		</nav>
-		<form class="ml-auto hidden w-72 items-center gap-2 rounded-xl border border-gray-700/50 bg-gray-900/60 px-3 py-2 text-gray-400 backdrop-blur laptop:flex"
-			onsubmit={(e) => { e.preventDefault(); if (q.trim()) goto(`/search?q=${encodeURIComponent(q.trim())}`); }}>
-			<Icon name="search" class="size-4" />
-			<input bind:value={q} class="w-full bg-transparent text-sm text-white placeholder-gray-500 outline-none" placeholder="Search movies, series, people" />
-		</form>
+		<!-- Search: a link to the search page (which focuses its box). Laptop+: looks like a search box. Tablet: an icon.
+		     Phone: nothing here, Search is in the bottom tabs. -->
+		<a href="/search" onclick={focusIfHere} aria-label="Search" class="ml-auto hidden w-72 items-center gap-2 rounded-xl border border-gray-700/50 bg-gray-900/60 px-3 py-2 text-sm text-gray-500 backdrop-blur transition hover:border-gray-600 hover:text-gray-400 laptop:flex">
+			<Icon name="search" class="size-4 text-gray-400" />Search movies, series, people
+		</a>
 		<div class="ml-auto flex items-center gap-1.5 laptop:ml-0">
-			<a href="/search" class="rounded-full p-2 hover:bg-white/10 laptop:hidden" aria-label="Search"><Icon name="search" /></a>
+			<a href="/search" onclick={focusIfHere} class="hidden rounded-full p-2 hover:bg-white/10 tablet:inline-flex laptop:hidden" aria-label="Search"><Icon name="search" /></a>
 			<div class="relative" data-menu>
 				<button class="rounded-full p-2 hover:bg-white/10" aria-label="Notifications" onclick={() => (menu = menu === 'notif' ? '' : 'notif')}><Icon name="bell" /></button>
 				{#if menu === 'notif'}

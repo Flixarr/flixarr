@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { replaceState, snapshot } from '$app/navigation';
+	import { afterNavigate, replaceState, snapshot } from '$app/navigation';
 	import { page } from '$app/state';
 	import { meta } from '#lib/api.ts';
 	import type { Card, Page, SearchHit } from '#lib/types.ts';
@@ -19,7 +19,18 @@
 	$effect(() => {
 		const showTrending = (p: Page<Card>) => (trending = p.results.slice(0, 16));
 		meta<Page<Card>>('lists/trending', {}, showTrending).then(showTrending);
-		if (!q) input?.focus();
+	});
+
+	// Landing here puts the cursor in the search box, except when coming back with the back button
+	// (that would undo the restored scroll and pop the phone keyboard). The top-bar search link sends
+	// flixarr:focus-search when you're already on this page.
+	afterNavigate((n) => {
+		if (n.type !== 'popstate') input?.focus();
+	});
+	$effect(() => {
+		const f = () => input?.focus();
+		addEventListener('flixarr:focus-search', f);
+		return () => removeEventListener('flixarr:focus-search', f);
 	});
 
 	// Debounced live search.
