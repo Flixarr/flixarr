@@ -1,6 +1,6 @@
 <script lang="ts" module>
 	// Was this page opened by Back/Forward? The browser fires popstate just before SvelteKit rebuilds the page.
-	let poppedAt = 0;
+	let poppedAt = -Infinity;
 	if (typeof addEventListener !== 'undefined') addEventListener('popstate', () => (poppedAt = performance.now()));
 	const cameBack = () => performance.now() - poppedAt < 1500;
 </script>
