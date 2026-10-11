@@ -112,7 +112,7 @@
 					</div>
 					<div>
 						{@render field('API key', `${k.kind}-key`)}
-						<input id="{k.kind}-key" bind:value={s.form.apiKey} oninput={() => edited(k.kind)} autocomplete="off" spellcheck="false" type="password"
+						<input id="{k.kind}-key" bind:value={s.form.apiKey} oninput={() => (s.error = '')} autocomplete="off" spellcheck="false" type="password"
 							placeholder={s.saved?.apiKeySet ? `Saved, ends in ${s.saved.apiKeyEnd}` : `${k.name} → Settings → General`}
 							class="mt-1 w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 font-mono text-sm outline-none focus:ring-2 focus:ring-primary/60" />
 					</div>
@@ -139,7 +139,6 @@
 						{#if k.kind === 'sonarr'}
 							<Toggle checked={s.form.seasonFolders} label="Season folders" about="Each season goes in its own folder inside the series folder." onchange={(on) => (s.form.seasonFolders = on)} />
 						{/if}
-						<Toggle checked={s.form.enabled} label="Send requests here" about="Turn off to stop sending new requests to {k.name} without removing the connection." onchange={(on) => (s.form.enabled = on)} />
 					</div>
 				{/if}
 
