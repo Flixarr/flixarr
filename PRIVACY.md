@@ -17,9 +17,9 @@ Flixarr runs on your own server. Your users, requests, library and settings stay
 | `os`, `arch` | `linux`, `arm64` |
 | `db` | `sqlite` |
 
-The data server keeps these checks so the number of active installs, the versions in use and the hardware they run on can be counted. Admins can see the exact data in **Profile → Updates → Show exactly what's sent**.
+The data server keeps these checks so the number of active installs, the versions in use and the hardware they run on can be counted. Admins can see the exact data in **Settings → About → Show exactly what's sent**.
 
-**Turning it off:** switch off **Check for updates daily** in Profile, or set `FLIXARR_UPDATE_CHECK=false` on the server. When it's off, nothing is sent and you won't hear about updates.
+**Turning it off:** switch off **Check for updates daily** in **Settings → About**, or set `FLIXARR_UPDATE_CHECK=false` on the server. When it's off, nothing is sent and you won't hear about updates.
 
 Never sent: your users, usernames or emails, your requests, your Plex server details, or your library.
 
