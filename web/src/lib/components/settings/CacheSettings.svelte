@@ -15,6 +15,7 @@
 
 	let st = $state<CacheState | null>(null);
 	let confirmAll = $state(false);
+	let confirmImages = $state(false);
 	let busy = $state('');
 
 	const total = $derived(st ? st.kinds.reduce((a, k) => ({ count: a.count + k.count, bytes: a.bytes + k.bytes }), { count: 0, bytes: 0 }) : null);
@@ -52,6 +53,7 @@
 		} finally {
 			busy = '';
 			confirmAll = false;
+			confirmImages = false;
 		}
 	}
 </script>
@@ -120,16 +122,24 @@
 			<div class="flex items-center gap-3 py-3 text-sm">
 				<span class="flex-1">Saved images</span>
 				<span class="text-right"><span class="block tabular-nums">{fmtNum(st.images.count)}</span><span class="block text-xs text-gray-500">{fmtBytes(st.images.bytes)}</span></span>
-				<button class="btn-ghost px-2.5 py-1 text-xs" disabled={!st.images.count || busy !== ''} onclick={() => flush('images', 'Saved images')}>Flush</button>
+				<button class="btn-ghost px-2.5 py-1 text-xs" disabled={!st.images.count || busy !== ''} onclick={() => (confirmImages = true)}>Flush</button>
 			</div>
 		</div>
 	</div>
 
-	<Modal bind:open={confirmAll} title="Flush all saved results?" sub="{fmtNum(total.count)} results · {fmtBytes(total.bytes)}">
+	<Modal bind:open={confirmAll} title="Flush all saved results?" sub="{fmtNum(total.count)} result{total.count === 1 ? '' : 's'} · {fmtBytes(total.bytes)}">
 		<p class="p-5 text-sm text-gray-300">Every saved result is deleted. Pages load from the Flixarr API again until the cache fills back up. Saved images aren't touched.</p>
 		{#snippet footer()}
 			<button class="btn-ghost" onclick={() => (confirmAll = false)}>Cancel</button>
 			<button class="btn px-6" disabled={busy !== ''} onclick={() => flush('all', 'All saved results')}>Flush all</button>
+		{/snippet}
+	</Modal>
+
+	<Modal bind:open={confirmImages} title="Flush saved images?" sub="{fmtNum(st.images.count)} image{st.images.count === 1 ? '' : 's'} · {fmtBytes(st.images.bytes)}">
+		<p class="p-5 text-sm text-gray-300">Every saved poster and backdrop is deleted from your server's disk. They download from TMDB again the next time someone views them{st.images.enabled ? '' : ' (if image caching is on)'}. Saved results aren't touched.</p>
+		{#snippet footer()}
+			<button class="btn-ghost" onclick={() => (confirmImages = false)}>Cancel</button>
+			<button class="btn px-6" disabled={busy !== ''} onclick={() => flush('images', 'Saved images')}>Flush images</button>
 		{/snippet}
 	</Modal>
 {/if}
