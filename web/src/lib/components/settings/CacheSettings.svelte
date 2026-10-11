@@ -76,10 +76,6 @@
 	</div>
 {/snippet}
 
-{#snippet keep(label: string, key: TimeKey, opts: readonly (readonly [number, string])[], about = '')}
-	{@render pick(label, key, st!.settings[key], st!.defaults[key], opts, (s, v) => (s.settings[key] = v), st!.settings.enabled ? about : API_OFF, !st!.settings.enabled)}
-{/snippet}
-
 {#snippet small(label: string, key: TimeKey, opts: readonly (readonly [number, string])[])}
 	<div class="flex items-center justify-between gap-4 py-1.5 text-xs">
 		<label for={'cache-' + key} class="text-gray-400">{label}</label>
