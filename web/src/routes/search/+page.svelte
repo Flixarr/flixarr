@@ -24,8 +24,13 @@
 	// Landing here puts the cursor in the search box, except when coming back with the back button
 	// (that would undo the restored scroll and pop the phone keyboard). The top-bar search link sends
 	// flixarr:focus-search when you're already on this page.
-	afterNavigate((n) => {
-		if (n.type !== 'popstate') input?.focus();
+	let wantFocus = $state(false);
+	afterNavigate((n) => (wantFocus = n.type !== 'popstate'));
+	$effect(() => {
+		if (wantFocus && input) {
+			input.focus();
+			wantFocus = false;
+		}
 	});
 	$effect(() => {
 		const f = () => input?.focus();
