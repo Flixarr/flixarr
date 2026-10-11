@@ -9,12 +9,13 @@
 	import { CREDITS } from '#lib/credits.ts';
 	import CacheSettings from '#lib/components/settings/CacheSettings.svelte';
 	import JobsSettings from '#lib/components/settings/JobsSettings.svelte';
+	import ServicesSettings from '#lib/components/settings/ServicesSettings.svelte';
 
 	// Section key → label, icon, one-line description (side menu / phone list).
 	const SECTIONS: [string, string, string, string][] = [
 		['general', 'General', 'settings', 'Requests, approvals, region'],
 		['plex', 'Plex', 'play', 'Server, libraries, scans'],
-		['services', 'Services', 'plus', 'Radarr, Sonarr, webhooks'],
+		['services', 'Services', 'plus', 'Radarr, Sonarr'],
 		['notifications', 'Notifications', 'bell', 'Email, Discord, webhooks, push'],
 		['discover', 'Discover', 'discover', 'Discover page rows'],
 		['cache', 'Cache', 'refresh', 'Saved results, images'],
@@ -86,7 +87,9 @@
 				<a href="/settings" class="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-white tablet:hidden"><span class="rotate-180"><Icon name="chevron" class="size-4" /></span>Settings</a>
 				<h2 class="text-lg font-semibold">{label}</h2>
 
-				{#if tab === 'cache'}
+				{#if tab === 'services'}
+					<ServicesSettings />
+				{:else if tab === 'cache'}
 					<CacheSettings />
 				{:else if tab === 'jobs'}
 					<JobsSettings />

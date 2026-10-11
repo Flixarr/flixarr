@@ -97,3 +97,16 @@ export interface Job {
 	next: string;
 	last: { at: string; seconds: number; result: string; error?: string } | null;
 }
+
+export type ServiceKind = 'radarr' | 'sonarr';
+
+export interface ServiceView {
+	id: number; kind: ServiceKind; name: string; url: string; rootFolder: string; qualityProfileId: number; qualityProfileName: string;
+	seasonFolders: boolean; searchOnAdd: boolean; enabled: boolean; createdAt: string; updatedAt: string; apiKeySet: boolean; apiKeyEnd: string;
+}
+
+export interface ArrInfo {
+	version: string; name: string;
+	profiles: { id: number; name: string }[];
+	folders: { id: number; path: string; freeSpace: number; accessible: boolean }[];
+}
