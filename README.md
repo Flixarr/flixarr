@@ -49,4 +49,8 @@ This product uses the TMDB API but is not endorsed or certified by TMDB.
 
 ## License
 
-To be decided.
+Copyright (C) 2026 Marc Hershey
+
+Flixarr is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License, version 3, as published by the Free Software Foundation. It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See [LICENSE](LICENSE) for the full text.
+
+The Flixarr name and logo are not covered by this license.
