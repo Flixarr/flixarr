@@ -25,8 +25,9 @@ export function tilt(frame: HTMLElement) {
 		const k = Math.max(0, Math.min(1, (cz - 1) / (LIFT - 1)));
 		// perspective() must be on the frame's own transform; on a parent it only reaches direct children.
 		frame.style.transform = `perspective(600px) rotateX(${(-cy * DEG).toFixed(2)}deg) rotateY(${(cx * DEG).toFixed(2)}deg) scale(${cz.toFixed(4)})`;
-		// Deep shadow cast away from the pressed corner, plus a tight one under the poster.
-		frame.style.boxShadow = `${(-cx * 44 * k).toFixed(1)}px ${((40 - cy * 30) * k).toFixed(1)}px ${(50 * k).toFixed(1)}px -6px rgb(0 0 0 / ${(0.9 * k).toFixed(3)}), 0 ${(12 * k).toFixed(1)}px ${(24 * k).toFixed(1)}px -4px rgb(0 0 0 / ${(0.6 * k).toFixed(3)})`;
+		// Shadow cast away from the pressed corner, plus a tight one under the poster.
+		// Kept close to the poster (small drop, negative spread) so it never spills down onto the title/date/rating text.
+		frame.style.boxShadow = `${(-cx * 18 * k).toFixed(1)}px ${((12 - cy * 10) * k).toFixed(1)}px ${(32 * k).toFixed(1)}px -10px rgb(0 0 0 / ${(0.9 * k).toFixed(3)}), 0 ${(6 * k).toFixed(1)}px ${(14 * k).toFixed(1)}px -4px rgb(0 0 0 / ${(0.55 * k).toFixed(3)})`;
 		const at = `${((cx + 0.5) * 100).toFixed(1)}% ${((cy + 0.5) * 100).toFixed(1)}%`;
 		if (glare) {
 			glare.style.opacity = k.toFixed(3);
