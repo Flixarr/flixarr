@@ -33,18 +33,23 @@ var Kinds = []string{KindTitles, KindPeople, KindLists, KindSearches}
 // Config is the cache's settings (Settings → Cache).
 type Config struct {
 	Enabled     bool `json:"enabled"`
-	PagesMin    int  `json:"pagesMinutes"` // titles + people; 0 = automatic (the API's time for each title)
+	PagesMin    int  `json:"pagesMinutes"` // titles + people; keep times are minutes, or Auto
 	ListsMin    int  `json:"listsMinutes"`
 	SearchesMin int  `json:"searchesMinutes"`
 	MaxResults  int  `json:"maxResults"`
 }
 
 // DefaultConfig is what a new install starts with.
-var DefaultConfig = Config{Enabled: true, PagesMin: Auto, ListsMin: 3 * 60, SearchesMin: 60, MaxResults: 10000}
+var DefaultConfig = Config{Enabled: true, PagesMin: Auto, ListsMin: Auto, SearchesMin: Auto, MaxResults: 10000}
 
-// Auto keeps each title page as long as the API says it stays fresh: hours for airing series and
-// new or upcoming movies, days for ended series, older movies and people.
+// Auto keeps each answer for as long as the API says it stays fresh (for title pages: hours for
+// airing series and new or upcoming movies, days for ended series, older movies and people).
+// The API's tuning then reaches every install without an update.
 const Auto = 0
+
+// minKeep is the shortest automatic keep time, so an answer the API is about to renew isn't
+// saved for a few seconds and asked for again right away.
+const minKeep = 5 * time.Minute
 
 // Settings keys.
 const (
@@ -96,7 +101,7 @@ func (t uaTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 func (c *Client) loadConfig() Config {
 	d := DefaultConfig
 	num := func(key string, def int) int {
-		if n, err := strconv.Atoi(c.Store.Setting(key, "")); err == nil && (n > 0 || (key == keyPages && n == Auto)) {
+		if n, err := strconv.Atoi(c.Store.Setting(key, "")); err == nil && (n > 0 || (n == Auto && key != keyMax)) {
 			return n
 		}
 		return def
@@ -119,12 +124,8 @@ func (c *Client) Config() Config {
 
 // SetConfig validates, saves and applies new cache settings.
 func (c *Client) SetConfig(cfg Config) error {
-	times := []int{cfg.ListsMin, cfg.SearchesMin}
-	if cfg.PagesMin != Auto {
-		times = append(times, cfg.PagesMin)
-	}
-	for _, m := range times {
-		if m < 5 || m > 30*24*60 {
+	for _, m := range []int{cfg.PagesMin, cfg.ListsMin, cfg.SearchesMin} {
+		if m != Auto && (m < 5 || m > 30*24*60) {
 			return errors.New("keep times must be between 5 minutes and 30 days")
 		}
 	}
@@ -175,21 +176,23 @@ func kindOf(p string) string {
 	return KindTitles
 }
 
-// keep is how long to save an answer of this kind. fresh is the API's own time for it (0 if it sent none).
+// keep is how long to save an answer of this kind. fresh is how long the API says its copy stays
+// fresh from now (0 if it sent no time).
 func (cfg Config) keep(kind string, fresh time.Duration) time.Duration {
+	set, fallback := cfg.PagesMin, 24*time.Hour
 	switch kind {
 	case KindLists:
-		return time.Duration(cfg.ListsMin) * time.Minute
+		set, fallback = cfg.ListsMin, time.Hour
 	case KindSearches:
-		return time.Duration(cfg.SearchesMin) * time.Minute
+		set, fallback = cfg.SearchesMin, time.Hour
 	}
-	if cfg.PagesMin == Auto {
-		if fresh > 0 {
-			return fresh
-		}
-		return 24 * time.Hour
+	if set != Auto {
+		return time.Duration(set) * time.Minute
 	}
-	return time.Duration(cfg.PagesMin) * time.Minute
+	if fresh <= 0 {
+		return fallback
+	}
+	return max(fresh, minKeep)
 }
 
 // Get fetches /v1/<path> with the given query (region and language are added by the caller).
@@ -256,14 +259,19 @@ func (c *Client) fetch(ctx context.Context, u string) ([]byte, int, time.Duratio
 	if err != nil {
 		return nil, 0, 0, err
 	}
-	return body, res.StatusCode, freshFor(res.Header.Get("Cache-Control")), nil
+	return body, res.StatusCode, freshFor(res.Header.Get("Cache-Control"), res.Header.Get("Age")), nil
 }
 
-// freshFor reads s-maxage from a Cache-Control header.
-func freshFor(cc string) time.Duration {
+// freshFor is how much longer an answer stays fresh: its s-maxage minus its Age (how long the
+// edge copy has already been kept), so the app's copy runs out when the edge copy does.
+// 0 means the API sent no time; a copy already past its time counts as 1 second.
+func freshFor(cc, age string) time.Duration {
 	for _, part := range strings.Split(cc, ",") {
 		if v, ok := strings.CutPrefix(strings.TrimSpace(part), "s-maxage="); ok {
 			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				if a, err := strconv.Atoi(strings.TrimSpace(age)); err == nil && a > 0 {
+					n = max(n-a, 1)
+				}
 				return time.Duration(n) * time.Second
 			}
 		}
