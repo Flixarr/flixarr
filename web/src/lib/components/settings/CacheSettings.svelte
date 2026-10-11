@@ -6,6 +6,7 @@
 	import Toggle from '#lib/components/Toggle.svelte';
 	import Modal from '#lib/components/Modal.svelte';
 	import Tip from '#lib/components/Tip.svelte';
+	import Select from '#lib/components/Select.svelte';
 
 	const KINDS = { titles: ['Titles', 'Movies, series, seasons, collections'], people: ['People', 'Cast and crew pages'], lists: ['Lists', 'Discover rows, browse pages, genres'], searches: ['Searches', 'Search results'] };
 	const PAGES = [[360, '6 hours'], [720, '12 hours'], [1440, '1 day'], [4320, '3 days'], [10080, '7 days']] as const;
@@ -70,19 +71,15 @@
 {#snippet pick(label: string, id: string, value: number, def: number, opts: readonly (readonly [number, string])[], set: (s: CacheState, v: number) => void, about = '', disabled = false)}
 	<div class="flex items-center justify-between gap-4 py-3 text-sm {disabled ? 'opacity-50' : ''}">
 		<label for={'cache-' + id}>{label}{#if about}<span class="mt-0.5 block text-xs text-gray-500">{about}</span>{/if}</label>
-		<select id={'cache-' + id} class="rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-1.5 text-sm disabled:cursor-not-allowed" {value} {disabled} onchange={(e) => save((s) => set(s, +(e.currentTarget as HTMLSelectElement).value))}>
-			{#each opts as [v, l] (v)}<option value={v}>{l}{v === def ? ' (default)' : ''}</option>{/each}
-		</select>
+		<Select id={'cache-' + id} class="w-44 shrink-0" {value} {disabled} options={opts.map(([v, l]) => ({ value: v, label: l + (v === def ? ' (default)' : '') }))} onchange={(v) => save((s) => set(s, v))} />
 	</div>
 {/snippet}
 
 {#snippet small(label: string, key: TimeKey, opts: readonly (readonly [number, string])[])}
 	<div class="flex items-center justify-between gap-4 py-1.5 text-xs">
 		<label for={'cache-' + key} class="text-gray-400">{label}</label>
-		<select id={'cache-' + key} class="rounded-lg border border-gray-700/60 bg-gray-800/70 px-2.5 py-1 text-xs disabled:cursor-not-allowed" value={st!.settings[key]} disabled={!st!.settings.enabled}
-			onchange={(e) => save((s) => (s.settings[key] = +(e.currentTarget as HTMLSelectElement).value))}>
-			{#each opts as [v, l] (v)}<option value={v}>{l}{v === st!.defaults[key] ? ' (default)' : ''}</option>{/each}
-		</select>
+		<Select id={'cache-' + key} size="sm" class="w-36 shrink-0" value={st!.settings[key]} disabled={!st!.settings.enabled}
+			options={opts.map(([v, l]) => ({ value: v, label: l + (v === st!.defaults[key] ? ' (default)' : '') }))} onchange={(v) => save((s) => (s.settings[key] = v))} />
 	</div>
 {/snippet}
 
@@ -160,10 +157,8 @@
 					</span>
 					<span class="mt-0.5 block text-xs text-gray-500">{st.settings.enabled ? 'Oldest results are removed first.' : API_OFF}</span>
 				</span>
-				<select id="cache-maxResults" class="rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-1.5 text-sm disabled:cursor-not-allowed" value={st.settings.maxResults} disabled={!st.settings.enabled}
-					onchange={(e) => save((s) => (s.settings.maxResults = +(e.currentTarget as HTMLSelectElement).value))}>
-					{#each MAX as n (n)}<option value={n}>{fmtNum(n)} results{n === st.defaults.maxResults ? ' (default)' : ''}</option>{/each}
-				</select>
+				<Select id="cache-maxResults" class="w-52 shrink-0" value={st.settings.maxResults} disabled={!st.settings.enabled}
+					options={MAX.map((n) => ({ value: n, label: `${fmtNum(n)} results${n === st!.defaults.maxResults ? ' (default)' : ''}` }))} onchange={(v) => save((s) => (s.settings.maxResults = v))} />
 			</div>
 			{@render pick('Remove images not viewed for', 'images', st.images.days, st.images.defaultDays, DAYS.map((d) => [d, d + ' days'] as const), (s, v) => (s.images.days = v), st.images.enabled ? "Images nobody has looked at in this long are deleted from your server's disk. They download again the next time someone views them." : 'Cache images is off.', !st.images.enabled)}
 		</div>

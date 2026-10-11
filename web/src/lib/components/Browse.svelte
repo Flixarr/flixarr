@@ -16,6 +16,7 @@
 	import Poster from './Poster.svelte';
 	import Chips from './Chips.svelte';
 	import LoadingMore from './LoadingMore.svelte';
+	import Select from './Select.svelte';
 
 	let { type }: { type: 'movie' | 'series' } = $props();
 	const label = $derived(type === 'series' ? 'Series' : 'Movies');
@@ -89,9 +90,7 @@
 			</div>
 			<h1 class="text-2xl font-bold laptop:text-3xl">{label}</h1><p class="mt-1 text-sm text-gray-400">Tap anything to see details.</p>
 		</div>
-		<select bind:value={sort} class="rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-1.5 text-sm">
-			<option value="popular">Popular</option><option value="rating">Top rated</option><option value="newest">Newest</option>
-		</select>
+		<Select bind:value={sort} class="w-36 shrink-0" options={[{ value: 'popular', label: 'Popular' }, { value: 'rating', label: 'Top rated' }, { value: 'newest', label: 'Newest' }]} />
 	</div>
 	<Chips bind:value={genre} options={[{ key: 0, label: 'All genres' }, ...genres.map((g) => ({ key: g.id, label: g.name }))]} />
 	<div class="grid grid-cols-3 gap-3 px-4 tablet:grid-cols-4 laptop:grid-cols-6 laptop:px-0 desktop:grid-cols-8">

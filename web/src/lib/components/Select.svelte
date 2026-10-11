@@ -9,8 +9,8 @@
 	import { tick } from 'svelte';
 	import Icon from './Icon.svelte';
 
-	let { value = $bindable(), options, id, placeholder = 'Pick one', search = false, disabled = false, size = 'md', onchange }: {
-		value: T; options: Option<T>[]; id?: string; placeholder?: string; search?: boolean; disabled?: boolean; size?: 'sm' | 'md'; onchange?: (v: T) => void;
+	let { value = $bindable(), options, id, placeholder = 'Pick one', search = false, disabled = false, size = 'md', class: cls = 'mt-1 w-full', onchange }: {
+		value: T; options: Option<T>[]; id?: string; placeholder?: string; search?: boolean; disabled?: boolean; size?: 'sm' | 'md'; class?: string; onchange?: (v: T) => void;
 	} = $props();
 
 	let open = $state(false);
@@ -29,7 +29,7 @@
 		const r = button.getBoundingClientRect();
 		const below = innerHeight - r.bottom - 12, above = r.top - 12;
 		const up = below < 220 && above > below;
-		pos = { left: r.left, top: up ? r.top - 6 : r.bottom + 6, width: r.width, up, max: Math.min(320, Math.max(160, up ? above : below)) };
+		pos = { left: Math.min(r.left, innerWidth - Math.max(r.width, 200) - 8), top: up ? r.top - 6 : r.bottom + 6, width: Math.max(r.width, 200), up, max: Math.min(320, Math.max(160, up ? above : below)) };
 	}
 
 	async function show() {
@@ -106,7 +106,7 @@
 
 <button bind:this={button} {id} type="button" {disabled} onclick={() => (open ? hide() : show())} onkeydown={onkey}
 	role="combobox" aria-haspopup="listbox" aria-expanded={open} aria-controls={uid}
-	class="mt-1 flex w-full items-center gap-2 rounded-lg border border-gray-700/60 bg-gray-800/70 text-left outline-none transition hover:border-gray-600 focus-visible:ring-2 focus-visible:ring-primary/60 disabled:cursor-not-allowed disabled:opacity-50
+	class="{cls} flex items-center gap-2 rounded-lg border border-gray-700/60 bg-gray-800/70 text-left outline-none transition hover:border-gray-600 focus-visible:ring-2 focus-visible:ring-primary/60 disabled:cursor-not-allowed disabled:opacity-50
 		{size === 'sm' ? 'px-2.5 py-1 text-xs' : 'px-3 py-2 text-sm'} {open ? 'border-gray-500' : ''}">
 	<span class="min-w-0 flex-1 truncate {current ? '' : 'text-gray-500'}">{current?.label ?? placeholder}</span>
 	{#if current?.hint && size === 'md'}<span class="shrink-0 text-xs text-gray-500">{current.hint}</span>{/if}
