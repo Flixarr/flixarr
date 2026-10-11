@@ -19,7 +19,7 @@
 	let button: HTMLButtonElement;
 	let list = $state<HTMLUListElement>();
 	let input = $state<HTMLInputElement>();
-	let pos = $state({ left: 0, top: 0, width: 0, up: false, max: 256 });
+	let pos = $state({ right: 0, top: 0, width: 0, room: 0, up: false, max: 256 });
 	const uid = `sel-${Math.random().toString(36).slice(2, 8)}`;
 
 	const current = $derived(options.find((o) => o.value === value));
@@ -29,7 +29,8 @@
 		const r = button.getBoundingClientRect();
 		const below = innerHeight - r.bottom - 12, above = r.top - 12;
 		const up = below < 220 && above > below;
-		pos = { left: Math.min(r.left, innerWidth - Math.max(r.width, 200) - 8), top: up ? r.top - 6 : r.bottom + 6, width: Math.max(r.width, 200), up, max: Math.min(320, Math.max(160, up ? above : below)) };
+		// Right edges line up; the list is at least as wide as the button and grows to the left for longer options.
+		pos = { right: innerWidth - r.right, top: up ? r.top - 6 : r.bottom + 6, width: r.width, room: r.right - 8, up, max: Math.min(320, Math.max(160, up ? above : below)) };
 	}
 
 	async function show() {
@@ -115,7 +116,7 @@
 
 {#if open}
 	<div class="fixed z-[60] overflow-hidden rounded-lg border border-gray-700/60 bg-gray-900 shadow-2xl {pos.up ? '-translate-y-full' : ''}"
-		style="left:{pos.left}px; top:{pos.top}px; width:{pos.width}px">
+		style="right:{pos.right}px; top:{pos.top}px; min-width:{pos.width}px; width:max-content; max-width:{pos.room}px">
 		{#if search}
 			<div class="border-b border-gray-700/40 p-2">
 				<input bind:this={input} bind:value={query} onkeydown={onkey} placeholder="Type to filter" autocomplete="off" spellcheck="false"
