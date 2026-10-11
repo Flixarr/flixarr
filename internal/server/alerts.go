@@ -1,0 +1,26 @@
+package server
+
+import (
+	"net/http"
+
+	"github.com/Flixarr/flixarr/internal/store"
+)
+
+// ---------- alerts (the bell) ----------
+
+func (s *Server) alerts(w http.ResponseWriter, r *http.Request, u *store.User) {
+	list, err := s.Store.ActiveAlerts(u.ID, u.Role == "Admin")
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "Database error.")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"alerts": list})
+}
+
+func (s *Server) alertsSeen(w http.ResponseWriter, r *http.Request, u *store.User) {
+	if err := s.Store.MarkAlertsSeen(u.ID); err != nil {
+		writeErr(w, http.StatusInternalServerError, "Database error.")
+		return
+	}
+	s.alerts(w, r, u)
+}

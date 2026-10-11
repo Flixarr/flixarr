@@ -10,6 +10,7 @@
 	import CacheSettings from '#lib/components/settings/CacheSettings.svelte';
 	import JobsSettings from '#lib/components/settings/JobsSettings.svelte';
 	import ServicesSettings from '#lib/components/settings/ServicesSettings.svelte';
+	import { markAlertsSeen, servicesUnread } from '#lib/alerts.svelte.ts';
 
 	// Section key → label, icon, one-line description (side menu / phone list).
 	const SECTIONS: [string, string, string, string][] = [
@@ -36,6 +37,10 @@
 
 	$effect(() => {
 		if (session.me && !isAdmin) goto('/', { replaceState: true });
+	});
+	// Reaching Services is the end of the red-dot trail.
+	$effect(() => {
+		if (tab === 'services' && hash === 'services' && servicesUnread()) markAlertsSeen();
 	});
 	$effect(() => {
 		if (isAdmin) api<{ status: UpdateStatus; payload: Record<string, string> }>('/update').then((d) => { upd = d.status; payload = d.payload; });
@@ -68,6 +73,7 @@
 		<a href="#{k}" class="flex items-center gap-3 rounded-xl text-sm transition {drill ? 'card px-4 py-4' : 'px-3 py-2.5'} {on ? 'bg-primary/15 text-white ring-1 ring-primary/50' : 'text-gray-300 hover:bg-white/5 hover:text-white'}">
 			<span class={on ? 'text-primary-light' : 'text-gray-500'}><Icon name={i} class="size-4" /></span>
 			<span class="flex-1"><span class="block">{l}</span>{#if drill}<span class="block text-xs text-gray-500">{d}</span>{/if}</span>
+			{#if k === 'services' && servicesUnread()}<span class="alert-dot"></span>{/if}
 			{#if drill}<Icon name="chevron" class="size-4 text-gray-500" />{/if}
 		</a>
 	{/each}

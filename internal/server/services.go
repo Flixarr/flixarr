@@ -205,7 +205,7 @@ func (s *Server) serviceDelete(w http.ResponseWriter, r *http.Request, _ *store.
 			writeErr(w, http.StatusInternalServerError, "Database error.")
 			return
 		}
-		s.Arr.Forget(v.ID)
+		s.Arr.Forget(v)
 		s.Log.Info("service removed", "kind", kind)
 	}
 	w.WriteHeader(http.StatusNoContent)

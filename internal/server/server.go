@@ -60,6 +60,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/cache", s.auth(s.admin(s.cacheInfo)))
 	mux.HandleFunc("PUT /api/cache/settings", s.auth(s.admin(s.cacheSettings)))
 	mux.HandleFunc("DELETE /api/cache/{kind}", s.auth(s.admin(s.cacheFlush)))
+	mux.HandleFunc("GET /api/alerts", s.auth(s.alerts))
+	mux.HandleFunc("POST /api/alerts/seen", s.auth(s.alertsSeen))
 	mux.HandleFunc("GET /api/services", s.auth(s.admin(s.services)))
 	mux.HandleFunc("POST /api/services/{kind}/test", s.auth(s.admin(s.serviceTest)))
 	mux.HandleFunc("POST /api/services/{kind}/discover", s.auth(s.admin(s.serviceDiscover)))

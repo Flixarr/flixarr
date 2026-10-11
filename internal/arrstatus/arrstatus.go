@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 
 	"github.com/Flixarr/flixarr/internal/arr"
@@ -30,10 +31,11 @@ func (m *Monitor) Get(id int64) (arr.Snapshot, bool) {
 }
 
 // Forget drops a removed server's snapshot.
-func (m *Monitor) Forget(id int64) {
+func (m *Monitor) Forget(v store.Server) {
 	m.mu.Lock()
-	delete(m.snaps, id)
+	delete(m.snaps, v.ID)
 	m.mu.Unlock()
+	m.Store.ResolveAlert(alertKey(v))
 }
 
 // RefreshOne reads one server now.
@@ -52,6 +54,7 @@ func (m *Monitor) RefreshOne(ctx context.Context, v store.Server) arr.Snapshot {
 	}
 	m.snaps[v.ID] = snap
 	m.mu.Unlock()
+	m.syncAlert(v, snap)
 	return snap
 }
 
@@ -84,4 +87,58 @@ func (m *Monitor) Refresh(ctx context.Context) (string, error) {
 		return fmt.Sprintf("%d of %d connected", up, len(servers)), nil
 	}
 	return fmt.Sprintf("%d of %d connected", up, len(servers)), fmt.Errorf("%d not reachable", len(servers)-up)
+}
+
+// alertKey is the bell alert for one server: all of its problems are grouped into this one alert.
+func alertKey(v store.Server) string { return fmt.Sprintf("arr:%s:%d", v.Kind, v.ID) }
+
+// syncAlert raises, updates or clears the server's single bell alert from its snapshot.
+func (m *Monitor) syncAlert(v store.Server, snap arr.Snapshot) {
+	key := alertKey(v)
+	a := store.Alert{Key: key, Title: v.Name, Link: "/settings#services"}
+	if !snap.Connected {
+		a.Severity, a.Detail, a.Sig = "error", "Not reachable. "+snap.Error, "error:offline"
+	} else {
+		stuck, failed := 0, 0
+		for _, q := range snap.Queue {
+			switch q.State {
+			case "warning":
+				stuck++
+			case "error":
+				failed++
+			}
+		}
+		var parts, kinds []string
+		if failed > 0 {
+			parts, kinds = append(parts, count(failed, "failed download", "failed downloads")), append(kinds, "failed")
+		}
+		if stuck > 0 {
+			parts, kinds = append(parts, count(stuck, "download needs attention", "downloads need attention")), append(kinds, "stuck")
+		}
+		if n := len(snap.Health); n > 0 {
+			parts, kinds = append(parts, count(n, "health issue", "health issues")), append(kinds, "health")
+		}
+		if len(parts) == 0 {
+			if err := m.Store.ResolveAlert(key); err != nil {
+				m.Log.Warn("alert", "err", err)
+			}
+			return
+		}
+		a.Severity = "warning"
+		if failed > 0 {
+			a.Severity = "error"
+		}
+		a.Detail = strings.Join(parts, " · ")
+		a.Sig = a.Severity + ":" + strings.Join(kinds, ",")
+	}
+	if err := m.Store.RaiseAlert(a); err != nil {
+		m.Log.Warn("alert", "err", err)
+	}
+}
+
+func count(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
 }

@@ -5,6 +5,7 @@
 	import Icon from './Icon.svelte';
 	import Avatar from './Avatar.svelte';
 	import { session, signOut } from '#lib/session.svelte.ts';
+	import { alerts, markAlertsSeen, servicesUnread, unreadCount, watchAlerts } from '#lib/alerts.svelte.ts';
 
 	let { transparent = false }: { transparent?: boolean } = $props();
 	let scrolled = $state(false);
@@ -33,6 +34,18 @@
 	});
 
 	afterNavigate(() => (menu = ''));
+
+	$effect(() => {
+		if (session.me) return watchAlerts();
+	});
+	// Opening the bell marks what's in it as seen.
+	$effect(() => {
+		if (menu === 'notif') markAlertsSeen();
+	});
+	function since(iso: string) {
+		const m = Math.round((Date.now() - Date.parse(iso)) / 60000);
+		return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} hr ago` : `${Math.round(m / 1440)} days ago`;
+	}
 
 	// Already on the search page: just put the cursor back in its box.
 	function focusIfHere(e: MouseEvent) {
@@ -64,19 +77,39 @@
 		<div class="ml-auto flex items-center gap-1.5 laptop:ml-0">
 			<a href="/search" onclick={focusIfHere} class="hidden rounded-full p-2 hover:bg-white/10 tablet:inline-flex laptop:hidden" aria-label="Search"><Icon name="search" /></a>
 			<div class="relative" data-menu>
-				<button class="rounded-full p-2 hover:bg-white/10" aria-label="Notifications" onclick={() => (menu = menu === 'notif' ? '' : 'notif')}><Icon name="bell" /></button>
+				<button class="relative rounded-full p-2 hover:bg-white/10" aria-label="Alerts{alerts.list.length ? ` (${alerts.list.length})` : ''}" onclick={() => (menu = menu === 'notif' ? '' : 'notif')}>
+					<Icon name="bell" />
+					{#if alerts.list.length}
+						<span class="absolute -right-0.5 -top-0.5 grid min-w-4 place-items-center rounded-full px-1 text-[10px] font-bold leading-4 text-white {unreadCount() ? 'alert-pulse bg-red-500' : 'bg-gray-600'}">{alerts.list.length}</span>
+					{/if}
+				</button>
 				{#if menu === 'notif'}
 					<div class="fixed inset-x-3 top-16 tablet:absolute tablet:inset-x-auto tablet:right-0 tablet:top-11 tablet:w-96">
 						<div class="overflow-hidden rounded-xl border border-gray-700/60 bg-gray-900 shadow-2xl">
-							<div class="border-b border-gray-700/40 px-4 py-3 font-semibold">Notifications</div>
-							<div class="px-4 py-8 text-center text-sm text-gray-400">Nothing yet. You'll see request updates here.</div>
+							<div class="border-b border-gray-700/40 px-4 py-3 font-semibold">Alerts</div>
+							{#if alerts.list.length}
+								<div class="max-h-[60vh] divide-y divide-gray-700/40 overflow-y-auto">
+									{#each alerts.list as a (a.id)}
+										<a href={a.link} class="flex items-start gap-3 px-4 py-3 hover:bg-white/5">
+											{#if a.key.startsWith('arr:')}<img src="/logos/{a.key.split(':')[1]}.svg" alt="" class="mt-0.5 size-6 shrink-0" />{/if}
+											<span class="min-w-0 flex-1">
+												<span class="flex items-center gap-2 text-sm font-medium">{a.title}<span class="size-1.5 rounded-full {a.severity === 'error' ? 'bg-red-500' : 'bg-yellow-400'}"></span></span>
+												<span class="block text-xs {a.severity === 'error' ? 'text-red-300' : 'text-yellow-300'}">{a.detail}</span>
+												<span class="mt-0.5 block text-[11px] text-gray-500">Since {since(a.startedAt)}</span>
+											</span>
+										</a>
+									{/each}
+								</div>
+							{:else}
+								<div class="px-4 py-8 text-center text-sm text-gray-400">Nothing needs your attention.</div>
+							{/if}
 						</div>
 					</div>
 				{/if}
 			</div>
 			{#if session.me}
 				<div class="relative" data-menu>
-					<button class="rounded-full p-1 hover:bg-white/10" aria-label="Account menu" onclick={() => (menu = menu === 'user' ? '' : 'user')}><Avatar user={session.me} /></button>
+					<button class="relative rounded-full p-1 hover:bg-white/10" aria-label="Account menu" onclick={() => (menu = menu === 'user' ? '' : 'user')}><Avatar user={session.me} />{#if admin && servicesUnread()}<span class="alert-dot absolute right-0.5 top-0.5"></span>{/if}</button>
 					{#if menu === 'user'}
 						<div class="fixed inset-x-3 top-16 tablet:absolute tablet:inset-x-auto tablet:right-0 tablet:top-11 tablet:w-60">
 							<div class="overflow-hidden rounded-xl border border-gray-700/60 bg-gray-900 py-1.5 shadow-2xl">
@@ -86,7 +119,7 @@
 								{#if admin}
 									<a href="/issues" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 hover:text-white"><Icon name="issues" class="size-4" />Issues</a>
 									<a href="/users" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 hover:text-white"><Icon name="users" class="size-4" />Users</a>
-									<a href="/settings" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 hover:text-white"><Icon name="settings" class="size-4" />Settings</a>
+									<a href="/settings" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 hover:text-white"><Icon name="settings" class="size-4" />Settings{#if servicesUnread()}<span class="alert-dot ml-auto"></span>{/if}</a>
 								{/if}
 								<div class="my-1 border-t border-gray-700/40"></div>
 								<button onclick={out} class="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 hover:text-white"><Icon name="out" class="size-4" />Sign out</button>
