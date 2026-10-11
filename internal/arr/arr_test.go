@@ -91,3 +91,36 @@ func TestProbe(t *testing.T) {
 		t.Error("closed port recognized")
 	}
 }
+
+func TestRowAndHelpers(t *testing.T) {
+	var r queueRecord
+	r.Title, r.Size, r.SizeLeft, r.TimeLeft, r.Status = "Rugrats.S01E07.1080p", 1000, 400, "00:04:12", "downloading"
+	r.Series = &struct {
+		Title string `json:"title"`
+	}{"Rugrats"}
+	r.Episode = &struct {
+		SeasonNumber  int `json:"seasonNumber"`
+		EpisodeNumber int `json:"episodeNumber"`
+	}{1, 7}
+	if q := row(r); q.Title != "Rugrats S01E07" || q.Percent != 60 || q.State != "downloading" || q.TimeLeft != "4 min" {
+		t.Errorf("downloading row = %+v", q)
+	}
+	r.Status, r.TrackedDownloadStatus, r.TrackedDownloadState, r.SizeLeft = "completed", "warning", "importPending", 0
+	r.StatusMessages = []struct {
+		Messages []string `json:"messages"`
+	}{{Messages: []string{"Found archive file, might need to be extracted"}}}
+	if q := row(r); q.State != "warning" || q.Message != "Found archive file, might need to be extracted" || q.Percent != 100 {
+		t.Errorf("warning row = %+v", q)
+	}
+	for in, want := range map[string]string{"00:00:30": "under a minute", "01:04:12": "1 hr 4 min", "1.02:00:00": "1 day 2 hr", "": ""} {
+		if got := humanLeft(in); got != want {
+			t.Errorf("humanLeft(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if namedIn("Indexers unavailable due to failures: NZBgeek, DrunkenSlug") != 2 {
+		t.Error("namedIn")
+	}
+	if !within("/mnt/media/series", "/mnt/media") || within("/mnt/mediax", "/mnt/media") || !within("/x", "/") {
+		t.Error("within")
+	}
+}

@@ -15,6 +15,7 @@ import (
 	"time"
 	_ "time/tzdata" // so TZ (e.g. America/New_York) works in the slim image; job times follow it
 
+	"github.com/Flixarr/flixarr/internal/arrstatus"
 	"github.com/Flixarr/flixarr/internal/images"
 	"github.com/Flixarr/flixarr/internal/jobs"
 	"github.com/Flixarr/flixarr/internal/meta"
@@ -89,7 +90,12 @@ func main() {
 			n, err := ic.Cleanup()
 			return plural(int64(n), "image") + " removed", err
 		}})
+	arrMon := &arrstatus.Monitor{Store: st, Log: log}
+	runner.Add(&jobs.Job{ID: "arr-status", Name: "Radarr / Sonarr: refresh status", Default: "* * * * *",
+		About: "Reads each Radarr and Sonarr connection's queue, health, disk space, indexers and download clients for the Services cards.",
+		Run:   arrMon.Refresh})
 	runner.Start(runCtx)
+	go arrMon.Refresh(runCtx) // fill the cards right away instead of waiting for the first minute
 
 	srv := &server.Server{
 		Store:   st,
@@ -98,6 +104,7 @@ func main() {
 		Images:  ic,
 		Jobs:    runner,
 		Update:  checker,
+		Arr:     arrMon,
 		Web:     webui.FS(),
 		Log:     log,
 		BaseCtx: runCtx,

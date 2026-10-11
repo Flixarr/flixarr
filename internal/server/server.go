@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Flixarr/flixarr/internal/arrstatus"
 	"github.com/Flixarr/flixarr/internal/images"
 	"github.com/Flixarr/flixarr/internal/jobs"
 	"github.com/Flixarr/flixarr/internal/meta"
@@ -32,6 +33,7 @@ type Server struct {
 	Images *images.Cache
 	Jobs   *jobs.Runner
 	Update *update.Checker
+	Arr    *arrstatus.Monitor
 	Web    fs.FS // built web app (index + assets)
 	Log    *slog.Logger
 	// BaseCtx outlives requests; jobs started with "Run now" use it.

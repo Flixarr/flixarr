@@ -16,16 +16,21 @@ import (
 // serviceView is a saved connection as the browser sees it: the API key never leaves the server.
 type serviceView struct {
 	store.Server
-	APIKeySet bool   `json:"apiKeySet"`
-	APIKeyEnd string `json:"apiKeyEnd"` // last 4 characters, so it can be recognized
+	APIKeySet bool          `json:"apiKeySet"`
+	APIKeyEnd string        `json:"apiKeyEnd"` // last 4 characters, so it can be recognized
+	Status    *arr.Snapshot `json:"status"`    // latest card data from the refresh-status job
 }
 
-func viewOf(v store.Server) serviceView {
+func (s *Server) viewOf(v store.Server) serviceView {
 	end := v.APIKey
 	if len(end) > 4 {
 		end = end[len(end)-4:]
 	}
-	return serviceView{Server: v, APIKeySet: v.APIKey != "", APIKeyEnd: end}
+	sv := serviceView{Server: v, APIKeySet: v.APIKey != "", APIKeyEnd: end}
+	if snap, ok := s.Arr.Get(v.ID); ok {
+		sv.Status = &snap
+	}
+	return sv
 }
 
 type serviceInput struct {
@@ -49,7 +54,7 @@ func (s *Server) services(w http.ResponseWriter, r *http.Request, _ *store.User)
 		}
 		out[kind] = nil
 		if ok {
-			sv := viewOf(v)
+			sv := s.viewOf(v)
 			out[kind] = &sv
 		}
 	}
@@ -162,7 +167,8 @@ func (s *Server) serviceSave(w http.ResponseWriter, r *http.Request, _ *store.Us
 		return
 	}
 	s.Log.Info("service saved", "kind", kind, "url", v.URL)
-	writeJSON(w, http.StatusOK, viewOf(v))
+	s.Arr.RefreshOne(r.Context(), v)
+	writeJSON(w, http.StatusOK, s.viewOf(v))
 }
 
 // serviceDiscover looks for Radarr or Sonarr on the usual addresses and returns what answered.
@@ -199,6 +205,7 @@ func (s *Server) serviceDelete(w http.ResponseWriter, r *http.Request, _ *store.
 			writeErr(w, http.StatusInternalServerError, "Database error.")
 			return
 		}
+		s.Arr.Forget(v.ID)
 		s.Log.Info("service removed", "kind", kind)
 	}
 	w.WriteHeader(http.StatusNoContent)
