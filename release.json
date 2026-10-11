@@ -1,9 +1,9 @@
 {
   "nightly": {
     "version": "0.1.0",
-    "build": "43",
-    "commit": "090adaa",
-    "released": "2026-10-11T07:13:31Z"
+    "build": "45",
+    "commit": "ad8550c",
+    "released": "2026-10-11T07:14:57Z"
   },
   "stable": null
 }
