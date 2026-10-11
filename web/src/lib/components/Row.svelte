@@ -6,7 +6,7 @@
 {#if items.length}
 	<section class="space-y-3">
 		<div class="flex items-center justify-between px-4 laptop:px-0">
-			<h2 class="text-base font-semibold">{title}</h2>
+			<h2 class="text-base font-semibold">{#if more}<a href={more} class="hover:text-primary-light">{title}</a>{:else}{title}{/if}</h2>
 			{#if more}<a href={more} class="text-xs text-gray-400 hover:text-white">See all →</a>{/if}
 		</div>
 		<!-- Extra top/bottom room (cancelled by negative margins) so a hovered poster's lift and shadow aren't clipped. -->
