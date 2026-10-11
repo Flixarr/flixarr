@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { meta, img, fmtDate, runtime } from '#lib/api.ts';
+	import { meta, fmtDate, runtime } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import type { Movie } from '#lib/types.ts';
 	import DetailHeader from '#lib/components/DetailHeader.svelte';
@@ -10,6 +10,7 @@
 	import Poster from '#lib/components/Poster.svelte';
 	import Trailer from '#lib/components/Trailer.svelte';
 	import Icon from '#lib/components/Icon.svelte';
+	import Img from '#lib/components/Img.svelte';
 
 	let m = $state<Movie | null>(null);
 	let error = $state('');
@@ -56,7 +57,7 @@
 		</div>
 		{#if m.collection}
 			<a href="/collection/{m.collection.id}" class="relative mx-4 block overflow-hidden rounded-xl border border-gray-700/40 shadow-xl laptop:mx-0">
-				{#if m.collection.backdrop}<img src={img(m.collection.backdrop, 'w1280')} alt="" class="absolute inset-0 h-full w-full object-cover opacity-40" />{/if}
+				{#if m.collection.backdrop}<Img path={m.collection.backdrop} kind="backdrop" sizes="(min-width: 1024px) 1000px, 100vw" class="absolute inset-0 h-full w-full opacity-40" />{/if}
 				<div class="absolute inset-0 bg-linear-to-r from-gray-950/95 via-gray-950/70 to-gray-950/30"></div>
 				<div class="relative flex items-center justify-between gap-4 p-5">
 					<div><div class="text-xs text-gray-400">Part of a collection</div><div class="text-lg font-semibold">{m.collection.name}</div></div>

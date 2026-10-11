@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { replaceState } from '$app/navigation';
 	import { page } from '$app/state';
-	import { meta, img } from '#lib/api.ts';
+	import { meta } from '#lib/api.ts';
 	import type { Card, Page, SearchHit } from '#lib/types.ts';
 	import Poster from '#lib/components/Poster.svelte';
 	import Chips from '#lib/components/Chips.svelte';
 	import Icon from '#lib/components/Icon.svelte';
+	import Img from '#lib/components/Img.svelte';
 
 	let q = $state(page.url.searchParams.get('q') ?? '');
 	let tab = $state<string | number>('all');
@@ -55,7 +56,7 @@
 					{#if h.type === 'person'}
 						<a href="/person/{h.id}" class="group block text-center">
 							<div class="mx-auto aspect-square w-full overflow-hidden rounded-full border border-gray-700/40 bg-gray-800/40 shadow-xl">
-								{#if h.poster}<img src={img(h.poster, 'w185')} alt="" loading="lazy" class="h-full w-full object-cover" />{:else}<div class="grid h-full place-items-center text-3xl text-gray-600">{h.title.charAt(0)}</div>{/if}
+								{#if h.poster}<Img path={h.poster} kind="profile" sizes="(min-width: 1280px) 190px, (min-width: 1024px) 16vw, (min-width: 640px) 25vw, 33vw" class="h-full w-full" />{:else}<div class="grid h-full place-items-center text-3xl text-gray-600">{h.title.charAt(0)}</div>{/if}
 							</div>
 							<div class="mt-2 truncate text-[13px] font-medium">{h.title}</div>
 							<div class="text-xs text-gray-400">{h.dept ?? ''}</div>

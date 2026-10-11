@@ -1,13 +1,16 @@
 <script lang="ts">
 	// Discover banner: rotates trending titles every 5s, fades into the page, pauses on hover.
-	import { img, href } from '#lib/api.ts';
+	import { href } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import type { Card } from '#lib/types.ts';
 	import Icon from './Icon.svelte';
+	import Img, { BACKDROP_SIZES } from './Img.svelte';
 
 	let { items }: { items: Card[] } = $props();
 	let cur = $state(0);
 	let paused = $state(false);
+	// Backdrops load one slide ahead instead of all five at once.
+	const seen = $derived(new Set([0, 1, cur, (cur + 1) % Math.max(items.length, 1)]));
 
 	$effect(() => {
 		if (paused || items.length < 2) return;
@@ -21,7 +24,7 @@
 	{#each items as h, i (h.id)}
 		<div class="absolute inset-0 transition-opacity duration-1000 {i === cur ? 'opacity-100' : 'pointer-events-none opacity-0'}">
 			<div class="absolute inset-0 [mask-image:linear-gradient(to_bottom,black_35%,transparent_100%)]">
-				<img src={img(h.backdrop, 'w1280')} alt="" class="absolute inset-0 h-full w-full object-cover opacity-55 saturate-75" />
+				{#if seen.has(i) && h.backdrop}<Img path={h.backdrop} kind="backdrop" sizes={BACKDROP_SIZES} eager={i === 0} class="absolute inset-0 h-full w-full opacity-55 saturate-75" />{/if}
 				<div class="absolute inset-0 bg-linear-to-t from-gray-950/60 via-gray-950/40 to-gray-950/30"></div>
 				<div class="absolute inset-0 bg-linear-to-r from-gray-950/90 via-gray-950/30 to-transparent"></div>
 			</div>

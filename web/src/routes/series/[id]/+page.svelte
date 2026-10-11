@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { meta, img, fmtDate } from '#lib/api.ts';
+	import { meta, fmtDate } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import type { Series, Season } from '#lib/types.ts';
 	import DetailHeader from '#lib/components/DetailHeader.svelte';
@@ -10,6 +10,7 @@
 	import Poster from '#lib/components/Poster.svelte';
 	import Trailer from '#lib/components/Trailer.svelte';
 	import Icon from '#lib/components/Icon.svelte';
+	import Img from '#lib/components/Img.svelte';
 
 	let t = $state<Series | null>(null);
 	let error = $state('');
@@ -65,7 +66,7 @@
 						{#each t.seasons as s (s.n)}
 							<details class="group card overflow-hidden" ontoggle={(e) => openSeason(s.n, (e.currentTarget as HTMLDetailsElement).open)}>
 								<summary class="flex cursor-pointer list-none items-center gap-3 p-3 hover:bg-white/5">
-									{#if s.poster}<img src={img(s.poster, 'w92')} alt="" class="w-10 rounded-md ring-1 ring-gray-700/60" />
+									{#if s.poster}<Img path={s.poster} kind="poster" sizes="40px" class="aspect-[2/3] w-10 shrink-0 rounded-md bg-gray-800 ring-1 ring-gray-700/60" />
 									{:else}<div class="grid h-15 w-10 place-items-center rounded-md bg-gray-800 text-xs text-gray-500">S{s.n}</div>{/if}
 									<div class="min-w-0 flex-1"><div class="truncate text-sm font-medium">{s.name}</div><div class="text-xs text-gray-400">{s.episodes} episodes{s.air ? ' · ' + s.air.slice(0, 4) : ''}</div></div>
 									<span class="text-gray-500 transition group-open:rotate-90"><Icon name="chevron" class="size-4" /></span>
@@ -78,7 +79,7 @@
 									{:else}
 										{#each (episodes[s.n] as Season).episodes as e (e.n)}
 											<div class="flex gap-3 border-b border-gray-700/30 p-3 last:border-0">
-												<div class="aspect-video w-28 shrink-0 overflow-hidden rounded-md bg-gray-800 tablet:w-36">{#if e.still}<img src={img(e.still, 'w300')} alt="" loading="lazy" class="h-full w-full object-cover" />{/if}</div>
+												<div class="aspect-video w-28 shrink-0 overflow-hidden rounded-md bg-gray-800 tablet:w-36">{#if e.still}<Img path={e.still} kind="still" sizes="(min-width: 640px) 144px, 112px" class="h-full w-full" />{/if}</div>
 												<div class="min-w-0 flex-1">
 													<div class="flex items-center gap-2 text-sm"><span class="text-xs text-gray-500">E{e.n}</span><span class="truncate font-medium">{e.name}</span></div>
 													<div class="text-xs text-gray-500">{fmtDate(e.air)}{e.runtime ? ' · ' + e.runtime + 'm' : ''}</div>

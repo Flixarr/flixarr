@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { meta, img, fmtDate } from '#lib/api.ts';
+	import { meta, fmtDate } from '#lib/api.ts';
 	import type { Person } from '#lib/types.ts';
 	import Poster from '#lib/components/Poster.svelte';
 	import Chips from '#lib/components/Chips.svelte';
+	import Img from '#lib/components/Img.svelte';
 
 	let p = $state<Person | null>(null);
 	let error = $state('');
@@ -28,7 +29,7 @@
 		<section class="flex flex-col gap-6 px-4 tablet:flex-row laptop:px-0">
 			<div class="mx-auto w-40 shrink-0 tablet:mx-0 tablet:w-52">
 				<div class="aspect-[2/3] overflow-hidden rounded-xl border border-gray-700/40 bg-gray-800/40 shadow-2xl">
-					{#if p.profile}<img src={img(p.profile)} alt="" class="h-full w-full object-cover" />{:else}<div class="grid h-full place-items-center text-5xl text-gray-600">{p.name.charAt(0)}</div>{/if}
+					{#if p.profile}<Img path={p.profile} kind="profile" sizes="(min-width: 640px) 208px, 160px" eager class="h-full w-full" />{:else}<div class="grid h-full place-items-center text-5xl text-gray-600">{p.name.charAt(0)}</div>{/if}
 				</div>
 			</div>
 			<div class="min-w-0 space-y-3">
