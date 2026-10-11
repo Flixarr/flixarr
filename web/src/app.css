@@ -100,20 +100,6 @@
 	.no-scrollbar::-webkit-scrollbar { display: none; }
 }
 
-/* Poster hover (lib/tilt.ts): one streak of light swept across on enter, and an orange glow on the border only
-   (the mask cuts out the middle; the gradient's position follows the mouse). */
-.poster-shine {
-	background: linear-gradient(105deg, transparent 38%, rgb(255 255 255 / 0.38) 48%, rgb(255 255 255 / 0.12) 54%, transparent 62%) no-repeat;
-	background-size: 250% 100%;
-	background-position: 150% 0;
-}
-.poster-edge {
-	padding: 3px;
-	-webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-	-webkit-mask-composite: xor;
-	mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-}
-
 /* Modal scroll lock (design rule 2). */
 html.modal-open,
 html.modal-open body { overflow: hidden; overscroll-behavior: none; }

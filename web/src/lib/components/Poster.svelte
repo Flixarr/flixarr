@@ -17,8 +17,6 @@
 		{/if}
 		{#if tilting}
 			<div data-glare class="pointer-events-none absolute inset-0 opacity-0 mix-blend-soft-light transition-opacity duration-300"></div>
-			<div data-shine class="poster-shine pointer-events-none absolute inset-0"></div>
-			<div data-edge class="poster-edge pointer-events-none absolute inset-0 rounded-[inherit] opacity-0 transition-opacity duration-300"></div>
 		{/if}
 		<div class="absolute left-1.5 top-1.5 z-10">
 			<span class="rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide {item.type === 'series' ? 'bg-blue-600/80' : 'bg-primary/90'}">{item.type === 'series' ? 'Series' : 'Movie'}</span>
