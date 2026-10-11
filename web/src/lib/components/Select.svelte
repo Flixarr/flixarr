@@ -115,7 +115,7 @@
 </button>
 
 {#if open}
-	<div class="fixed z-[60] overflow-hidden rounded-lg border border-gray-700/60 bg-gray-900 shadow-2xl {pos.up ? '-translate-y-full' : ''}"
+	<div class="fixed z-[60] overflow-hidden rounded-lg border border-gray-700/60 bg-gray-900 shadow-[0_16px_40px_-4px_rgb(0_0_0/0.75),0_4px_12px_rgb(0_0_0/0.5)] {pos.up ? '-translate-y-full' : ''}"
 		style="right:{pos.right}px; top:{pos.top}px; min-width:{pos.width}px; width:max-content; max-width:{pos.room}px">
 		{#if search}
 			<div class="border-b border-gray-700/40 p-2">
