@@ -140,10 +140,7 @@
 	const k = $derived(KINDS.find((x) => x.kind === kind)!);
 </script>
 
-{#snippet label(text: string, id: string, hint = '')}
-	<label for={id} class="block text-sm">{text}</label>
-	{#if hint}<span class="block text-xs text-gray-500">{hint}</span>{/if}
-{/snippet}
+{#snippet section(title: string)}<div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</div>{/snippet}
 
 {#if saved}
 	{#each KINDS as s (s.kind)}
@@ -173,69 +170,75 @@
 		</div>
 	{/each}
 
-	<Modal bind:open title={saved[kind] ? `Edit ${saved[kind]!.name}` : `Add ${k.name} server`} sub="Sends {k.what} requests to {k.name}.">
-		<div class="space-y-4 p-5">
-			<div>
-				{@render label('Name', 'svc-name', 'Shown on the card. Handy once there is more than one server.')}
-				<input id="svc-name" bind:value={form.name} maxlength="60" class={input} />
-			</div>
-
-			<div>
-				<div class="flex items-end justify-between gap-3">
-					<span>{@render label('Address', 'svc-url', 'Include the port, and the URL base if one is set.')}</span>
-					<button class="btn-ghost shrink-0 px-3 py-1 text-xs" disabled={finding} onclick={find}>{finding ? 'Looking…' : 'Find automatically'}</button>
-				</div>
-				<input id="svc-url" bind:value={form.url} oninput={addressChanged} placeholder="http://192.168.1.10:{k.port}" autocomplete="off" spellcheck="false" class={input} />
-				{#if found}
-					{#if found.length > 1}
+	<Modal bind:open title={saved[kind] ? `Edit ${saved[kind]!.name}` : `Add ${k.name} server`} sub={k.about}>
+		<div class="space-y-6 p-5">
+			<div class="space-y-4">
+				{@render section('Connection')}
+				<div>
+					<label for="svc-url" class="block text-sm">Address</label>
+					<div class="relative">
+						<input id="svc-url" bind:value={form.url} oninput={addressChanged} placeholder="http://192.168.1.10:{k.port}" autocomplete="off" spellcheck="false" class="{input} pr-20" />
+						<button class="absolute right-2 top-1/2 mt-0.5 -translate-y-1/2 px-2 text-xs text-gray-400 hover:text-white disabled:opacity-50" disabled={finding} onclick={find}>{finding ? 'Looking…' : 'Find it'}</button>
+					</div>
+					{#if found && found.length > 1}
 						<div class="mt-2 flex flex-wrap gap-2">
 							{#each found as f (f)}<button class="rounded-full border px-3 py-1 text-xs {form.url === f ? 'border-primary bg-primary/15 text-white' : 'border-gray-700 text-gray-300 hover:text-white'}" onclick={() => pick(f)}>{f}</button>{/each}
 						</div>
-					{:else if found.length === 0}
-						<p class="mt-1 text-xs text-yellow-400">No {k.name} found nearby. Enter its address above.</p>
-					{:else}
-						<p class="mt-1 text-xs text-green-400">Found {k.name} at this address.</p>
+					{:else if found && found.length === 0}
+						<p class="mt-1 text-xs text-yellow-400">No {k.name} found nearby. Enter its address.</p>
 					{/if}
+				</div>
+				<div>
+					<label for="svc-key" class="block text-sm">API key</label>
+					<div class="relative">
+						<input id="svc-key" bind:value={form.apiKey} oninput={() => (error = '')} type={showKey ? 'text' : 'password'} autocomplete="off" spellcheck="false"
+							placeholder={saved[kind]?.apiKeySet ? `Saved, ends in ${saved[kind]!.apiKeyEnd}` : ''} class="{input} pr-16 font-mono" />
+						<button class="absolute right-2 top-1/2 mt-0.5 -translate-y-1/2 px-2 text-xs text-gray-400 hover:text-white" onclick={() => (showKey = !showKey)}>{showKey ? 'Hide' : 'Show'}</button>
+					</div>
+					<p class="mt-1 text-xs text-gray-500">In {k.name}: Settings → General → Security.</p>
+				</div>
+				<button class="btn-ghost w-full py-2 text-sm" disabled={testing || !form.url} onclick={test}>{testing ? 'Testing…' : info ? 'Test again' : 'Test connection'}</button>
+				{#if error || info}
+					<p class="-mt-2 flex items-center gap-2 text-xs {error ? 'text-red-400' : 'text-green-400'}">
+						<span class="size-2 shrink-0 rounded-full {error ? 'bg-red-500' : 'bg-green-500'}"></span>
+						{error || `Connected to ${k.name} ${info!.version}`}
+					</p>
 				{/if}
 			</div>
 
-			<div>
-				{@render label('API key', 'svc-key', `In ${k.name}: Settings → General → Security.`)}
-				<div class="relative">
-					<input id="svc-key" bind:value={form.apiKey} oninput={() => (error = '')} type={showKey ? 'text' : 'password'} autocomplete="off" spellcheck="false"
-						placeholder={saved[kind]?.apiKeySet ? `Saved, ends in ${saved[kind]!.apiKeyEnd}` : ''} class="{input} pr-16 font-mono" />
-					<button class="absolute right-2 top-1/2 mt-0.5 -translate-y-1/2 px-2 text-xs text-gray-400 hover:text-white" onclick={() => (showKey = !showKey)}>{showKey ? 'Hide' : 'Show'}</button>
-				</div>
-			</div>
-
-			<div class="flex items-center gap-3">
-				<button class="btn-ghost px-4 py-1.5 text-sm" disabled={testing || !form.url} onclick={test}>{testing ? 'Testing…' : 'Test'}</button>
-				<span class="text-xs {error ? 'text-red-400' : info ? 'text-green-400' : 'text-gray-500'}">
-					{#if error}{error}{:else if info}Connected · {k.name} {info.version}{:else}Test the connection to pick a folder and quality.{/if}
-				</span>
-			</div>
-
 			{#if info}
-				<div class="grid gap-4 tablet:grid-cols-2">
+				<div class="space-y-4">
+					{@render section('Defaults')}
 					<div>
-						{@render label('Root folder', 'svc-root', `Where new ${k.what} are saved.`)}
+						<label for="svc-root" class="block text-sm">Root folder</label>
 						<select id="svc-root" bind:value={form.rootFolder} class={input}>
-							{#each info.folders as f (f.id)}<option value={f.path}>{f.path}{f.accessible ? ` (${fmtBytes(f.freeSpace)} free)` : ' (not reachable)'}</option>{/each}
+							{#each info.folders as f (f.id)}<option value={f.path}>{f.path}</option>{/each}
 						</select>
-						{#if !info.folders.length}<span class="mt-1 block text-xs text-yellow-400">Add a root folder in {k.name} first (Settings → Media Management).</span>{/if}
+						{#if !info.folders.length}
+							<p class="mt-1 text-xs text-yellow-400">Add a root folder in {k.name} first (Settings → Media Management).</p>
+						{:else}
+							{@const f = info.folders.find((x) => x.path === form.rootFolder)}
+							{#if f}<p class="mt-1 text-xs text-gray-500">{f.accessible ? `${fmtBytes(f.freeSpace)} free` : `${k.name} can't reach this folder right now.`}</p>{/if}
+						{/if}
 					</div>
 					<div>
-						{@render label('Default quality', 'svc-quality', 'Used for requests unless another quality is picked.')}
+						<label for="svc-quality" class="block text-sm">Default quality</label>
 						<select id="svc-quality" bind:value={form.qualityProfileId} class={input}>
 							{#each info.profiles as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
 						</select>
 					</div>
-				</div>
-				<div class="space-y-3">
-					<Toggle checked={form.searchOnAdd} label="Search as soon as it's requested" about="{k.name} starts looking for a download right away instead of waiting for its next scheduled search." onchange={(on) => (form.searchOnAdd = on)} />
+					<Toggle checked={form.searchOnAdd} label="Search right away" about="Start looking for a download as soon as something is requested." onchange={(on) => (form.searchOnAdd = on)} />
 					{#if kind === 'sonarr'}
-						<Toggle checked={form.seasonFolders} label="Season folders" about="Each season goes in its own folder inside the series folder." onchange={(on) => (form.seasonFolders = on)} />
+						<Toggle checked={form.seasonFolders} label="Season folders" about="Each season gets its own folder." onchange={(on) => (form.seasonFolders = on)} />
 					{/if}
+				</div>
+
+				<div class="space-y-4">
+					{@render section('Display')}
+					<div>
+						<label for="svc-name" class="block text-sm">Name</label>
+						<input id="svc-name" bind:value={form.name} maxlength="60" placeholder={k.name} class={input} />
+					</div>
 				</div>
 			{/if}
 		</div>
