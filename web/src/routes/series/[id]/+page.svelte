@@ -21,13 +21,17 @@
 		t = null;
 		error = '';
 		episodes = {};
-		meta<Series>('series/' + id).then((d) => { t = d; document.title = 'Flixarr · ' + d.title; }).catch((e) => (error = e.message));
+		let alive = true;
+		const show = (d: Series) => { if (!alive) return; t = d; document.title = 'Flixarr · ' + d.title; };
+		meta<Series>('series/' + id, {}, show).then(show).catch((e) => (error = e.message));
+		return () => (alive = false);
 	});
 
 	function openSeason(n: number, isOpen: boolean) {
 		if (!isOpen || !t || episodes[n]) return;
 		episodes[n] = 'loading';
-		meta<Season>(`series/${t.id}/season/${n}`).then((s) => (episodes[n] = s)).catch(() => (episodes[n] = 'error'));
+		const show = (s: Season) => (episodes[n] = s);
+		meta<Season>(`series/${t.id}/season/${n}`, {}, show).then(show).catch(() => (episodes[n] = 'error'));
 	}
 </script>
 

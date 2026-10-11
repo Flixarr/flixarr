@@ -15,7 +15,10 @@
 	$effect(() => {
 		const id = page.params.id;
 		p = null;
-		meta<Person>('person/' + id).then((d) => { p = d; document.title = 'Flixarr · ' + d.name; }).catch((e) => (error = e.message));
+		let alive = true;
+		const show = (d: Person) => { if (!alive) return; p = d; document.title = 'Flixarr · ' + d.name; };
+		meta<Person>('person/' + id, {}, show).then(show).catch((e) => (error = e.message));
+		return () => (alive = false);
 	});
 </script>
 

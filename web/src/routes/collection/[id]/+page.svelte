@@ -11,7 +11,10 @@
 	$effect(() => {
 		const id = page.params.id;
 		c = null;
-		meta<Collection>('collection/' + id).then((d) => { c = d; document.title = 'Flixarr · ' + d.name; }).catch((e) => (error = e.message));
+		let alive = true;
+		const show = (d: Collection) => { if (!alive) return; c = d; document.title = 'Flixarr · ' + d.name; };
+		meta<Collection>('collection/' + id, {}, show).then(show).catch((e) => (error = e.message));
+		return () => (alive = false);
 	});
 </script>
 

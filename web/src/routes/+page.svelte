@@ -18,9 +18,12 @@
 	let error = $state('');
 
 	$effect(() => {
-		Promise.all(ROWS.map(([k]) => meta<Page<Card>>('lists/' + k).then((p) => [k, p.results] as const)))
-			.then((all) => (lists = Object.fromEntries(all)))
+		let alive = true;
+		const fresh = (k: string) => (p: Page<Card>) => alive && (lists = { ...lists, [k]: p.results });
+		Promise.all(ROWS.map(([k]) => meta<Page<Card>>('lists/' + k, {}, fresh(k)).then((p) => [k, p.results] as const)))
+			.then((all) => alive && (lists = Object.fromEntries(all)))
 			.catch((e) => (error = e.message));
+		return () => (alive = false);
 	});
 	const spot = $derived((lists.trending ?? []).filter((c) => c.backdrop).slice(0, 5));
 </script>

@@ -15,7 +15,8 @@
 	let input = $state<HTMLInputElement>();
 
 	$effect(() => {
-		meta<Page<Card>>('lists/trending').then((p) => (trending = p.results.slice(0, 16)));
+		const showTrending = (p: Page<Card>) => (trending = p.results.slice(0, 16));
+		meta<Page<Card>>('lists/trending', {}, showTrending).then(showTrending);
 		if (!q) input?.focus();
 	});
 
@@ -25,10 +26,12 @@
 		replaceState(term ? `/search?q=${encodeURIComponent(term)}` : '/search', {});
 		if (!term) { hits = []; return; }
 		busy = true;
+		let alive = true;
 		const t = setTimeout(() => {
-			meta<Page<SearchHit>>('search', { q: term }).then((p) => (hits = p.results)).finally(() => (busy = false));
+			const show = (p: Page<SearchHit>) => alive && (hits = p.results);
+			meta<Page<SearchHit>>('search', { q: term }, show).then(show).finally(() => (busy = false));
 		}, 250);
-		return () => clearTimeout(t);
+		return () => { clearTimeout(t); alive = false; };
 	});
 	const shown = $derived(hits.filter((h) => tab === 'all' || h.type === tab));
 	const count = (t: string) => hits.filter((h) => h.type === t).length;

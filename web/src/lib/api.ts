@@ -26,12 +26,44 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 	return res.json() as Promise<T>;
 }
 
-/** Data-server lookup through the Flixarr server, e.g. meta('movie/752'). */
-export function meta<T>(path: string, params: Record<string, string | number | undefined> = {}): Promise<T> {
+// Recent lookups kept in memory while the app is open (stale-while-revalidate, like Seerr's web app):
+// a revisit shows the saved copy instantly, then asks the server again in the background. The server
+// still sees every visit, so its cache counters stay honest. Copies older than MAX_AGE aren't shown.
+const recent = new Map<string, { json: string; data: unknown; at: number }>();
+const MAX_ENTRIES = 300;
+const MAX_AGE = 30 * 60 * 1000;
+
+function remember(key: string, data: unknown, json: string) {
+	recent.delete(key); // re-insert so the Map's order is least-recently-used first
+	recent.set(key, { json, data, at: Date.now() });
+	if (recent.size > MAX_ENTRIES) recent.delete(recent.keys().next().value!);
+}
+
+/**
+ * Flixarr API lookup through this server, e.g. meta('movie/752').
+ * With a saved copy it resolves instantly; if the background check finds newer data, onFresh gets it.
+ */
+export function meta<T>(path: string, params: Record<string, string | number | undefined> = {}, onFresh?: (data: T) => void): Promise<T> {
 	const q = new URLSearchParams();
 	for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') q.set(k, String(v));
 	const qs = q.toString();
-	return api<T>('/meta/' + path + (qs ? '?' + qs : ''));
+	const key = '/meta/' + path + (qs ? '?' + qs : '');
+	const fetchFresh = () =>
+		api<T>(key).then((data) => {
+			const json = JSON.stringify(data);
+			const changed = recent.get(key)?.json !== json;
+			remember(key, data, json);
+			return { data, changed };
+		});
+
+	const saved = recent.get(key);
+	if (saved && Date.now() - saved.at < MAX_AGE) {
+		fetchFresh()
+			.then(({ data, changed }) => changed && onFresh?.(data))
+			.catch(() => {}); // the saved copy is already on screen
+		return Promise.resolve(saved.data as T);
+	}
+	return fetchFresh().then(({ data }) => data);
 }
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/';

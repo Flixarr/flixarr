@@ -20,7 +20,10 @@
 		const id = page.params.id;
 		m = null;
 		error = '';
-		meta<Movie>('movie/' + id).then((d) => { m = d; document.title = 'Flixarr · ' + d.title; }).catch((e) => (error = e.message));
+		let alive = true;
+		const show = (d: Movie) => { if (!alive) return; m = d; document.title = 'Flixarr · ' + d.title; };
+		meta<Movie>('movie/' + id, {}, show).then(show).catch((e) => (error = e.message));
+		return () => (alive = false);
 	});
 </script>
 

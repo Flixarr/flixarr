@@ -16,11 +16,13 @@
 	let busy = $state(false);
 
 	$effect(() => {
-		meta<{ genres: { id: number; name: string }[] }>('genres/' + type).then((g) => (genres = g.genres));
+		const show = (g: { genres: { id: number; name: string }[] }) => (genres = g.genres);
+		meta('genres/' + type, {}, show).then(show);
 	});
 	async function load(reset: boolean) {
 		busy = true;
 		const p = reset ? 1 : pageN + 1;
+		// No onFresh here: swapping pages under "Load more" would jump the grid. The background check still refreshes the saved copy.
 		const d = await meta<Page<Card>>('discover/' + type, { genre: genre || undefined, sort, page: p });
 		items = reset ? d.results : [...items, ...d.results.filter((x) => !items.some((y) => y.id === x.id))];
 		pageN = d.page;
