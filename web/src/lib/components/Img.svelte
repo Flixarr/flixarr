@@ -34,7 +34,8 @@
 
 	let near = $state(false);
 	let loaded = $state(false);
-	let instant = $state(false); // already downloaded when shown: no fade at all
+	let cached = $state(false); // already downloaded when shown: fade in without a blurred stand-in
+	let tinyShown = $state(false); // the blurred stand-in fades in too, instead of popping
 	let faded = $state(false); // the full image has finished fading in, so the blurred copy underneath can go
 	let el = $state<HTMLImageElement>();
 	const show = () => (near = true);
@@ -44,23 +45,28 @@
 
 	// An image the browser already has can finish before Svelte's onload is attached.
 	$effect(() => {
-		if (el?.complete && el.naturalWidth) loaded = faded = instant = true;
+		if (el?.complete && el.naturalWidth) {
+			cached = faded = true;
+			// two frames: the hidden state must be painted once or the fade is skipped
+			requestAnimationFrame(() => requestAnimationFrame(() => (loaded = true)));
+		}
 	});
 </script>
 
 {#if kind === 'logo'}
 	<!-- Logos are transparent artwork: no blurred stand-in, just a fade-in. -->
 	<img bind:this={el} src={largest} srcset={srcset} {sizes} {alt} loading={eager ? 'eager' : 'lazy'} fetchpriority={eager ? 'high' : 'auto'} decoding="async"
-		onload={() => (loaded = true)} {onerror} class="{cls} transition-opacity duration-500 {loaded ? 'opacity-100' : 'opacity-0'}" />
+		onload={() => (loaded = true)} {onerror} class="{cls} transition-opacity duration-700 {loaded ? 'opacity-100' : 'opacity-0'}" />
 {:else}
 	<span class="relative block overflow-hidden {cls}" use:nearScreen={show}>
-		{#if (near || eager) && tiny && !faded}
-			<img src={tiny} alt="" aria-hidden="true" decoding="async" class="absolute inset-0 h-full w-full scale-110 object-cover blur-md" />
+		{#if (near || eager) && tiny && !faded && !cached}
+			<img src={tiny} alt="" aria-hidden="true" decoding="async" onload={() => requestAnimationFrame(() => (tinyShown = true))}
+				class="absolute inset-0 h-full w-full scale-110 object-cover blur-md transition-opacity duration-300 {tinyShown ? 'opacity-100' : 'opacity-0'}" />
 		{/if}
 		{#if near || eager}
 			<img bind:this={el} src={largest} srcset={srcset} {sizes} {alt} decoding="async" fetchpriority={eager ? 'high' : 'auto'}
-				onload={() => (loaded = true)} ontransitionend={() => (faded = true)} {onerror}
-				class="absolute inset-0 h-full w-full object-cover {instant ? '' : 'transition-opacity duration-500'} {loaded ? 'opacity-100' : 'opacity-0'} {imgClass}" />
+				onload={() => cached || (loaded = true)} ontransitionend={() => (faded = true)} {onerror}
+				class="absolute inset-0 h-full w-full object-cover transition-opacity duration-700 {loaded ? 'opacity-100' : 'opacity-0'} {imgClass}" />
 		{/if}
 	</span>
 {/if}
