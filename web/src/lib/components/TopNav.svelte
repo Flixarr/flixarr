@@ -1,6 +1,6 @@
 <script lang="ts">
 	// Top bar: transparent over banners, easing to frosted glass on scroll; account + notification menus.
-	import { goto } from '$app/navigation';
+	import { afterNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import Icon from './Icon.svelte';
 	import Avatar from './Avatar.svelte';
@@ -24,12 +24,19 @@
 	});
 	$effect(() => {
 		if (!menu) return;
-		const close = (e: MouseEvent) => !(e.target as Element).closest('[data-menu]') && (menu = '');
+		// Close on a click outside the menu, or on a link inside it.
+		const close = (e: MouseEvent) => {
+			const t = e.target as Element;
+			if (!t.closest('[data-menu]') || t.closest('[data-menu] a')) menu = '';
+		};
 		addEventListener('click', close);
 		return () => removeEventListener('click', close);
 	});
 
+	afterNavigate(() => (menu = ''));
+
 	async function out() {
+		menu = '';
 		await signOut();
 		goto('/login');
 	}
