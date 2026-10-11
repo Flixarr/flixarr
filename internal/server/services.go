@@ -29,6 +29,7 @@ func viewOf(v store.Server) serviceView {
 }
 
 type serviceInput struct {
+	Name             string `json:"name"`
 	URL              string `json:"url"`
 	APIKey           string `json:"apiKey"` // empty = keep the saved key
 	RootFolder       string `json:"rootFolder"`
@@ -128,7 +129,13 @@ func (s *Server) serviceSave(w http.ResponseWriter, r *http.Request, _ *store.Us
 	if !exists {
 		v = store.Server{Kind: kind}
 	}
-	v.Name, v.URL, v.APIKey = arr.Kinds[kind], c.URL, c.APIKey
+	v.Name, v.URL, v.APIKey = strings.TrimSpace(in.Name), c.URL, c.APIKey
+	if v.Name == "" {
+		v.Name = arr.Kinds[kind]
+	}
+	if len(v.Name) > 60 {
+		v.Name = v.Name[:60]
+	}
 	v.SeasonFolders, v.SearchOnAdd, v.Enabled = in.SeasonFolders, in.SearchOnAdd, in.Enabled
 	v.RootFolder, v.QualityProfileID, v.QualityProfileName = "", 0, ""
 	for _, f := range info.Folders {
@@ -156,6 +163,23 @@ func (s *Server) serviceSave(w http.ResponseWriter, r *http.Request, _ *store.Us
 	}
 	s.Log.Info("service saved", "kind", kind, "url", v.URL)
 	writeJSON(w, http.StatusOK, viewOf(v))
+}
+
+// serviceDiscover looks for Radarr or Sonarr on the usual addresses and returns what answered.
+func (s *Server) serviceDiscover(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	kind := r.PathValue("kind")
+	if _, known := arr.Kinds[kind]; !known {
+		writeErr(w, http.StatusNotFound, "Unknown service.")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"found": nonNil(arr.Discover(r.Context(), kind))})
+}
+
+func nonNil(f []arr.Found) []arr.Found {
+	if f == nil {
+		return []arr.Found{}
+	}
+	return f
 }
 
 // serviceDelete removes the connection.

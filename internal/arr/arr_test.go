@@ -67,3 +67,27 @@ func TestNormalizeURL(t *testing.T) {
 		}
 	}
 }
+
+func TestProbe(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/ping":
+			w.Write([]byte(`{"status":"OK"}`))
+		case "/":
+			http.Redirect(w, r, "/login", http.StatusFound)
+		case "/login":
+			w.Write([]byte(`<html><head><title>Login - Radarr</title></head></html>`))
+		}
+	}))
+	defer srv.Close()
+	hc := srv.Client()
+	if !probe(context.Background(), hc, srv.URL, "Radarr") {
+		t.Error("Radarr not recognized")
+	}
+	if probe(context.Background(), hc, srv.URL, "Sonarr") {
+		t.Error("Radarr taken for Sonarr")
+	}
+	if probe(context.Background(), hc, "http://127.0.0.1:1", "Radarr") {
+		t.Error("closed port recognized")
+	}
+}
