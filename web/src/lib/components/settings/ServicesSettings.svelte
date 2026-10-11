@@ -5,6 +5,7 @@
 	import Toggle from '#lib/components/Toggle.svelte';
 	import Modal from '#lib/components/Modal.svelte';
 	import Icon from '#lib/components/Icon.svelte';
+	import Select from '#lib/components/Select.svelte';
 
 	// Each kind is a list of connection cards. Connections are stored as a list; for now each kind
 	// takes one, so "Add" shows only while a list is empty.
@@ -211,21 +212,14 @@
 					{@render section('Defaults')}
 					<div>
 						<label for="svc-root" class="block text-sm">Root folder</label>
-						<select id="svc-root" bind:value={form.rootFolder} class={input}>
-							{#each info.folders as f (f.id)}<option value={f.path}>{f.path}</option>{/each}
-						</select>
-						{#if !info.folders.length}
-							<p class="mt-1 text-xs text-yellow-400">Add a root folder in {k.name} first (Settings → Media Management).</p>
-						{:else}
-							{@const f = info.folders.find((x) => x.path === form.rootFolder)}
-							{#if f}<p class="mt-1 text-xs text-gray-500">{f.accessible ? `${fmtBytes(f.freeSpace)} free` : `${k.name} can't reach this folder right now.`}</p>{/if}
-						{/if}
+						<Select id="svc-root" bind:value={form.rootFolder} placeholder="Pick a folder" search={info.folders.length > 8}
+							options={info.folders.map((f) => ({ value: f.path, label: f.path, hint: f.accessible ? `${fmtBytes(f.freeSpace)} free` : 'not reachable' }))} />
+						{#if !info.folders.length}<p class="mt-1 text-xs text-yellow-400">Add a root folder in {k.name} first (Settings → Media Management).</p>{/if}
 					</div>
 					<div>
 						<label for="svc-quality" class="block text-sm">Default quality</label>
-						<select id="svc-quality" bind:value={form.qualityProfileId} class={input}>
-							{#each info.profiles as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
-						</select>
+						<Select id="svc-quality" bind:value={form.qualityProfileId} placeholder="Pick a quality" search={info.profiles.length > 8}
+							options={info.profiles.map((p) => ({ value: p.id, label: p.name }))} />
 					</div>
 					<Toggle checked={form.searchOnAdd} label="Search right away" about="Start looking for a download as soon as something is requested." onchange={(on) => (form.searchOnAdd = on)} />
 					{#if kind === 'sonarr'}
