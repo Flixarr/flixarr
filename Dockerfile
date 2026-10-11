@@ -18,8 +18,9 @@ ARG VERSION=0.1.0
 ARG BUILD=0
 ARG COMMIT=dev
 ARG CHANNEL=nightly
+ARG DEV=
 RUN CGO_ENABLED=0 go build -trimpath \
-    -ldflags "-s -w -X github.com/Flixarr/flixarr/internal/version.Version=${VERSION} -X github.com/Flixarr/flixarr/internal/version.Build=${BUILD} -X github.com/Flixarr/flixarr/internal/version.Commit=${COMMIT} -X github.com/Flixarr/flixarr/internal/version.Channel=${CHANNEL}" \
+    -ldflags "-s -w -X github.com/Flixarr/flixarr/internal/version.Version=${VERSION} -X github.com/Flixarr/flixarr/internal/version.Build=${BUILD} -X github.com/Flixarr/flixarr/internal/version.Commit=${COMMIT} -X github.com/Flixarr/flixarr/internal/version.Channel=${CHANNEL} -X github.com/Flixarr/flixarr/internal/version.Dev=${DEV}" \
     -o /flixarr ./cmd/flixarr
 
 FROM alpine:3
