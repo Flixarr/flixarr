@@ -39,7 +39,7 @@
 		{#each ROWS as [k, title, more] (k)}
 			<Row {title} items={lists[k] ?? []} {more}>
 				{#snippet item(c)}<Poster item={c} />{/snippet}
-				{#snippet end()}<SeeMore items={lists[k] ?? []} href={more} remaining={Math.max(0, (pages[k] ?? 0) * 20 - (lists[k]?.length ?? 0))} />{/snippet}
+				{#snippet end()}<SeeMore list={k} href={more} remaining={Math.max(0, (pages[k] ?? 0) * 20 - (lists[k]?.length ?? 0))} />{/snippet}
 			</Row>
 		{/each}
 	</div>
