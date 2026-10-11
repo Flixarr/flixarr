@@ -91,7 +91,7 @@
 					onchange={(on) => save((s) => (s.settings.enabled = on), on ? 'API responses are cached again.' : "API responses aren't cached. Every lookup goes to the Flixarr API.")} />
 			</div>
 			<div class="py-3 {st.settings.enabled ? '' : 'opacity-50'}">
-				<Toggle checked={st.settings.auto} disabled={!st.settings.enabled} label="Automatic keep times" about="Results are kept as long as the Flixarr API says they stay fresh — hours for new and airing titles, up to a week for older ones."
+				<Toggle checked={st.settings.auto} disabled={!st.settings.enabled} label="Automatic keep times" about="The Flixarr API decides how long each result is kept, based on how often that title still changes."
 					onchange={(on) => save((s) => (s.settings.auto = on), on ? 'Keep times are automatic.' : 'Keep times are set by you.')} />
 			</div>
 			{#if !st.settings.auto}
