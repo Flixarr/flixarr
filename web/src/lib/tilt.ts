@@ -3,7 +3,8 @@
 // Mouse only; off with "reduce motion". Phones and tablets are untouched.
 const DEG = 16;
 const LIFT = 1.07;
-const EASE = 0.18;
+const EASE = 0.18; // tilt follows the mouse
+const ZOOM_EASE = 0.07; // lift in/out is slower and softer
 
 export const tiltEnabled = () =>
 	typeof matchMedia !== 'undefined' && matchMedia('(hover: hover) and (pointer: fine)').matches && !matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -19,14 +20,16 @@ export function tilt(frame: HTMLElement) {
 	const draw = () => {
 		cx += (tx - cx) * EASE;
 		cy += (ty - cy) * EASE;
-		cz += ((on ? LIFT : 1) - cz) * EASE;
+		cz += ((on ? LIFT : 1) - cz) * ZOOM_EASE;
+		// 0 → 1 as the poster lifts: the shadow and glare grow and fade with it instead of snapping.
+		const k = Math.max(0, Math.min(1, (cz - 1) / (LIFT - 1)));
 		// perspective() must be on the frame's own transform; on a parent it only reaches direct children.
 		frame.style.transform = `perspective(600px) rotateX(${(-cy * DEG).toFixed(2)}deg) rotateY(${(cx * DEG).toFixed(2)}deg) scale(${cz.toFixed(4)})`;
 		// Deep shadow cast away from the pressed corner, plus a tight one under the poster.
-		frame.style.boxShadow = on ? `${(-cx * 44).toFixed(0)}px ${(40 - cy * 30).toFixed(0)}px 50px -6px rgb(0 0 0 / 0.9), 0 12px 24px -4px rgb(0 0 0 / 0.6)` : '';
+		frame.style.boxShadow = `${(-cx * 44 * k).toFixed(1)}px ${((40 - cy * 30) * k).toFixed(1)}px ${(50 * k).toFixed(1)}px -6px rgb(0 0 0 / ${(0.9 * k).toFixed(3)}), 0 ${(12 * k).toFixed(1)}px ${(24 * k).toFixed(1)}px -4px rgb(0 0 0 / ${(0.6 * k).toFixed(3)})`;
 		const at = `${((cx + 0.5) * 100).toFixed(1)}% ${((cy + 0.5) * 100).toFixed(1)}%`;
 		if (glare) {
-			glare.style.opacity = on ? '1' : '0';
+			glare.style.opacity = k.toFixed(3);
 			glare.style.background = `radial-gradient(circle at ${at}, rgb(255 255 255 / 0.55), transparent 60%)`;
 		}
 		if (on || Math.abs(tx - cx) > 0.001 || Math.abs(ty - cy) > 0.001 || Math.abs(cz - 1) > 0.001) raf = requestAnimationFrame(draw);

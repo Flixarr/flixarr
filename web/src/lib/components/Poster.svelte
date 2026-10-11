@@ -16,7 +16,7 @@
 			<Img path={item.poster} kind="poster" {sizes} alt={item.title} class="h-full w-full {tilting ? '' : 'transition duration-300 group-hover:scale-105'}" />
 		{/if}
 		{#if tilting}
-			<div data-glare class="pointer-events-none absolute inset-0 opacity-0 mix-blend-soft-light transition-opacity duration-300"></div>
+			<div data-glare class="pointer-events-none absolute inset-0 opacity-0 mix-blend-soft-light"></div>
 		{/if}
 		<div class="absolute left-1.5 top-1.5 z-10">
 			<span class="rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide {item.type === 'series' ? 'bg-blue-600/80' : 'bg-primary/90'}">{item.type === 'series' ? 'Series' : 'Movie'}</span>

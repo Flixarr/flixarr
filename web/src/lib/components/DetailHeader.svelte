@@ -28,7 +28,7 @@
 			<div class="w-24 shrink-0 self-start tablet:w-48 tablet:self-end laptop:w-56">
 				<div use:tilt class="relative aspect-[2/3] overflow-hidden rounded-xl border border-gray-700/40 bg-gray-800/40 shadow-2xl">
 					<Img path={item.poster} kind="poster" sizes="(min-width: 1024px) 224px, (min-width: 640px) 192px, 96px" eager alt={item.title} class="h-full w-full" />
-					{#if tilting}<div data-glare class="pointer-events-none absolute inset-0 opacity-0 mix-blend-soft-light transition-opacity duration-300"></div>{/if}
+					{#if tilting}<div data-glare class="pointer-events-none absolute inset-0 opacity-0 mix-blend-soft-light"></div>{/if}
 				</div>
 			</div>
 		{/if}
