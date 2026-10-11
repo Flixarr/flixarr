@@ -1,7 +1,13 @@
+<script lang="ts" module>
+	// Was this page opened by Back/Forward? The browser fires popstate just before SvelteKit rebuilds the page.
+	let poppedAt = 0;
+	if (typeof addEventListener !== 'undefined') addEventListener('popstate', () => (poppedAt = performance.now()));
+	const cameBack = () => performance.now() - poppedAt < 1500;
+</script>
+
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { afterNavigate, replaceState, snapshot } from '$app/navigation';
-	import { page } from '$app/state';
+	import { replaceState, snapshot } from '$app/navigation';
 	import { meta } from '#lib/api.ts';
 	import type { Card, Page, SearchHit } from '#lib/types.ts';
 	import Poster from '#lib/components/Poster.svelte';
@@ -9,7 +15,8 @@
 	import Icon from '#lib/components/Icon.svelte';
 	import Img from '#lib/components/Img.svelte';
 
-	let q = $state(page.url.searchParams.get('q') ?? '');
+	// From the address bar: on Back, page.url can still describe the page we're leaving while this one is built.
+	let q = $state(new URLSearchParams(location.search).get('q') ?? '');
 	let tab = $state<string | number>('all');
 	let hits = $state<SearchHit[]>([]);
 	let busy = $state(false);
@@ -24,13 +31,11 @@
 	// Landing here puts the cursor in the search box, except when coming back with the back button
 	// (that would undo the restored scroll and pop the phone keyboard). The top-bar search link sends
 	// flixarr:focus-search when you're already on this page.
-	let wantFocus = $state(false);
-	afterNavigate((n) => (wantFocus = n.type !== 'popstate'));
+	let focused = false;
 	$effect(() => {
-		if (wantFocus && input) {
-			input.focus();
-			wantFocus = false;
-		}
+		if (!input || focused) return;
+		focused = true;
+		if (!cameBack()) input.focus();
 	});
 	$effect(() => {
 		const f = () => input?.focus();
@@ -44,7 +49,7 @@
 		// Only touch the URL when it actually changes: replacing the history entry on arrival would drop its saved
 		// back-button snapshot.
 		const url = term ? `/search?q=${encodeURIComponent(term)}` : '/search';
-		if (url !== page.url.pathname + page.url.search) replaceState(url, {});
+		if (url !== location.pathname + location.search) replaceState(url, {});
 		if (!term) { hits = []; return; }
 		busy = true;
 		let alive = true;
@@ -59,7 +64,7 @@
 		id: 'search',
 		capture: () => ({ q, tab, hits: $state.snapshot(hits), y: scrollY }),
 		restore: async (v) => {
-			if (v.q !== q) return;
+			q = v.q;
 			tab = v.tab;
 			hits = v.hits;
 			await tick();
