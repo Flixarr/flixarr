@@ -94,11 +94,11 @@ func (c *Client) Read(ctx context.Context, folder string) Snapshot {
 	if c.get(ctx, "health", &health) == nil {
 		sort.SliceStable(health, func(i, j int) bool { return rank(health[i].Type) > rank(health[j].Type) })
 		for _, h := range health {
-			if h.Type == "ok" || h.Message == "" {
-				continue
+			if (h.Type != "warning" && h.Type != "error") || h.Message == "" {
+				continue // notices are informational, not issues
 			}
 			snap.Health = append(snap.Health, h.Message)
-			if strings.Contains(h.Source, "Indexer") {
+			if h.Source == "IndexerStatusCheck" || h.Source == "IndexerLongTermStatusCheck" {
 				snap.IndexersDown += namedIn(h.Message)
 			}
 			if strings.Contains(h.Source, "DownloadClient") {
@@ -131,6 +131,7 @@ func (c *Client) Read(ctx context.Context, folder string) Snapshot {
 			}
 		}
 	}
+	snap.IndexersDown = min(snap.IndexersDown, snap.Indexers)
 	var clients []struct {
 		Name   string `json:"name"`
 		Enable bool   `json:"enable"`
@@ -158,12 +159,22 @@ func (c *Client) Read(ctx context.Context, folder string) Snapshot {
 	if snap.Folder != "" && c.get(ctx, "diskspace", &disks) == nil {
 		best := ""
 		for _, d := range disks {
-			if within(snap.Folder, d.Path) && len(d.Path) > len(best) && d.FreeSpace == snap.FreeSpace && d.TotalSpace > 0 {
+			if within(snap.Folder, d.Path) && len(d.Path) > len(best) && sameDrive(d.FreeSpace, snap.FreeSpace) && d.TotalSpace > 0 {
 				best, snap.TotalSpace = d.Path, d.TotalSpace
 			}
 		}
 	}
 	return snap
+}
+
+// sameDrive reports whether two free-space readings (taken moments apart, while downloads may be
+// writing) are the same drive: within 1% or 1 GB, whichever is larger.
+func sameDrive(a, b int64) bool {
+	diff := a - b
+	if diff < 0 {
+		diff = -diff
+	}
+	return diff <= max(b/100, 1<<30)
 }
 
 func rank(t string) int {

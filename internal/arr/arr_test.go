@@ -120,6 +120,9 @@ func TestRowAndHelpers(t *testing.T) {
 	if namedIn("Indexers unavailable due to failures: NZBgeek, DrunkenSlug") != 2 {
 		t.Error("namedIn")
 	}
+	if !sameDrive(7179295580160, 7179300000000) || sameDrive(7276949504, 7179295580160) {
+		t.Error("sameDrive")
+	}
 	if !within("/mnt/media/series", "/mnt/media") || within("/mnt/mediax", "/mnt/media") || !within("/x", "/") {
 		t.Error("within")
 	}
