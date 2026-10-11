@@ -1,13 +1,13 @@
 // Package version holds build information injected at build time with -ldflags.
 //
-// Flixarr versions are MAJOR.MINOR.PATCH.BUILD: BUILD counts published releases (it goes up by one per publish and
-// never resets). Test deploys between releases carry the last published BUILD and are marked "-dev".
+// Flixarr versions are MAJOR.MINOR.PATCH.BUILD: BUILD is the git commit count, so it never resets and maps to
+// exactly one commit. Unpublished test deploys are marked "-dev".
 package version
 
 var (
 	// Version is MAJOR.MINOR.PATCH.
 	Version = "0.1.0"
-	// Build is the release counter.
+	// Build is the git commit count.
 	Build = "0"
 	// Commit is the short git commit the binary was built from.
 	Commit = "dev"
