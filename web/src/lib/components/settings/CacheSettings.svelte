@@ -82,7 +82,26 @@
 	</div>
 {/snippet}
 
+{#snippet stat(label: string, value: string, sub: string)}
+	<div class="card px-4 py-3">
+		<div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</div>
+		<div class="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
+		<div class="text-xs text-gray-500">{sub}</div>
+	</div>
+{/snippet}
+
 {#if st && total}
+	<div class="grid gap-3 sm:grid-cols-3">
+		{@render stat('Hit rate', lookups ? Math.round((st.counters.hits / lookups) * 100) + '%' : 'No lookups yet', lookups ? `${fmtNum(st.counters.hits)} of ${fmtNum(lookups)} since ${since}` : `Since ${since}`)}
+		<div class="card px-4 py-3">
+			<div class="text-xs font-semibold uppercase tracking-wide text-gray-500">API calls saved</div>
+			<div class="mt-1 text-2xl font-semibold tabular-nums">{fmtNum(st.counters.hits)}</div>
+			<div class="text-xs text-gray-500">{fmtNum(st.counters.misses)} fetched from the Flixarr API</div>
+			{#if st.counters.stale}<div class="text-xs text-yellow-400">{fmtNum(st.counters.stale)} served while the API was down</div>{/if}
+		</div>
+		{@render stat('Cache size', fmtBytes(total.bytes), `${fmtNum(total.count - st.images.count)} results · ${fmtNum(st.images.count)} images`)}
+	</div>
+
 	<div>
 		{@render heading('API caching')}
 		<div class="card divide-y divide-gray-700/40 px-4">
@@ -125,15 +144,6 @@
 				<span class="flex-1 font-medium">Total</span>
 				<span class="text-right"><span class="block font-medium tabular-nums">{fmtNum(total.count)}</span><span class="block text-xs text-gray-500">{fmtBytes(total.bytes)}</span></span>
 				<button class="btn-ghost px-2.5 py-1 text-xs" disabled={!total.count || busy !== ''} onclick={() => (confirmAll = true)}>Flush all</button>
-			</div>
-			<div class="py-3 text-xs text-gray-400">
-				{#if lookups}
-					Since the app started ({since}): <span class="text-white">{fmtNum(st.counters.hits)}</span> answered from the cache, <span class="text-white">{fmtNum(st.counters.misses)}</span> fetched from the Flixarr API
-					(<span class="text-green-400">{Math.round((st.counters.hits / lookups) * 100)}% from the cache</span>).
-					{#if st.counters.stale}<span class="block pt-1 text-yellow-400">{fmtNum(st.counters.stale)} served from an expired copy while the Flixarr API was down.</span>{/if}
-				{:else}
-					No lookups since the app started ({since}){st.settings.enabled ? '' : ' with caching on'}.
-				{/if}
 			</div>
 		</div>
 	</div>
