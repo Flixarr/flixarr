@@ -5,14 +5,10 @@
 	import Spotlight from '#lib/components/Spotlight.svelte';
 	import Row from '#lib/components/Row.svelte';
 	import Poster from '#lib/components/Poster.svelte';
+	import SeeMore from '#lib/components/SeeMore.svelte';
+	import { LISTS, listHref } from '#lib/lists.ts';
 
-	const ROWS = [
-		['trending', 'Trending', '/movies'],
-		['popular-movies', 'Popular Movies', '/movies'],
-		['upcoming-movies', 'Upcoming Movies', '/movies'],
-		['popular-series', 'Popular Series', '/series'],
-		['upcoming-series', 'On the Air', '/series']
-	] as const;
+	const ROWS = LISTS.map((l) => [l.key, l.title, listHref(l.key)] as const);
 
 	let lists = $state<Record<string, Card[]>>({});
 	let error = $state('');
@@ -38,6 +34,7 @@
 		{#each ROWS as [k, title, more] (k)}
 			<Row {title} items={lists[k] ?? []} {more}>
 				{#snippet item(c)}<Poster item={c} />{/snippet}
+				{#snippet end()}<SeeMore items={lists[k] ?? []} href={more} />{/snippet}
 			</Row>
 		{/each}
 	</div>

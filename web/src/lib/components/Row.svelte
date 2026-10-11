@@ -1,6 +1,6 @@
 <script lang="ts" generics="T">
 	import type { Snippet } from 'svelte';
-	let { title, items, more = '', item }: { title: string; items: T[]; more?: string; item: Snippet<[T]> } = $props();
+	let { title, items, more = '', item, end }: { title: string; items: T[]; more?: string; item: Snippet<[T]>; end?: Snippet } = $props();
 </script>
 
 {#if items.length}
@@ -12,6 +12,7 @@
 		<!-- Extra top/bottom room (cancelled by negative margins) so a hovered poster's lift and shadow aren't clipped. -->
 		<div class="no-scrollbar -mb-9 -mt-3 flex gap-3 overflow-x-auto px-4 pb-10 pt-3 laptop:px-0">
 			{#each items as it, i (i)}{@render item(it)}{/each}
+			{@render end?.()}
 		</div>
 	</section>
 {/if}

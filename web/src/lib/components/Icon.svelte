@@ -15,6 +15,7 @@
 		play: '<path d="M7 4v16l13-8z" fill="currentColor"/>',
 		flag: '<path d="M4 22V4a1 1 0 0 1 1-1h12l-2 5 2 5H5"/>',
 		chevron: '<path d="m9 18 6-6-6-6"/>',
+		arrow: '<path d="M5 12h14m-6-6 6 6-6 6"/>',
 		plus: '<path d="M12 5v14M5 12h14"/>',
 		clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
 		refresh: '<path d="M21 12a9 9 0 0 1-15.4 6.4L3 16m0 5v-5h5M3 12a9 9 0 0 1 15.4-6.4L21 8m0-5v5h-5"/>',
