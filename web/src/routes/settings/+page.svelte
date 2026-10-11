@@ -6,6 +6,7 @@
 	import { session } from '#lib/session.svelte.ts';
 	import type { UpdateStatus } from '#lib/types.ts';
 	import Icon from '#lib/components/Icon.svelte';
+	import { CREDITS } from '#lib/credits.ts';
 	import CacheSettings from '#lib/components/settings/CacheSettings.svelte';
 	import JobsSettings from '#lib/components/settings/JobsSettings.svelte';
 
@@ -130,9 +131,26 @@
 					</div>
 					<div>
 						<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Credits</div>
-						<div class="card flex items-center gap-4 px-4 py-4">
-							<span class="rounded-md bg-linear-to-r from-[#90cea1] to-tmdb px-2 py-1 text-xs font-black tracking-wide text-gray-950">TMDB</span>
-							<p class="text-xs text-gray-400">This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+						<div class="card divide-y divide-gray-700/40 px-4">
+							<a href="https://github.com/marchershey" target="_blank" rel="noopener" class="group flex items-center gap-4 py-4">
+								<img src="/credits/marc-hershey.png" alt="Marc Hershey" class="size-14 shrink-0 rounded-full ring-2 ring-primary/60" />
+								<span class="flex-1"><span class="block text-xs text-gray-500">Made by</span><span class="block font-semibold group-hover:text-primary-light">Marc Hershey</span><span class="block text-xs text-gray-400">github.com/marchershey</span></span>
+							</a>
+							<div class="py-4">
+								<div class="mb-3 text-xs text-gray-500">Built with</div>
+								<div class="grid gap-2 phone:grid-cols-2 laptop:grid-cols-3">
+									{#each CREDITS as c (c.id)}
+										<a href={c.url} target="_blank" rel="noopener" class="flex items-center gap-3 rounded-lg border border-gray-700/40 bg-gray-900/40 px-3 py-2.5 transition hover:border-gray-600">
+											<svg viewBox="0 0 24 24" class="size-7 shrink-0" fill={c.color} aria-hidden="true"><path d={c.path} /></svg>
+											<span class="min-w-0"><span class="block text-sm">{c.name}</span><span class="block text-xs text-gray-500">{c.role}</span></span>
+										</a>
+									{/each}
+								</div>
+							</div>
+							<div class="flex items-center gap-4 py-4">
+								<span class="rounded-md bg-linear-to-r from-[#90cea1] to-tmdb px-2 py-1 text-xs font-black tracking-wide text-gray-950">TMDB</span>
+								<p class="text-xs text-gray-400">This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+							</div>
 						</div>
 					</div>
 				{:else}
