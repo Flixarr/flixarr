@@ -12,6 +12,7 @@
 	const SEARCHES = [[15, '15 minutes'], [60, '1 hour'], [180, '3 hours'], [360, '6 hours'], [1440, '1 day']] as const;
 	const MAX = [1000, 5000, 10000, 25000, 50000, 100000];
 	const DAYS = [7, 14, 30, 60, 90];
+	const API_OFF = 'Cache API responses is off.';
 
 	type TimeKey = 'pagesMinutes' | 'listsMinutes' | 'searchesMinutes' | 'maxResults';
 
@@ -71,7 +72,7 @@
 {/snippet}
 
 {#snippet keep(label: string, key: TimeKey, opts: readonly (readonly [number, string])[], about = '')}
-	{@render pick(label, key, st!.settings[key], st!.defaults[key], opts, (s, v) => (s.settings[key] = v), about, !st!.settings.enabled)}
+	{@render pick(label, key, st!.settings[key], st!.defaults[key], opts, (s, v) => (s.settings[key] = v), st!.settings.enabled ? about : API_OFF, !st!.settings.enabled)}
 {/snippet}
 
 {#snippet stored(label: string, about: string, count: number, bytes: number, onflush: () => void)}
@@ -103,14 +104,24 @@
 	</div>
 
 	<div>
-		{@render heading('API caching')}
+		{@render heading('Caching')}
 		<div class="card divide-y divide-gray-700/40 px-4">
 			<div class="py-3">
 				<Toggle checked={st.settings.enabled} label="Cache API responses" about="Answers from the Flixarr API are saved in this app's database, so repeat lookups are instant and don't go back to the API. If the API is unreachable, expired results are shown for up to a day."
 					onchange={(on) => save((s) => (s.settings.enabled = on), on ? 'API responses are cached again.' : "API responses aren't cached. Every lookup goes to the Flixarr API.")} />
 			</div>
+			<div class="py-3">
+				<Toggle checked={st.images.enabled} label="Cache images" about="Posters and backdrops load through your server and are saved on its disk, instead of each browser loading them from TMDB. TMDB then sees your server instead of each viewer."
+					onchange={(on) => save((s) => (s.images.enabled = on), on ? 'Images are cached. New pages load them through your server.' : 'Images load from TMDB again.')} />
+			</div>
+		</div>
+	</div>
+
+	<div>
+		{@render heading('How long to keep')}
+		<div class="card divide-y divide-gray-700/40 px-4">
 			<div class="py-3 {st.settings.enabled ? '' : 'opacity-50'}">
-				<Toggle checked={st.settings.auto} disabled={!st.settings.enabled} label="Automatic keep times" about="The Flixarr API decides how long each result is kept, based on how often that title still changes."
+				<Toggle checked={st.settings.auto} disabled={!st.settings.enabled} label="Automatic keep times" about={st.settings.enabled ? 'The Flixarr API decides how long each result is kept, based on how often that title still changes.' : API_OFF}
 					onchange={(on) => save((s) => (s.settings.auto = on), on ? 'Keep times are automatic.' : 'Keep times are set by you.')} />
 			</div>
 			{#if !st.settings.auto}
@@ -119,17 +130,7 @@
 				{@render keep('Searches', 'searchesMinutes', SEARCHES)}
 			{/if}
 			{@render keep('Size limit', 'maxResults', MAX.map((n) => [n, fmtNum(n) + ' results'] as const), 'Oldest results are removed first.')}
-		</div>
-	</div>
-
-	<div>
-		{@render heading('Image caching')}
-		<div class="card divide-y divide-gray-700/40 px-4">
-			<div class="py-3">
-				<Toggle checked={st.images.enabled} label="Cache images" about="Posters and backdrops load through your server and are saved on its disk, instead of each browser loading them from TMDB. TMDB then sees your server instead of each viewer."
-					onchange={(on) => save((s) => (s.images.enabled = on), on ? 'Images are cached. New pages load them through your server.' : 'Images load from TMDB again.')} />
-			</div>
-			{@render pick('Remove images not viewed for', 'images', st.images.days, st.images.defaultDays, DAYS.map((d) => [d, d + ' days'] as const), (s, v) => (s.images.days = v), "Images nobody has looked at in this long are deleted from your server's disk. They download again the next time someone views them.", !st.images.enabled)}
+			{@render pick('Remove images not viewed for', 'images', st.images.days, st.images.defaultDays, DAYS.map((d) => [d, d + ' days'] as const), (s, v) => (s.images.days = v), st.images.enabled ? "Images nobody has looked at in this long are deleted from your server's disk. They download again the next time someone views them." : 'Cache images is off.', !st.images.enabled)}
 		</div>
 	</div>
 
