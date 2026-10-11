@@ -25,7 +25,7 @@ func TestFreshFor(t *testing.T) {
 }
 
 func TestKeepAutomatic(t *testing.T) {
-	auto := DefaultConfig
+	auto := Config{Auto: true, PagesMin: 1440, ListsMin: 180, SearchesMin: 60}
 	for _, c := range []struct {
 		kind  string
 		fresh time.Duration
@@ -42,7 +42,7 @@ func TestKeepAutomatic(t *testing.T) {
 			t.Errorf("automatic %s with %v = %v, want %v", c.kind, c.fresh, got, c.want)
 		}
 	}
-	fixed := Config{PagesMin: 1440, ListsMin: 180, SearchesMin: 60}
+	fixed := Config{Auto: false, PagesMin: 1440, ListsMin: 180, SearchesMin: 60}
 	if got := fixed.keep(KindTitles, 6*time.Hour); got != 24*time.Hour {
 		t.Errorf("fixed title = %v, want 1 day", got)
 	}

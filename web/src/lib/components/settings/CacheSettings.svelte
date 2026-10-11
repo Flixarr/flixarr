@@ -7,9 +7,9 @@
 	import Modal from '#lib/components/Modal.svelte';
 
 	const KINDS = { titles: ['Titles', 'Movies, series, seasons, collections'], people: ['People', 'Cast and crew pages'], lists: ['Lists', 'Discover rows, browse pages, genres'], searches: ['Searches', 'Search results'] };
-	const PAGES = [[0, 'Automatic'], [60, '1 hour'], [360, '6 hours'], [720, '12 hours'], [1440, '1 day'], [4320, '3 days'], [10080, '7 days']] as const;
-	const LISTS = [[0, 'Automatic'], [15, '15 minutes'], [60, '1 hour'], [180, '3 hours'], [360, '6 hours'], [720, '12 hours'], [1440, '1 day']] as const;
-	const SEARCHES = [[0, 'Automatic'], [15, '15 minutes'], [60, '1 hour'], [180, '3 hours'], [360, '6 hours'], [1440, '1 day']] as const;
+	const PAGES = [[60, '1 hour'], [360, '6 hours'], [720, '12 hours'], [1440, '1 day'], [4320, '3 days'], [10080, '7 days']] as const;
+	const LISTS = [[15, '15 minutes'], [60, '1 hour'], [180, '3 hours'], [360, '6 hours'], [720, '12 hours'], [1440, '1 day']] as const;
+	const SEARCHES = [[15, '15 minutes'], [60, '1 hour'], [180, '3 hours'], [360, '6 hours'], [1440, '1 day']] as const;
 	const MAX = [1000, 5000, 10000, 25000, 50000, 100000];
 	const DAYS = [7, 14, 30, 60, 90];
 
@@ -77,11 +77,32 @@
 {#if st && total}
 	<div>
 		{@render heading('Saved results')}
-		<div class="card divide-y divide-gray-700/40 px-4">
+		<div class="card px-4">
 			<div class="py-3">
 				<Toggle checked={st.settings.enabled} label="Save results" about="Keeps answers from the Flixarr API in this app's database, so repeat lookups are instant and don't leave your server. Saved results survive restarts and updates. If the Flixarr API is unreachable, expired results are shown for up to a day."
 					onchange={(on) => save((s) => (s.settings.enabled = on), on ? 'Results are saved again.' : "Results aren't saved. Every lookup goes to the Flixarr API.")} />
 			</div>
+		</div>
+	</div>
+
+	<div>
+		{@render heading('How long to keep')}
+		<div class="card divide-y divide-gray-700/40 px-4">
+			<div class="py-3">
+				<Toggle checked={st.settings.auto} label="Automatic" about="Results are kept as long as the Flixarr API says they stay fresh — hours for new and airing titles, up to a week for older ones."
+					onchange={(on) => save((s) => (s.settings.auto = on), on ? 'Keep times are automatic.' : 'Keep times are set by you.')} />
+			</div>
+			{#if !st.settings.auto}
+				{@render keep('Movie, series and people pages', 'pagesMinutes', PAGES)}
+				{@render keep('Discover rows and lists', 'listsMinutes', LISTS)}
+				{@render keep('Searches', 'searchesMinutes', SEARCHES)}
+			{/if}
+		</div>
+	</div>
+
+	<div>
+		{@render heading('Storage')}
+		<div class="card divide-y divide-gray-700/40 px-4">
 			{#each st.kinds as k (k.kind)}
 				<div class="flex items-center gap-3 py-3 text-sm">
 					<span class="min-w-0 flex-1"><span class="block">{KINDS[k.kind][0]}</span><span class="block text-xs text-gray-500">{KINDS[k.kind][1]}</span></span>
@@ -89,6 +110,7 @@
 					<button class="btn-ghost px-2.5 py-1 text-xs" disabled={!k.count || busy !== ''} onclick={() => flush(k.kind, KINDS[k.kind][0])}>Flush</button>
 				</div>
 			{/each}
+			{@render keep('Size limit', 'maxResults', MAX.map((n) => [n, fmtNum(n) + ' results'] as const), 'The oldest results are dropped first.')}
 			<div class="flex items-center gap-3 py-3 text-sm">
 				<span class="flex-1 font-medium">Total</span>
 				<span class="text-right"><span class="block font-medium tabular-nums">{fmtNum(total.count)}</span><span class="block text-xs text-gray-500">{fmtBytes(total.bytes)}</span></span>
@@ -103,16 +125,6 @@
 					No lookups since the app started ({since}){st.settings.enabled ? '' : ' with saving on'}.
 				{/if}
 			</div>
-		</div>
-	</div>
-
-	<div>
-		{@render heading('How long to keep')}
-		<div class="card divide-y divide-gray-700/40 px-4">
-			{@render keep('Movie, series and people pages', 'pagesMinutes', PAGES, st.settings.pagesMinutes === 0 ? '6 hours to 7 days, depending on how much the title still changes.' : '')}
-			{@render keep('Discover rows and lists', 'listsMinutes', LISTS)}
-			{@render keep('Searches', 'searchesMinutes', SEARCHES)}
-			{@render keep('Size limit', 'maxResults', MAX.map((n) => [n, fmtNum(n) + ' results'] as const), 'The oldest results are dropped first.')}
 		</div>
 	</div>
 

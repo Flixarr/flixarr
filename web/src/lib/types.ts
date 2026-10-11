@@ -76,7 +76,7 @@ export interface Status {
 
 export interface CacheKind { kind: 'titles' | 'people' | 'lists' | 'searches'; count: number; bytes: number }
 
-export interface CacheConfig { enabled: boolean; pagesMinutes: number; listsMinutes: number; searchesMinutes: number; maxResults: number }
+export interface CacheConfig { enabled: boolean; auto: boolean; pagesMinutes: number; listsMinutes: number; searchesMinutes: number; maxResults: number }
 
 export interface CacheState {
 	settings: CacheConfig;

@@ -33,19 +33,19 @@ var Kinds = []string{KindTitles, KindPeople, KindLists, KindSearches}
 // Config is the cache's settings (Settings → Cache).
 type Config struct {
 	Enabled     bool `json:"enabled"`
-	PagesMin    int  `json:"pagesMinutes"` // titles + people; keep times are minutes, or Auto
+	Auto        bool `json:"auto"`         // keep each answer as long as the API says it stays fresh
+	PagesMin    int  `json:"pagesMinutes"` // titles + people; the fixed keep times are used when Auto is off
 	ListsMin    int  `json:"listsMinutes"`
 	SearchesMin int  `json:"searchesMinutes"`
 	MaxResults  int  `json:"maxResults"`
 }
 
 // DefaultConfig is what a new install starts with.
-var DefaultConfig = Config{Enabled: true, PagesMin: Auto, ListsMin: Auto, SearchesMin: Auto, MaxResults: 10000}
+var DefaultConfig = Config{Enabled: true, Auto: true, PagesMin: 24 * 60, ListsMin: 3 * 60, SearchesMin: 60, MaxResults: 10000}
 
-// Auto keeps each answer for as long as the API says it stays fresh (for title pages: hours for
-// airing series and new or upcoming movies, days for ended series, older movies and people).
-// The API's tuning then reaches every install without an update.
-const Auto = 0
+// With Auto on, each answer is kept for as long as the API says it stays fresh (for title pages:
+// hours for airing series and new or upcoming movies, days for ended series, older movies and
+// people), so the API's tuning reaches every install without an update.
 
 // minKeep is the shortest automatic keep time, so an answer the API is about to renew isn't
 // saved for a few seconds and asked for again right away.
@@ -54,6 +54,7 @@ const minKeep = 5 * time.Minute
 // Settings keys.
 const (
 	keyEnabled  = "cache_enabled"
+	keyAuto     = "cache_auto"
 	keyPages    = "cache_pages_minutes"
 	keyLists    = "cache_lists_minutes"
 	keySearches = "cache_searches_minutes"
@@ -101,13 +102,14 @@ func (t uaTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 func (c *Client) loadConfig() Config {
 	d := DefaultConfig
 	num := func(key string, def int) int {
-		if n, err := strconv.Atoi(c.Store.Setting(key, "")); err == nil && (n > 0 || (n == Auto && key != keyMax)) {
+		if n, err := strconv.Atoi(c.Store.Setting(key, "")); err == nil && n > 0 {
 			return n
 		}
 		return def
 	}
 	return Config{
 		Enabled:     c.Store.Setting(keyEnabled, "true") == "true",
+		Auto:        c.Store.Setting(keyAuto, "true") == "true",
 		PagesMin:    num(keyPages, d.PagesMin),
 		ListsMin:    num(keyLists, d.ListsMin),
 		SearchesMin: num(keySearches, d.SearchesMin),
@@ -125,7 +127,7 @@ func (c *Client) Config() Config {
 // SetConfig validates, saves and applies new cache settings.
 func (c *Client) SetConfig(cfg Config) error {
 	for _, m := range []int{cfg.PagesMin, cfg.ListsMin, cfg.SearchesMin} {
-		if m != Auto && (m < 5 || m > 30*24*60) {
+		if m < 5 || m > 30*24*60 {
 			return errors.New("keep times must be between 5 minutes and 30 days")
 		}
 	}
@@ -133,7 +135,7 @@ func (c *Client) SetConfig(cfg Config) error {
 		return errors.New("the size limit must be between 100 and 1,000,000 results")
 	}
 	for k, v := range map[string]string{
-		keyEnabled: strconv.FormatBool(cfg.Enabled), keyPages: strconv.Itoa(cfg.PagesMin), keyLists: strconv.Itoa(cfg.ListsMin),
+		keyEnabled: strconv.FormatBool(cfg.Enabled), keyAuto: strconv.FormatBool(cfg.Auto), keyPages: strconv.Itoa(cfg.PagesMin), keyLists: strconv.Itoa(cfg.ListsMin),
 		keySearches: strconv.Itoa(cfg.SearchesMin), keyMax: strconv.Itoa(cfg.MaxResults),
 	} {
 		if err := c.Store.SetSetting(k, v); err != nil {
@@ -186,7 +188,7 @@ func (cfg Config) keep(kind string, fresh time.Duration) time.Duration {
 	case KindSearches:
 		set, fallback = cfg.SearchesMin, time.Hour
 	}
-	if set != Auto {
+	if !cfg.Auto {
 		return time.Duration(set) * time.Minute
 	}
 	if fresh <= 0 {
