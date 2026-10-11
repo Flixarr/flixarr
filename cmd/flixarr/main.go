@@ -17,6 +17,7 @@ import (
 	"github.com/Flixarr/flixarr/internal/plex"
 	"github.com/Flixarr/flixarr/internal/server"
 	"github.com/Flixarr/flixarr/internal/store"
+	"github.com/Flixarr/flixarr/internal/update"
 	"github.com/Flixarr/flixarr/internal/version"
 	"github.com/Flixarr/flixarr/internal/webui"
 )
@@ -54,12 +55,20 @@ func main() {
 		st.SetSetting("plex_client_id", clientID)
 	}
 
+	// Daily "is there a newer build?" check (also how installs are counted). Off with FLIXARR_UPDATE_CHECK=false.
+	checker := &update.Checker{Store: st, API: api, ForceOff: os.Getenv("FLIXARR_UPDATE_CHECK") == "false", Log: log,
+		HTTP: &http.Client{Timeout: 10 * time.Second}}
+	runCtx, stopChecks := context.WithCancel(context.Background())
+	defer stopChecks()
+	go checker.Run(runCtx)
+
 	srv := &server.Server{
-		Store: st,
-		Plex:  plex.New(clientID, version.Full()),
-		Meta:  meta.New(api, "Flixarr/"+version.Full()),
-		Web:   webui.FS(),
-		Log:   log,
+		Store:  st,
+		Plex:   plex.New(clientID, version.Full()),
+		Meta:   meta.New(api, "Flixarr/"+version.Full()),
+		Update: checker,
+		Web:    webui.FS(),
+		Log:    log,
 	}
 	hs := &http.Server{Addr: addr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 

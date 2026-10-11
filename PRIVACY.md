@@ -4,16 +4,31 @@ Flixarr runs on your own server. Your users, requests, library and settings stay
 
 ## What leaves your server
 
-**The Flixarr data server (`api.flixarr.app`)** receives the lookups needed to show movie and series information:
+### The Flixarr data server (`api.flixarr.app`)
 
-- the title or person IDs you open, search text, and which lists you browse
-- your region and language setting (for release dates and titles)
-- your server's IP address (as with any web request) and the Flixarr version in the `User-Agent`
+**Movie and series lookups.** To show titles, Flixarr asks the data server for the IDs you open, the lists you browse, and your search text, along with your region and language and the Flixarr version (in the `User-Agent`). The data server counts these lookups across *all* installs: what kind of lookup, which title or list, and the Flixarr version. It does **not** store your search text, your IP address, or anything that ties a lookup to your install.
 
-It does **not** receive your users, your requests, your Plex details or your library. Responses are cached at the edge, and the data server keeps no per-install logs beyond Cloudflare's standard request handling.
+**The daily update check.** Once a day, Flixarr asks whether a newer build exists. That check sends exactly:
 
-**plex.tv** is contacted when someone signs in with Plex, and later to read your Plex server's libraries.
+| Field | Example |
+|---|---|
+| `install` | a random ID, made once for your server and used for nothing else |
+| `version`, `build`, `channel` | `0.1.0`, `42`, `nightly` |
+| `os`, `arch` | `linux`, `arm64` |
+| `db` | `sqlite` |
 
-**Image hosts:** posters and backgrounds load from `image.tmdb.org` in each viewer's browser.
+The data server keeps these checks so the number of active installs, the versions in use and the hardware they run on can be counted. Admins can see the exact data in **Profile → Updates → Show exactly what's sent**.
 
-That's the full list. Flixarr has no analytics or telemetry.
+**Turning it off:** switch off **Check for updates daily** in Profile, or set `FLIXARR_UPDATE_CHECK=false` on the server. When it's off, nothing is sent and you won't hear about updates.
+
+Never sent: your users, usernames or emails, your requests, your Plex server details, or your library.
+
+### plex.tv
+
+Contacted when someone signs in with Plex, and (in later versions) to read your Plex server's libraries.
+
+### Images
+
+Posters and backgrounds load from `image.tmdb.org` directly in each viewer's browser, so TMDB sees the viewer's IP address when an image loads.
+
+That's the full list. Flixarr has no other analytics or telemetry.

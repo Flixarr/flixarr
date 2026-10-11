@@ -16,6 +16,7 @@ import (
 	"github.com/Flixarr/flixarr/internal/meta"
 	"github.com/Flixarr/flixarr/internal/plex"
 	"github.com/Flixarr/flixarr/internal/store"
+	"github.com/Flixarr/flixarr/internal/update"
 	"github.com/Flixarr/flixarr/internal/version"
 )
 
@@ -25,8 +26,9 @@ const sessionCookie = "flixarr_session"
 type Server struct {
 	Store *store.Store
 	Plex  *plex.Client
-	Meta  *meta.Client
-	Web   fs.FS // built web app (index + assets)
+	Meta   *meta.Client
+	Update *update.Checker
+	Web    fs.FS // built web app (index + assets)
 	Log   *slog.Logger
 
 	pinsMu sync.Mutex
@@ -43,6 +45,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/auth/plex/check", s.plexCheck)
 	mux.HandleFunc("POST /api/auth/logout", s.logout)
 	mux.HandleFunc("GET /api/meta/{path...}", s.auth(s.metaProxy))
+	mux.HandleFunc("GET /api/update", s.auth(s.admin(s.updateInfo)))
+	mux.HandleFunc("POST /api/update/check", s.auth(s.admin(s.updateCheck)))
+	mux.HandleFunc("PUT /api/update/settings", s.auth(s.admin(s.updateSettings)))
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { writeErr(w, http.StatusNotFound, "Unknown endpoint.") })
 	mux.Handle("/", s.spa())
 	return headers(mux)
@@ -88,6 +93,17 @@ func (s *Server) auth(h func(http.ResponseWriter, *http.Request, *store.User)) h
 	}
 }
 
+// admin wraps an authenticated handler so only admins reach it.
+func (s *Server) admin(h func(http.ResponseWriter, *http.Request, *store.User)) func(http.ResponseWriter, *http.Request, *store.User) {
+	return func(w http.ResponseWriter, r *http.Request, u *store.User) {
+		if u.Role != "Admin" {
+			writeErr(w, http.StatusForbidden, "Only admins can do that.")
+			return
+		}
+		h(w, r, u)
+	}
+}
+
 func secure(r *http.Request) bool { return r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" }
 
 func (s *Server) setSession(w http.ResponseWriter, r *http.Request, token string) {
@@ -106,6 +122,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"setupRequired": n == 0,
 		"version": map[string]string{"version": version.Version, "build": version.Build, "full": version.Full(), "commit": version.Commit, "channel": version.Channel},
+		"update":  s.Update.Last(),
 	})
 }
 
@@ -198,6 +215,38 @@ func (s *Server) plexCheck(w http.ResponseWriter, r *http.Request) {
 	}
 	s.setSession(w, r, token)
 	writeJSON(w, http.StatusOK, map[string]any{"done": true, "user": u})
+}
+
+// updateInfo returns the update state plus exactly what a check sends (shown next to the toggle).
+func (s *Server) updateInfo(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	writeJSON(w, http.StatusOK, map[string]any{"status": s.Update.Last(), "payload": s.Update.Payload()})
+}
+
+func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	if _, err := s.Update.Check(r.Context()); err != nil {
+		writeErr(w, http.StatusBadGateway, "Couldn't check for updates: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, s.Update.Last())
+}
+
+func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	var in struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in); err != nil {
+		writeErr(w, http.StatusBadRequest, "Bad request.")
+		return
+	}
+	if s.Update.Locked() && in.Enabled {
+		writeErr(w, http.StatusConflict, "Update checks are turned off by the FLIXARR_UPDATE_CHECK setting on the server.")
+		return
+	}
+	if err := s.Update.SetEnabled(in.Enabled); err != nil {
+		writeErr(w, http.StatusInternalServerError, "Couldn't save.")
+		return
+	}
+	writeJSON(w, http.StatusOK, s.Update.Last())
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {

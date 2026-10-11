@@ -59,7 +59,16 @@ export interface SearchHit extends Omit<Partial<Card>, 'type'> { id: number; typ
 
 export interface User { id: number; plexId: number; username: string; email: string; avatar: string; role: string; createdAt: string }
 
+export interface UpdateStatus {
+	enabled: boolean;
+	locked: boolean;
+	available: boolean;
+	latest: { version: string; build: string; commit: string; released: string } | null;
+	checkedAt: string;
+}
+
 export interface Status {
 	setupRequired: boolean;
 	version: { version: string; build: string; full: string; commit: string; channel: string };
+	update: UpdateStatus;
 }
