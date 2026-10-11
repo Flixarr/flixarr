@@ -2,6 +2,7 @@
 	// "See all" page for a Discover row: the whole list as a poster grid that keeps loading as you scroll.
 	// Going back to it puts you exactly where you were (titles loaded so far + scroll position).
 	import { tick } from 'svelte';
+	import { restoreScroll } from '#lib/scroll.ts';
 	import { page } from '$app/state';
 	import { snapshot } from '$app/navigation';
 	import { meta } from '#lib/api.ts';
@@ -63,7 +64,7 @@
 			total = v.total;
 			loadedFor = v.key;
 			await tick();
-			scrollTo(0, v.y);
+			restoreScroll(v.y);
 		}
 	});
 </script>

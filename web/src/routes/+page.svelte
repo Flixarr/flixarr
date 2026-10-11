@@ -1,6 +1,7 @@
 <script lang="ts">
 	// Discover: rotating spotlight + rows (layout D). Recent Requests / Recently Added arrive with requests.
 	import { tick } from 'svelte';
+	import { restoreScroll } from '#lib/scroll.ts';
 	import { snapshot } from '$app/navigation';
 	import { meta } from '#lib/api.ts';
 	import type { Card, Page } from '#lib/types.ts';
@@ -43,7 +44,7 @@
 			pages = v.pages;
 			await tick();
 			for (const r of document.querySelectorAll<HTMLElement>('[data-row]')) r.scrollLeft = v.rows[r.dataset.row!] ?? 0;
-			scrollTo(0, v.y);
+			restoreScroll(v.y);
 		}
 	});
 	const spot = $derived((lists.trending ?? []).filter((c) => c.backdrop).slice(0, 5));

@@ -7,6 +7,7 @@
 
 <script lang="ts">
 	import { tick } from 'svelte';
+	import { restoreScroll } from '#lib/scroll.ts';
 	import { replaceState, snapshot } from '$app/navigation';
 	import { meta } from '#lib/api.ts';
 	import type { Card, Page, SearchHit } from '#lib/types.ts';
@@ -68,7 +69,7 @@
 			tab = v.tab;
 			hits = v.hits;
 			await tick();
-			scrollTo(0, v.y);
+			restoreScroll(v.y);
 		}
 	});
 	const shown = $derived(hits.filter((h) => tab === 'all' || h.type === tab));

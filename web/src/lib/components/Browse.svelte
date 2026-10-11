@@ -8,6 +8,7 @@
 	// Movies / Series browse: genre pills, sort, a poster grid that keeps loading as you scroll.
 	// Going back to it restores the genre, sort, titles loaded so far and scroll position.
 	import { tick } from 'svelte';
+	import { restoreScroll } from '#lib/scroll.ts';
 	import { snapshot } from '$app/navigation';
 	import { meta } from '#lib/api.ts';
 	import { infinite } from '#lib/infinite.ts';
@@ -72,7 +73,7 @@
 			total = v.total;
 			loadedFor = key();
 			await tick();
-			scrollTo(0, v.y);
+			restoreScroll(v.y);
 		}
 	});
 </script>
