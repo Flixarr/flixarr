@@ -35,8 +35,11 @@ export function meta<T>(path: string, params: Record<string, string | number | u
 }
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/';
+/** Set from /api/status: when image caching is on, images load through this server (Settings → Cache). */
+export const prefs = { imageCache: false };
 /** TMDB image URL for a path, e.g. img(poster, 'w342'). */
-export const img = (path: string | null | undefined, size = 'w342') => (path ? TMDB_IMG + size + path : '');
+export const img = (path: string | null | undefined, size = 'w342') =>
+	path ? (prefs.imageCache ? '/api/image/' + size : TMDB_IMG + size) + path : '';
 
 /** Detail page URL for a card. */
 export const href = (item: { type: string; id: number }) => (item.type === 'person' ? `/person/${item.id}` : `/${item.type}/${item.id}`);
@@ -45,3 +48,8 @@ export const fmtDate = (d: string | null | undefined, opts: Intl.DateTimeFormatO
 	d ? new Date(d.length === 10 ? d + 'T00:00:00' : d).toLocaleDateString('en-US', opts) : 'TBA';
 
 export const runtime = (m: number) => (m ? `${Math.floor(m / 60) ? Math.floor(m / 60) + 'h ' : ''}${m % 60}m` : '');
+
+export const fmtBytes = (n: number) =>
+	n < 1024 ? `${n} B` : n < 1024 ** 2 ? `${(n / 1024).toFixed(0)} KB` : n < 1024 ** 3 ? `${(n / 1024 ** 2).toFixed(1)} MB` : `${(n / 1024 ** 3).toFixed(2)} GB`;
+
+export const fmtNum = (n: number) => n.toLocaleString('en-US');

@@ -71,4 +71,26 @@ export interface Status {
 	setupRequired: boolean;
 	version: { version: string; build: string; full: string; commit: string; channel: string };
 	update: UpdateStatus;
+	imageCache: boolean;
+}
+
+export interface CacheKind { kind: 'titles' | 'people' | 'lists' | 'searches'; count: number; bytes: number }
+
+export interface CacheState {
+	settings: { enabled: boolean; pagesMinutes: number; listsMinutes: number; searchesMinutes: number; maxResults: number };
+	kinds: CacheKind[];
+	counters: { hits: number; misses: number; stale: number };
+	images: { enabled: boolean; days: number; count: number; bytes: number };
+}
+
+export interface Job {
+	id: string;
+	name: string;
+	about: string;
+	schedule: string;
+	default: string;
+	enabled: boolean;
+	running: boolean;
+	next: string;
+	last: { at: string; seconds: number; result: string; error?: string } | null;
 }

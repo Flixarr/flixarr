@@ -10,9 +10,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
+	_ "time/tzdata" // so TZ (e.g. America/New_York) works in the slim image; job times follow it
 
+	"github.com/Flixarr/flixarr/internal/images"
+	"github.com/Flixarr/flixarr/internal/jobs"
 	"github.com/Flixarr/flixarr/internal/meta"
 	"github.com/Flixarr/flixarr/internal/plex"
 	"github.com/Flixarr/flixarr/internal/server"
@@ -62,13 +66,35 @@ func main() {
 	defer stopChecks()
 	go checker.Run(runCtx)
 
+	mc := meta.New(api, "Flixarr/"+version.Full(), st)
+	ic := images.New(dataDir, st)
+
+	// Scheduled jobs (Settings → Jobs); schedules are editable there.
+	runner := &jobs.Runner{Store: st, Log: log}
+	runner.Add(&jobs.Job{ID: "cache-cleanup", Name: "Clear expired cache", Default: "0 3 * * *",
+		About: "Removes saved results that expired more than a day ago and keeps the cache under its size limit.",
+		Run: func(context.Context) (string, error) {
+			n, err := mc.Cleanup()
+			return plural(n, "result") + " removed", err
+		}})
+	runner.Add(&jobs.Job{ID: "image-cleanup", Name: "Image cache cleanup", Default: "0 5 * * 0",
+		About: "Removes saved posters and backdrops nobody has viewed for a while (Settings → Cache).",
+		Run: func(context.Context) (string, error) {
+			n, err := ic.Cleanup()
+			return plural(int64(n), "image") + " removed", err
+		}})
+	runner.Start(runCtx)
+
 	srv := &server.Server{
-		Store:  st,
-		Plex:   plex.New(clientID, version.Full()),
-		Meta:   meta.New(api, "Flixarr/"+version.Full()),
-		Update: checker,
-		Web:    webui.FS(),
-		Log:    log,
+		Store:   st,
+		Plex:    plex.New(clientID, version.Full()),
+		Meta:    mc,
+		Images:  ic,
+		Jobs:    runner,
+		Update:  checker,
+		Web:     webui.FS(),
+		Log:     log,
+		BaseCtx: runCtx,
 	}
 	hs := &http.Server{Addr: addr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 
@@ -87,4 +113,11 @@ func main() {
 	defer cancel()
 	hs.Shutdown(ctx)
 	log.Info("Flixarr stopped")
+}
+
+func plural(n int64, word string) string {
+	if n == 1 {
+		return "1 " + word
+	}
+	return strconv.FormatInt(n, 10) + " " + word + "s"
 }

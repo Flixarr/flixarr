@@ -24,10 +24,10 @@ import (
 
 // Settings keys.
 const (
-	keyEnabled   = "update_check"         // "true" / "false" (default true)
-	keyInstallID = "install_id"           // random UUID, only ever sent with update checks
-	keyResult    = "update_result"        // last answer (JSON)
-	keyChecked   = "update_checked_at"    // RFC3339
+	keyEnabled   = "update_check"      // "true" / "false" (default true)
+	keyInstallID = "install_id"        // random UUID, only ever sent with update checks
+	keyResult    = "update_result"     // last answer (JSON)
+	keyChecked   = "update_checked_at" // RFC3339
 )
 
 // Latest describes the newest build on a channel.

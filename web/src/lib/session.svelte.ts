@@ -1,11 +1,12 @@
 // Signed-in user + server status, shared across the app.
-import { api, ApiError } from './api';
+import { api, ApiError, prefs } from './api';
 import type { Status, User } from './types';
 
 export const session = $state<{ ready: boolean; status: Status | null; me: User | null }>({ ready: false, status: null, me: null });
 
 export async function loadSession() {
 	session.status = await api<Status>('/status');
+	prefs.imageCache = session.status.imageCache;
 	if (!session.status.setupRequired) {
 		try {
 			session.me = await api<User>('/me');

@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Flixarr/flixarr/internal/images"
+	"github.com/Flixarr/flixarr/internal/jobs"
 	"github.com/Flixarr/flixarr/internal/meta"
 	"github.com/Flixarr/flixarr/internal/plex"
 	"github.com/Flixarr/flixarr/internal/store"
@@ -24,12 +26,16 @@ const sessionCookie = "flixarr_session"
 
 // Server holds everything the handlers need.
 type Server struct {
-	Store *store.Store
-	Plex  *plex.Client
+	Store  *store.Store
+	Plex   *plex.Client
 	Meta   *meta.Client
+	Images *images.Cache
+	Jobs   *jobs.Runner
 	Update *update.Checker
 	Web    fs.FS // built web app (index + assets)
-	Log   *slog.Logger
+	Log    *slog.Logger
+	// BaseCtx outlives requests; jobs started with "Run now" use it.
+	BaseCtx context.Context
 
 	pinsMu sync.Mutex
 	pins   map[int64]time.Time // sign-in PINs this server created, so it only checks its own
@@ -48,6 +54,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/update", s.auth(s.admin(s.updateInfo)))
 	mux.HandleFunc("POST /api/update/check", s.auth(s.admin(s.updateCheck)))
 	mux.HandleFunc("PUT /api/update/settings", s.auth(s.admin(s.updateSettings)))
+	mux.HandleFunc("GET /api/image/{size}/{file}", s.auth(s.image))
+	mux.HandleFunc("GET /api/cache", s.auth(s.admin(s.cacheInfo)))
+	mux.HandleFunc("PUT /api/cache/settings", s.auth(s.admin(s.cacheSettings)))
+	mux.HandleFunc("DELETE /api/cache/{kind}", s.auth(s.admin(s.cacheFlush)))
+	mux.HandleFunc("GET /api/jobs", s.auth(s.admin(s.jobList)))
+	mux.HandleFunc("PUT /api/jobs/{id}", s.auth(s.admin(s.jobSet)))
+	mux.HandleFunc("POST /api/jobs/{id}/run", s.auth(s.admin(s.jobRun)))
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { writeErr(w, http.StatusNotFound, "Unknown endpoint.") })
 	mux.Handle("/", s.spa())
 	return headers(mux)
@@ -62,7 +75,9 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
-func writeErr(w http.ResponseWriter, status int, msg string) { writeJSON(w, status, map[string]string{"error": msg}) }
+func writeErr(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg})
+}
 
 func headers(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -104,7 +119,9 @@ func (s *Server) admin(h func(http.ResponseWriter, *http.Request, *store.User)) 
 	}
 }
 
-func secure(r *http.Request) bool { return r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" }
+func secure(r *http.Request) bool {
+	return r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+}
 
 func (s *Server) setSession(w http.ResponseWriter, r *http.Request, token string) {
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: token, Path: "/", HttpOnly: true, Secure: secure(r),
@@ -121,12 +138,15 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"setupRequired": n == 0,
-		"version": map[string]string{"version": version.Version, "build": version.Build, "full": version.Full(), "commit": version.Commit, "channel": version.Channel},
-		"update":  s.Update.Last(),
+		"version":       map[string]string{"version": version.Version, "build": version.Build, "full": version.Full(), "commit": version.Commit, "channel": version.Channel},
+		"update":        s.Update.Last(),
+		"imageCache":    s.Images.Enabled(),
 	})
 }
 
-func (s *Server) me(w http.ResponseWriter, r *http.Request, u *store.User) { writeJSON(w, http.StatusOK, u) }
+func (s *Server) me(w http.ResponseWriter, r *http.Request, u *store.User) {
+	writeJSON(w, http.StatusOK, u)
+}
 
 func (s *Server) plexPin(w http.ResponseWriter, r *http.Request) {
 	pin, err := s.Plex.CreatePin(r.Context())
@@ -257,7 +277,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-// metaProxy forwards /api/meta/<path> to the data server with this install's region and language.
+// metaProxy forwards /api/meta/<path> to the Flixarr API (through the cache) with this install's region and language.
 func (s *Server) metaProxy(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	q := url.Values{}
 	for _, k := range []string{"q", "page", "genre", "sort"} {
@@ -269,8 +289,8 @@ func (s *Server) metaProxy(w http.ResponseWriter, r *http.Request, _ *store.User
 	q.Set("language", s.Store.Setting("language", "en-US"))
 	body, status, err := s.Meta.Get(r.Context(), r.PathValue("path"), q)
 	if err != nil {
-		s.Log.Warn("data server", "err", err)
-		writeErr(w, http.StatusBadGateway, "The Flixarr data server didn't answer. Try again in a moment.")
+		s.Log.Warn("Flixarr API", "err", err)
+		writeErr(w, http.StatusBadGateway, "The Flixarr API didn't answer. Try again in a moment.")
 		return
 	}
 	if status != http.StatusOK {
@@ -278,7 +298,11 @@ func (s *Server) metaProxy(w http.ResponseWriter, r *http.Request, _ *store.User
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Cache-Control", "private, max-age=300")
+	if s.Meta.Config().Enabled {
+		w.Header().Set("Cache-Control", "private, max-age=300")
+	} else {
+		w.Header().Set("Cache-Control", "no-store")
+	}
 	w.Write(body)
 }
 
@@ -306,7 +330,8 @@ func (s *Server) spa() http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-cache")
+		// no-transform: proxies like Cloudflare must not inject scripts (e.g. its analytics beacon) into the app.
+		w.Header().Set("Cache-Control", "no-cache, no-transform")
 		w.Write(shell)
 	})
 }

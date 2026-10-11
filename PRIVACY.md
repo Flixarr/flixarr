@@ -29,6 +29,8 @@ Contacted when someone signs in with Plex, and (in later versions) to read your 
 
 ### Images
 
-Posters and backgrounds load from `image.tmdb.org` directly in each viewer's browser, so TMDB sees the viewer's IP address when an image loads.
+By default, posters and backgrounds load from `image.tmdb.org` directly in each viewer's browser, so TMDB sees the viewer's IP address when an image loads. With **Settings → Cache → Cache images** on, your server downloads each image once and serves it to viewers, so TMDB only sees your server.
 
-That's the full list. Flixarr has no other analytics or telemetry.
+Movie and series results from the data server are saved in your Flixarr database (**Settings → Cache**) and never sent anywhere else.
+
+That's the full list. Flixarr has no other analytics or telemetry, and its pages tell proxies such as Cloudflare not to inject their own analytics scripts.

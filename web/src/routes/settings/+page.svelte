@@ -6,6 +6,8 @@
 	import { session } from '#lib/session.svelte.ts';
 	import type { UpdateStatus } from '#lib/types.ts';
 	import Icon from '#lib/components/Icon.svelte';
+	import CacheSettings from '#lib/components/settings/CacheSettings.svelte';
+	import JobsSettings from '#lib/components/settings/JobsSettings.svelte';
 
 	// Section key → label, icon, one-line description (side menu / phone list).
 	const SECTIONS: [string, string, string, string][] = [
@@ -14,6 +16,7 @@
 		['services', 'Services', 'plus', 'Radarr, Sonarr, webhooks'],
 		['notifications', 'Notifications', 'bell', 'Email, Discord, webhooks, push'],
 		['discover', 'Discover', 'discover', 'Discover page rows'],
+		['cache', 'Cache', 'refresh', 'Saved results, images'],
 		['jobs', 'Jobs', 'clock', 'Scheduled tasks'],
 		['about', 'About', 'info', 'Version, updates, credits']
 	];
@@ -82,7 +85,11 @@
 				<a href="/settings" class="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-white tablet:hidden"><span class="rotate-180"><Icon name="chevron" class="size-4" /></span>Settings</a>
 				<h2 class="text-lg font-semibold">{label}</h2>
 
-				{#if tab === 'about'}
+				{#if tab === 'cache'}
+					<CacheSettings />
+				{:else if tab === 'jobs'}
+					<JobsSettings />
+				{:else if tab === 'about'}
 					<div>
 						<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Flixarr</div>
 						<div class="card divide-y divide-gray-700/40 px-4">
