@@ -11,13 +11,18 @@
 	const ROWS = LISTS.map((l) => [l.key, l.title, listHref(l.key)] as const);
 
 	let lists = $state<Record<string, Card[]>>({});
+	let pages = $state<Record<string, number>>({}); // total pages per list (20 titles each), for the See all count
 	let error = $state('');
 
 	$effect(() => {
 		let alive = true;
-		const fresh = (k: string) => (p: Page<Card>) => alive && (lists = { ...lists, [k]: p.results });
-		Promise.all(ROWS.map(([k]) => meta<Page<Card>>('lists/' + k, {}, fresh(k)).then((p) => [k, p.results] as const)))
-			.then((all) => alive && (lists = Object.fromEntries(all)))
+		const fresh = (k: string) => (p: Page<Card>) => alive && ((lists = { ...lists, [k]: p.results }), (pages = { ...pages, [k]: p.totalPages }));
+		Promise.all(ROWS.map(([k]) => meta<Page<Card>>('lists/' + k, {}, fresh(k)).then((p) => [k, p] as const)))
+			.then((all) => {
+				if (!alive) return;
+				lists = Object.fromEntries(all.map(([k, p]) => [k, p.results]));
+				pages = Object.fromEntries(all.map(([k, p]) => [k, p.totalPages]));
+			})
 			.catch((e) => (error = e.message));
 		return () => (alive = false);
 	});
@@ -34,7 +39,7 @@
 		{#each ROWS as [k, title, more] (k)}
 			<Row {title} items={lists[k] ?? []} {more}>
 				{#snippet item(c)}<Poster item={c} />{/snippet}
-				{#snippet end()}<SeeMore items={lists[k] ?? []} href={more} />{/snippet}
+				{#snippet end()}<SeeMore items={lists[k] ?? []} href={more} remaining={Math.max(0, (pages[k] ?? 0) * 20 - (lists[k]?.length ?? 0))} />{/snippet}
 			</Row>
 		{/each}
 	</div>
