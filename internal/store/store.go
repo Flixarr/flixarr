@@ -1,0 +1,198 @@
+// Package store is Flixarr's SQLite database: settings, users and sessions.
+package store
+
+import (
+	"crypto/rand"
+	"crypto/sha256"
+	"database/sql"
+	"embed"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io/fs"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	_ "modernc.org/sqlite" // pure-Go SQLite driver: no cgo, so one static binary for amd64 and arm64
+)
+
+//go:embed migrations/*.sql
+var migrations embed.FS
+
+// ErrNotFound is returned when a row doesn't exist.
+var ErrNotFound = errors.New("not found")
+
+// Store wraps the database handle.
+type Store struct{ db *sql.DB }
+
+// Open opens (or creates) flixarr.db inside dataDir and applies pending migrations.
+func Open(dataDir string) (*Store, error) {
+	dsn := "file:" + filepath.Join(dataDir, "flixarr.db") + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(1) // SQLite has one writer; a single connection avoids "database is locked"
+	s := &Store{db: db}
+	if err := s.migrate(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
+	return s, nil
+}
+
+// Close closes the database.
+func (s *Store) Close() error { return s.db.Close() }
+
+func (s *Store) migrate() error {
+	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)`); err != nil {
+		return err
+	}
+	names, err := fs.Glob(migrations, "migrations/*.sql")
+	if err != nil {
+		return err
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		var done int
+		if err := s.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE name = ?`, name).Scan(&done); err != nil {
+			return err
+		}
+		if done > 0 {
+			continue
+		}
+		body, err := migrations.ReadFile(name)
+		if err != nil {
+			return err
+		}
+		tx, err := s.db.Begin()
+		if err != nil {
+			return err
+		}
+		for _, stmt := range strings.Split(string(body), ";\n") {
+			if strings.TrimSpace(stmt) == "" {
+				continue
+			}
+			if _, err := tx.Exec(stmt); err != nil {
+				tx.Rollback()
+				return fmt.Errorf("%s: %w", name, err)
+			}
+		}
+		if _, err := tx.Exec(`INSERT INTO schema_migrations (name, applied_at) VALUES (?, ?)`, name, now()); err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func now() string { return time.Now().UTC().Format(time.RFC3339) }
+
+// ---------- settings ----------
+
+// Setting returns a setting value, or def when it isn't set.
+func (s *Store) Setting(key, def string) string {
+	var v string
+	if err := s.db.QueryRow(`SELECT value FROM settings WHERE key = ?`, key).Scan(&v); err != nil {
+		return def
+	}
+	return v
+}
+
+// SetSetting stores a setting value.
+func (s *Store) SetSetting(key, value string) error {
+	_, err := s.db.Exec(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value)
+	return err
+}
+
+// ---------- users ----------
+
+// User is a person who can sign in.
+type User struct {
+	ID        int64  `json:"id"`
+	PlexID    int64  `json:"plexId"`
+	Username  string `json:"username"`
+	Email     string `json:"email"`
+	Avatar    string `json:"avatar"`
+	Role      string `json:"role"`
+	CreatedAt string `json:"createdAt"`
+}
+
+// UserCount returns how many users exist (0 means first-run setup is needed).
+func (s *Store) UserCount() (int, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&n)
+	return n, err
+}
+
+const userCols = `id, plex_id, username, email, avatar, role, created_at`
+
+func scanUser(row interface{ Scan(...any) error }) (*User, error) {
+	u := &User{}
+	if err := row.Scan(&u.ID, &u.PlexID, &u.Username, &u.Email, &u.Avatar, &u.Role, &u.CreatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return u, nil
+}
+
+// UserByPlexID finds a user by their plex.tv account id.
+func (s *Store) UserByPlexID(plexID int64) (*User, error) {
+	return scanUser(s.db.QueryRow(`SELECT `+userCols+` FROM users WHERE plex_id = ?`, plexID))
+}
+
+// CreateUser inserts a user and returns it.
+func (s *Store) CreateUser(u User) (*User, error) {
+	res, err := s.db.Exec(`INSERT INTO users (plex_id, username, email, avatar, role, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		u.PlexID, u.Username, u.Email, u.Avatar, u.Role, now())
+	if err != nil {
+		return nil, err
+	}
+	id, _ := res.LastInsertId()
+	return scanUser(s.db.QueryRow(`SELECT `+userCols+` FROM users WHERE id = ?`, id))
+}
+
+// UpdatePlexProfile refreshes the name, email and avatar from plex.tv on each sign-in.
+func (s *Store) UpdatePlexProfile(id int64, username, email, avatar string) error {
+	_, err := s.db.Exec(`UPDATE users SET username = ?, email = ?, avatar = ? WHERE id = ?`, username, email, avatar, id)
+	return err
+}
+
+// ---------- sessions ----------
+
+// SessionTTL is how long a sign-in lasts.
+const SessionTTL = 30 * 24 * time.Hour
+
+func hashToken(t string) string { h := sha256.Sum256([]byte(t)); return hex.EncodeToString(h[:]) }
+
+// CreateSession returns a new random session token for the user. Only its hash is stored.
+func (s *Store) CreateSession(userID int64) (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	token := hex.EncodeToString(b)
+	_, err := s.db.Exec(`INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)`,
+		hashToken(token), userID, time.Now().Add(SessionTTL).UTC().Format(time.RFC3339), now())
+	return token, err
+}
+
+// SessionUser returns the user for a session token, if the session is still valid.
+func (s *Store) SessionUser(token string) (*User, error) {
+	row := s.db.QueryRow(`SELECT u.id, u.plex_id, u.username, u.email, u.avatar, u.role, u.created_at
+		FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ?`, hashToken(token), now())
+	return scanUser(row)
+}
+
+// DeleteSession signs a session out.
+func (s *Store) DeleteSession(token string) error {
+	_, err := s.db.Exec(`DELETE FROM sessions WHERE token_hash = ?`, hashToken(token))
+	return err
+}

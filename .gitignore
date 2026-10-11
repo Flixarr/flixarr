@@ -1,0 +1,14 @@
+# Go
+/flixarr
+*.test
+# Web
+web/node_modules/
+web/.svelte-kit/
+web/build/
+# Built web app copied in by the Docker build
+internal/webui/dist/*
+!internal/webui/dist/.gitkeep
+# Local data
+/data/
+*.db
+*.db-*

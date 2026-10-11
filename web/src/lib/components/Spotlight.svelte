@@ -1,0 +1,54 @@
+<script lang="ts">
+	// Discover banner: rotates trending titles every 5s, fades into the page, pauses on hover.
+	import { img, href } from '#lib/api.ts';
+	import { notify } from '#lib/toast.svelte.ts';
+	import type { Card } from '#lib/types.ts';
+	import Icon from './Icon.svelte';
+
+	let { items }: { items: Card[] } = $props();
+	let cur = $state(0);
+	let paused = $state(false);
+
+	$effect(() => {
+		if (paused || items.length < 2) return;
+		const t = setInterval(() => (cur = (cur + 1) % items.length), 5000);
+		return () => clearInterval(t);
+	});
+</script>
+
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<section class="relative h-[40dvh] min-h-[300px] w-full overflow-hidden laptop:h-[44dvh]" onmouseenter={() => (paused = true)} onmouseleave={() => (paused = false)}>
+	{#each items as h, i (h.id)}
+		<div class="absolute inset-0 transition-opacity duration-1000 {i === cur ? 'opacity-100' : 'pointer-events-none opacity-0'}">
+			<div class="absolute inset-0 [mask-image:linear-gradient(to_bottom,black_35%,transparent_100%)]">
+				<img src={img(h.backdrop, 'w1280')} alt="" class="absolute inset-0 h-full w-full object-cover opacity-55 saturate-75" />
+				<div class="absolute inset-0 bg-linear-to-t from-gray-950/60 via-gray-950/40 to-gray-950/30"></div>
+				<div class="absolute inset-0 bg-linear-to-r from-gray-950/90 via-gray-950/30 to-transparent"></div>
+			</div>
+			<div class="absolute inset-x-0 bottom-14 mx-auto max-w-[1600px] px-4 laptop:bottom-16 laptop:px-10">
+				<div class="max-w-lg space-y-2.5">
+					<div class="flex items-center gap-2 text-xs">
+						<span class="rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide {h.type === 'series' ? 'bg-blue-600/80' : 'bg-primary/90'}">{h.type === 'series' ? 'Series' : 'Movie'}</span>
+						<span class="rounded-md bg-gray-900/70 px-1.5 py-0.5 text-gray-300 ring-1 ring-gray-700/60">Trending this week</span>
+					</div>
+					<h1 class="text-2xl font-bold leading-tight drop-shadow-xl laptop:text-3xl">{h.title}</h1>
+					<p class="line-clamp-1 text-sm text-gray-400 laptop:line-clamp-2">{h.overview}</p>
+					<div class="flex items-center gap-3 pt-1">
+						<button class="btn px-4 py-1.5 text-sm" onclick={() => notify('Requests arrive in the next Flixarr update.', 'orange')}><Icon name="plus" class="size-4" />Request</button>
+						<a href={href(h)} class="btn-ghost px-4 py-1.5 text-sm">Details</a>
+						<span class="ml-1 text-xs text-gray-400">{h.year} · ★ {h.rating}</span>
+					</div>
+				</div>
+			</div>
+		</div>
+	{/each}
+	{#if items.length > 1}
+		<div class="absolute inset-x-0 bottom-14 mx-auto flex max-w-[1600px] justify-end px-4 laptop:bottom-16 laptop:px-10">
+			<div class="flex gap-1.5">
+				{#each items as _, i (i)}
+					<button aria-label="Show slide {i + 1}" onclick={() => (cur = i)} class="h-1.5 rounded-full transition-all {i === cur ? 'w-6 bg-primary' : 'w-1.5 bg-gray-500/70'}"></button>
+				{/each}
+			</div>
+		</div>
+	{/if}
+</section>
