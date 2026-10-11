@@ -16,14 +16,16 @@ import (
 
 type cacheState struct {
 	Settings meta.Config       `json:"settings"`
+	Defaults meta.Config       `json:"defaults"` // what "Default" resets to
 	Kinds    []store.CacheKind `json:"kinds"`
 	Counters meta.Counters     `json:"counters"`
 	Images   imageState        `json:"images"`
 }
 
 type imageState struct {
-	Enabled bool `json:"enabled"`
-	Days    int  `json:"days"`
+	Enabled     bool `json:"enabled"`
+	Days        int  `json:"days"`
+	DefaultDays int  `json:"defaultDays"`
 	images.Stats
 }
 
@@ -42,9 +44,10 @@ func (s *Server) cacheState() (cacheState, error) {
 	}
 	return cacheState{
 		Settings: s.Meta.Config(),
+		Defaults: meta.DefaultConfig,
 		Kinds:    kinds,
 		Counters: s.Meta.Counters(),
-		Images:   imageState{Enabled: s.Images.Enabled(), Days: s.Images.Days(), Stats: s.Images.Stats()},
+		Images:   imageState{Enabled: s.Images.Enabled(), Days: s.Images.Days(), DefaultDays: images.DefaultDays, Stats: s.Images.Stats()},
 	}, nil
 }
 

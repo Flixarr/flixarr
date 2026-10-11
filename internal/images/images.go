@@ -45,12 +45,15 @@ func New(dataDir string, st *store.Store) *Cache {
 // Enabled reports whether image caching is on (off by default, like Seerr).
 func (c *Cache) Enabled() bool { return c.Store.Setting(keyEnabled, "false") == "true" }
 
+// DefaultDays is how long an unviewed image is kept on a new install.
+const DefaultDays = 30
+
 // Days is how long an image nobody views is kept.
 func (c *Cache) Days() int {
 	if n, err := strconv.Atoi(c.Store.Setting(keyDays, "")); err == nil && n > 0 {
 		return n
 	}
-	return 30
+	return DefaultDays
 }
 
 // SetConfig saves the image cache settings.

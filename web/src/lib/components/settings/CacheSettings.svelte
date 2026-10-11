@@ -13,6 +13,8 @@
 	const MAX = [1000, 5000, 10000, 25000, 50000, 100000];
 	const DAYS = [7, 14, 30, 60, 90];
 
+	type TimeKey = 'pagesMinutes' | 'listsMinutes' | 'searchesMinutes' | 'maxResults';
+
 	let st = $state<CacheState | null>(null);
 	let confirmAll = $state(false);
 	let confirmImages = $state(false);
@@ -59,13 +61,17 @@
 </script>
 
 {#snippet heading(t: string)}<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{t}</div>{/snippet}
-{#snippet pick(label: string, value: number, opts: readonly (readonly [number, string])[], set: (s: CacheState, v: number) => void)}
-	<label class="flex items-center justify-between gap-4 py-3 text-sm">
-		<span>{label}</span>
-		<select class="rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-1.5 text-sm" {value} onchange={(e) => save((s) => set(s, +(e.currentTarget as HTMLSelectElement).value))}>
-			{#each opts as [v, l] (v)}<option value={v}>{l}</option>{/each}
+{#snippet pick(label: string, id: string, value: number, def: number, opts: readonly (readonly [number, string])[], set: (s: CacheState, v: number) => void, about = '')}
+	<div class="flex items-center justify-between gap-4 py-3 text-sm">
+		<label for={'cache-' + id}>{label}{#if about}<span class="mt-0.5 block text-xs text-gray-500">{about}</span>{/if}</label>
+		<select id={'cache-' + id} class="rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-1.5 text-sm" {value} onchange={(e) => save((s) => set(s, +(e.currentTarget as HTMLSelectElement).value))}>
+			{#each opts as [v, l] (v)}<option value={v}>{l}{v === def ? ' (default)' : ''}</option>{/each}
 		</select>
-	</label>
+	</div>
+{/snippet}
+
+{#snippet keep(label: string, key: TimeKey, opts: readonly (readonly [number, string])[], about = '')}
+	{@render pick(label, key, st!.settings[key], st!.defaults[key], opts, (s, v) => (s.settings[key] = v), about)}
 {/snippet}
 
 {#if st && total}
@@ -103,12 +109,12 @@
 	<div>
 		{@render heading('How long to keep')}
 		<div class="card divide-y divide-gray-700/40 px-4">
-			{@render pick('Movie, series and people pages', st.settings.pagesMinutes, PAGES, (s, v) => (s.settings.pagesMinutes = v))}
-			{@render pick('Discover rows and lists', st.settings.listsMinutes, LISTS, (s, v) => (s.settings.listsMinutes = v))}
-			{@render pick('Searches', st.settings.searchesMinutes, SEARCHES, (s, v) => (s.settings.searchesMinutes = v))}
-			{@render pick('Size limit', st.settings.maxResults, MAX.map((n) => [n, fmtNum(n) + ' results'] as const), (s, v) => (s.settings.maxResults = v))}
+			{@render keep('Movie, series and people pages', 'pagesMinutes', PAGES, st.settings.pagesMinutes === 0 ? 'New and airing titles refresh every few hours, older ones weekly.' : '')}
+			{@render keep('Discover rows and lists', 'listsMinutes', LISTS)}
+			{@render keep('Searches', 'searchesMinutes', SEARCHES)}
+			{@render keep('Size limit', 'maxResults', MAX.map((n) => [n, fmtNum(n) + ' results'] as const))}
 		</div>
-		<p class="mt-2 text-xs text-gray-500"><span class="text-gray-400">Automatic</span> keeps each page as long as it's likely to stay the same: 6 hours for airing series and new or upcoming movies, 1 day for titles still settling, 7 days for ended series and older movies, 3 days for people. When the limit is reached, the oldest results are dropped. Expired results are kept for a day so the app can still show them if the Flixarr API is down, then the "Clear expired cache" job removes them (Settings → Jobs).</p>
+		<p class="mt-2 text-xs text-gray-500">When the limit is reached, the oldest results are dropped. Expired results are kept for a day so the app can still show them if the Flixarr API is down, then the "Clear expired cache" job removes them (Settings → Jobs).</p>
 	</div>
 
 	<div>
@@ -118,7 +124,7 @@
 				<Toggle checked={st.images.enabled} label="Cache images" about="Posters and backdrops load through your server and are saved on its disk, instead of each browser loading them from TMDB. TMDB then sees your server instead of each viewer."
 					onchange={(on) => save((s) => (s.images.enabled = on), on ? 'Images are cached. New pages load them through your server.' : 'Images load from TMDB again.')} />
 			</div>
-			{@render pick('Remove images not viewed for', st.images.days, DAYS.map((d) => [d, d + ' days'] as const), (s, v) => (s.images.days = v))}
+			{@render pick('Remove images not viewed for', 'images', st.images.days, st.images.defaultDays, DAYS.map((d) => [d, d + ' days'] as const), (s, v) => (s.images.days = v))}
 			<div class="flex items-center gap-3 py-3 text-sm">
 				<span class="flex-1">Saved images</span>
 				<span class="text-right"><span class="block tabular-nums">{fmtNum(st.images.count)}</span><span class="block text-xs text-gray-500">{fmtBytes(st.images.bytes)}</span></span>

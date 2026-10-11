@@ -76,11 +76,14 @@ export interface Status {
 
 export interface CacheKind { kind: 'titles' | 'people' | 'lists' | 'searches'; count: number; bytes: number }
 
+export interface CacheConfig { enabled: boolean; pagesMinutes: number; listsMinutes: number; searchesMinutes: number; maxResults: number }
+
 export interface CacheState {
-	settings: { enabled: boolean; pagesMinutes: number; listsMinutes: number; searchesMinutes: number; maxResults: number };
+	settings: CacheConfig;
+	defaults: CacheConfig;
 	kinds: CacheKind[];
 	counters: { hits: number; misses: number; stale: number; since: string };
-	images: { enabled: boolean; days: number; count: number; bytes: number };
+	images: { enabled: boolean; days: number; defaultDays: number; count: number; bytes: number };
 }
 
 export interface Job {
