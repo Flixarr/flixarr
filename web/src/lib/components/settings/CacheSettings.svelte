@@ -120,15 +120,17 @@
 	<div>
 		{@render heading('How long to keep')}
 		<div class="card divide-y divide-gray-700/40 px-4">
-			<div class="py-3 {st.settings.enabled ? '' : 'opacity-50'}">
-				<Toggle checked={st.settings.auto} disabled={!st.settings.enabled} label="Automatic keep times" about={st.settings.enabled ? 'The Flixarr API decides how long each result is kept, based on how often that title still changes.' : API_OFF}
-					onchange={(on) => save((s) => (s.settings.auto = on), on ? 'Keep times are automatic.' : 'Keep times are set by you.')} />
+			<div class="py-3">
+				<div class={st.settings.enabled ? '' : 'opacity-50'}><Toggle checked={st.settings.auto} disabled={!st.settings.enabled} label="Automatic keep times" about={st.settings.enabled ? 'The Flixarr API decides how long each result is kept, based on how often that title still changes.' : API_OFF}
+					onchange={(on) => save((s) => (s.settings.auto = on), on ? 'Keep times are automatic.' : 'Keep times are set by you.')} /></div>
+				{#if !st.settings.auto}
+					<div class="mt-2 ml-1 divide-y divide-gray-700/30 border-l-2 border-gray-700/60 pl-4">
+						{@render keep('Movie, series and people pages', 'pagesMinutes', PAGES)}
+						{@render keep('Discover rows and lists', 'listsMinutes', LISTS)}
+						{@render keep('Searches', 'searchesMinutes', SEARCHES)}
+					</div>
+				{/if}
 			</div>
-			{#if !st.settings.auto}
-				{@render keep('Movie, series and people pages', 'pagesMinutes', PAGES)}
-				{@render keep('Discover rows and lists', 'listsMinutes', LISTS)}
-				{@render keep('Searches', 'searchesMinutes', SEARCHES)}
-			{/if}
 			{@render keep('Size limit', 'maxResults', MAX.map((n) => [n, fmtNum(n) + ' results'] as const), 'Oldest results are removed first.')}
 			{@render pick('Remove images not viewed for', 'images', st.images.days, st.images.defaultDays, DAYS.map((d) => [d, d + ' days'] as const), (s, v) => (s.images.days = v), st.images.enabled ? "Images nobody has looked at in this long are deleted from your server's disk. They download again the next time someone views them." : 'Cache images is off.', !st.images.enabled)}
 		</div>
