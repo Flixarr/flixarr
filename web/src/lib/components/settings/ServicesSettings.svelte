@@ -240,7 +240,7 @@
 			{/if}
 		</div>
 		{#snippet footer()}
-			{#if saved?.[kind]}<button class="btn-ghost mr-auto text-red-300" onclick={() => (confirmRemove = true)}>Remove</button>{/if}
+			{#if saved?.[kind]}<button class="btn-ghost mr-auto text-red-300" onclick={() => { open = false; confirmRemove = true; }}>Remove</button>{/if}
 			<button class="btn-ghost" onclick={() => (open = false)}>Cancel</button>
 			<button class="btn px-6" disabled={!info || saving || !form.rootFolder || !form.qualityProfileId} onclick={save}>{saving ? 'Saving…' : 'Save'}</button>
 		{/snippet}
@@ -249,7 +249,7 @@
 	<Modal bind:open={confirmRemove} title="Remove {saved[kind]?.name ?? k.name}?" sub="The connection and its settings are deleted from Flixarr.">
 		<p class="p-5 text-sm text-gray-300">Nothing changes inside {k.name}. New requests can't be sent there until it's connected again.</p>
 		{#snippet footer()}
-			<button class="btn-ghost" onclick={() => (confirmRemove = false)}>Cancel</button>
+			<button class="btn-ghost" onclick={() => { confirmRemove = false; edit(kind); }}>Cancel</button>
 			<button class="btn px-6" onclick={remove}>Remove</button>
 		{/snippet}
 	</Modal>
