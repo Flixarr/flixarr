@@ -75,6 +75,16 @@
 	{@render pick(label, key, st!.settings[key], st!.defaults[key], opts, (s, v) => (s.settings[key] = v), st!.settings.enabled ? about : API_OFF, !st!.settings.enabled)}
 {/snippet}
 
+{#snippet small(label: string, key: TimeKey, opts: readonly (readonly [number, string])[])}
+	<div class="flex items-center justify-between gap-4 py-1.5 text-xs">
+		<label for={'cache-' + key} class="text-gray-400">{label}</label>
+		<select id={'cache-' + key} class="rounded-lg border border-gray-700/60 bg-gray-800/70 px-2.5 py-1 text-xs disabled:cursor-not-allowed" value={st!.settings[key]} disabled={!st!.settings.enabled}
+			onchange={(e) => save((s) => (s.settings[key] = +(e.currentTarget as HTMLSelectElement).value))}>
+			{#each opts as [v, l] (v)}<option value={v}>{l}{v === st!.defaults[key] ? ' (default)' : ''}</option>{/each}
+		</select>
+	</div>
+{/snippet}
+
 {#snippet stored(label: string, about: string, count: number, bytes: number, onflush: () => void)}
 	<div class="flex items-center gap-3 py-3 text-sm">
 		<span class="min-w-0 flex-1"><span class="block">{label}</span><span class="block text-xs text-gray-500">{about}</span></span>
@@ -120,14 +130,21 @@
 	<div>
 		{@render heading('How long to keep')}
 		<div class="card divide-y divide-gray-700/40 px-4">
-			<div class="py-3">
-				<div class={st.settings.enabled ? '' : 'opacity-50'}><Toggle checked={st.settings.auto} disabled={!st.settings.enabled} label="Automatic keep times" about={st.settings.enabled ? 'The Flixarr API decides how long each result is kept, based on how often that title still changes.' : API_OFF}
-					onchange={(on) => save((s) => (s.settings.auto = on), on ? 'Keep times are automatic.' : 'Keep times are set by you.')} /></div>
+			<div class="py-3 {st.settings.enabled ? '' : 'opacity-50'}">
+				<div class="flex items-center justify-between gap-4">
+					<span class="text-sm"><span class="block">Keep times</span><span class="block text-xs text-gray-500">{!st.settings.enabled ? API_OFF : st.settings.auto ? 'The Flixarr API decides how long each result is kept, based on how often that title still changes.' : 'You pick how long each kind of result is kept.'}</span></span>
+					<span class="inline-flex shrink-0 rounded-lg border border-gray-700/60 bg-gray-800/70 p-0.5 text-sm" role="radiogroup" aria-label="Keep times">
+						{#each [[true, 'Automatic'], [false, 'Custom']] as const as [auto, name] (name)}
+							<button class="rounded-md px-3 py-1 transition disabled:cursor-not-allowed {st.settings.auto === auto ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'}" role="radio" aria-checked={st.settings.auto === auto} disabled={!st.settings.enabled}
+								onclick={() => st!.settings.auto !== auto && save((s) => (s.settings.auto = auto), auto ? 'Keep times are automatic.' : 'Keep times are set by you.')}>{name}</button>
+						{/each}
+					</span>
+				</div>
 				{#if !st.settings.auto}
-					<div class="mt-2 ml-1 divide-y divide-gray-700/30 border-l-2 border-gray-700/60 pl-4">
-						{@render keep('Movie, series and people pages', 'pagesMinutes', PAGES)}
-						{@render keep('Discover rows and lists', 'listsMinutes', LISTS)}
-						{@render keep('Searches', 'searchesMinutes', SEARCHES)}
+					<div class="mt-3 rounded-lg border border-gray-700/50 bg-gray-900/60 px-4 py-1.5">
+						{@render small('Movie, series and people pages', 'pagesMinutes', PAGES)}
+						{@render small('Discover rows and lists', 'listsMinutes', LISTS)}
+						{@render small('Searches', 'searchesMinutes', SEARCHES)}
 					</div>
 				{/if}
 			</div>
