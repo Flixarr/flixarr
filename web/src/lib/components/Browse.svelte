@@ -1,3 +1,9 @@
+<script lang="ts" module>
+	// The Browse tab (phone) opens whichever of Movies/Series was used last.
+	const KEY = 'flixarr_browse';
+	export const lastBrowse = () => (typeof localStorage !== 'undefined' && localStorage.getItem(KEY) === 'series' ? '/series' : '/movies');
+</script>
+
 <script lang="ts">
 	// Movies / Series browse: genre pills, sort, a poster grid that keeps loading as you scroll.
 	// Going back to it restores the genre, sort, titles loaded so far and scroll position.
@@ -12,6 +18,7 @@
 
 	let { type }: { type: 'movie' | 'series' } = $props();
 	const label = $derived(type === 'series' ? 'Series' : 'Movies');
+	$effect(() => localStorage.setItem(KEY, type));
 	let genres = $state<{ id: number; name: string }[]>([]);
 	let genre = $state<string | number>(0);
 	let sort = $state('popular');
@@ -72,7 +79,15 @@
 
 <main class="mx-auto max-w-[1600px] space-y-6 pb-28 pt-20 laptop:px-10 laptop:pt-24">
 	<div class="flex flex-wrap items-end justify-between gap-4 px-4 laptop:px-0">
-		<div><h1 class="text-2xl font-bold laptop:text-3xl">{label}</h1><p class="mt-1 text-sm text-gray-400">Tap anything to see details.</p></div>
+		<div>
+			<!-- Phone: switch between Movies and Series (the top bar has both links from tablet up). -->
+			<div class="mb-3 inline-grid grid-cols-2 gap-1 rounded-xl border border-gray-700/60 p-1 tablet:hidden">
+				{#each [['Movies', '/movies', 'movie'], ['Series', '/series', 'series']] as [l, h, t] (h)}
+					<a href={h} class="rounded-lg px-5 py-1.5 text-center text-sm {type === t ? 'bg-primary text-white' : 'text-gray-400'}">{l}</a>
+				{/each}
+			</div>
+			<h1 class="text-2xl font-bold laptop:text-3xl">{label}</h1><p class="mt-1 text-sm text-gray-400">Tap anything to see details.</p>
+		</div>
 		<select bind:value={sort} class="rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-1.5 text-sm">
 			<option value="popular">Popular</option><option value="rating">Top rated</option><option value="newest">Newest</option>
 		</select>
