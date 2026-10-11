@@ -5,12 +5,13 @@
 	import type { CacheState } from '#lib/types.ts';
 	import Toggle from '#lib/components/Toggle.svelte';
 	import Modal from '#lib/components/Modal.svelte';
+	import Tip from '#lib/components/Tip.svelte';
 
 	const KINDS = { titles: ['Titles', 'Movies, series, seasons, collections'], people: ['People', 'Cast and crew pages'], lists: ['Lists', 'Discover rows, browse pages, genres'], searches: ['Searches', 'Search results'] };
 	const PAGES = [[360, '6 hours'], [720, '12 hours'], [1440, '1 day'], [4320, '3 days'], [10080, '7 days']] as const;
 	const LISTS = [[360, '6 hours'], [720, '12 hours'], [1440, '1 day'], [4320, '3 days']] as const;
 	const SEARCHES = [[360, '6 hours'], [720, '12 hours'], [1440, '1 day'], [4320, '3 days'], [10080, '7 days']] as const;
-	const MAX = [1000, 5000, 10000, 25000, 50000, 100000];
+	const MAX = [5000, 10000, 25000, 50000, 100000];
 	const DAYS = [7, 14, 30, 60, 90];
 	const API_OFF = 'Cache API responses is off.';
 
@@ -22,6 +23,10 @@
 	let busy = $state('');
 
 	const total = $derived(st ? st.kinds.reduce((a, k) => ({ count: a.count + k.count, bytes: a.bytes + k.bytes }), { count: st.images.count, bytes: st.images.bytes }) : null);
+	// Average size of one saved result: this install's own once there's enough to measure, else a typical figure.
+	const results = $derived(st ? st.kinds.reduce((a, k) => ({ count: a.count + k.count, bytes: a.bytes + k.bytes }), { count: 0, bytes: 0 }) : { count: 0, bytes: 0 });
+	const measured = $derived(results.count >= 50);
+	const perResult = $derived(measured ? results.bytes / results.count : 12 * 1024);
 	const lookups = $derived(st ? st.counters.hits + st.counters.misses : 0);
 
 	$effect(() => {
@@ -148,7 +153,22 @@
 					</div>
 				{/if}
 			</div>
-			{@render keep('Size limit', 'maxResults', MAX.map((n) => [n, fmtNum(n) + ' results'] as const), 'Oldest results are removed first.')}
+			<div class="flex items-center justify-between gap-4 py-3 text-sm {st.settings.enabled ? '' : 'opacity-50'}">
+				<span>
+					<span class="flex items-center gap-1.5"><label for="cache-maxResults">Size limit</label>
+						<Tip label="How much space each size limit takes">
+							<span class="block pb-1 font-medium text-gray-200">Space used when full</span>
+							{#each MAX as n (n)}<span class="flex justify-between tabular-nums"><span>{fmtNum(n)} results</span><span>about {fmtBytes(n * perResult)}</span></span>{/each}
+							<span class="block pt-1.5 text-gray-500">{measured ? `Based on this install's average of ${fmtBytes(perResult)} per result.` : 'Estimated at about 12 KB per result until there are enough saved results to measure.'}</span>
+						</Tip>
+					</span>
+					<span class="mt-0.5 block text-xs text-gray-500">{st.settings.enabled ? 'Oldest results are removed first.' : API_OFF}</span>
+				</span>
+				<select id="cache-maxResults" class="rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-1.5 text-sm disabled:cursor-not-allowed" value={st.settings.maxResults} disabled={!st.settings.enabled}
+					onchange={(e) => save((s) => (s.settings.maxResults = +(e.currentTarget as HTMLSelectElement).value))}>
+					{#each MAX as n (n)}<option value={n}>{fmtNum(n)} results{n === st.defaults.maxResults ? ' (default)' : ''}</option>{/each}
+				</select>
+			</div>
 			{@render pick('Remove images not viewed for', 'images', st.images.days, st.images.defaultDays, DAYS.map((d) => [d, d + ' days'] as const), (s, v) => (s.images.days = v), st.images.enabled ? "Images nobody has looked at in this long are deleted from your server's disk. They download again the next time someone views them." : 'Cache images is off.', !st.images.enabled)}
 		</div>
 	</div>
