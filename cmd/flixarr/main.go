@@ -19,6 +19,7 @@ import (
 	"github.com/Flixarr/flixarr/internal/jobs"
 	"github.com/Flixarr/flixarr/internal/meta"
 	"github.com/Flixarr/flixarr/internal/plex"
+	"github.com/Flixarr/flixarr/internal/secret"
 	"github.com/Flixarr/flixarr/internal/server"
 	"github.com/Flixarr/flixarr/internal/store"
 	"github.com/Flixarr/flixarr/internal/update"
@@ -43,7 +44,12 @@ func main() {
 		log.Error("data dir", "err", err)
 		os.Exit(1)
 	}
-	st, err := store.Open(dataDir)
+	box, err := secret.Load(dataDir)
+	if err != nil {
+		log.Error("secret key", "err", err)
+		os.Exit(1)
+	}
+	st, err := store.Open(dataDir, box)
 	if err != nil {
 		log.Error("database", "err", err)
 		os.Exit(1)

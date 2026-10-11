@@ -3,6 +3,8 @@ package store
 import (
 	"database/sql"
 	"errors"
+
+	"github.com/Flixarr/flixarr/internal/secret"
 )
 
 // Server is a Radarr or Sonarr connection.
@@ -24,10 +26,44 @@ type Server struct {
 
 const serverCols = `id, kind, name, url, api_key, root_folder, quality_profile_id, quality_profile_name, season_folders, search_on_add, enabled, created_at, updated_at`
 
-func scanServer(row interface{ Scan(...any) error }) (Server, error) {
+// scanServer reads a row and decrypts its API key. A key that can't be decrypted (the secret key
+// changed) comes back empty, so the screen asks for it again instead of failing.
+func (s *Store) scanServer(row interface{ Scan(...any) error }) (Server, error) {
 	var v Server
 	err := row.Scan(&v.ID, &v.Kind, &v.Name, &v.URL, &v.APIKey, &v.RootFolder, &v.QualityProfileID, &v.QualityProfileName, &v.SeasonFolders, &v.SearchOnAdd, &v.Enabled, &v.CreatedAt, &v.UpdatedAt)
+	if err == nil {
+		if v.APIKey, err = s.box.Open(v.APIKey); err != nil {
+			v.APIKey, err = "", nil
+		}
+	}
 	return v, err
+}
+
+// sealServerKeys encrypts any API key saved before encryption existed.
+func (s *Store) sealServerKeys() error {
+	rows, err := s.db.Query(`SELECT id, api_key FROM servers`)
+	if err != nil {
+		return err
+	}
+	plain := map[int64]string{}
+	for rows.Next() {
+		var id int64
+		var key string
+		if err := rows.Scan(&id, &key); err != nil {
+			rows.Close()
+			return err
+		}
+		if key != "" && !secret.Sealed(key) {
+			plain[id] = key
+		}
+	}
+	rows.Close()
+	for id, key := range plain {
+		if _, err := s.db.Exec(`UPDATE servers SET api_key = ? WHERE id = ?`, s.box.Seal(key), id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Servers lists every connection, oldest first.
@@ -39,7 +75,7 @@ func (s *Store) Servers() ([]Server, error) {
 	defer rows.Close()
 	out := []Server{}
 	for rows.Next() {
-		v, err := scanServer(rows)
+		v, err := s.scanServer(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -50,7 +86,7 @@ func (s *Store) Servers() ([]Server, error) {
 
 // FirstServer returns the oldest connection of a kind, or ok=false when there is none.
 func (s *Store) FirstServer(kind string) (Server, bool, error) {
-	v, err := scanServer(s.db.QueryRow(`SELECT `+serverCols+` FROM servers WHERE kind = ? ORDER BY id LIMIT 1`, kind))
+	v, err := s.scanServer(s.db.QueryRow(`SELECT `+serverCols+` FROM servers WHERE kind = ? ORDER BY id LIMIT 1`, kind))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Server{}, false, nil
 	}
@@ -63,7 +99,7 @@ func (s *Store) SaveServer(v Server) (Server, error) {
 	if v.ID == 0 {
 		res, err := s.db.Exec(`INSERT INTO servers (kind, name, url, api_key, root_folder, quality_profile_id, quality_profile_name, season_folders, search_on_add, enabled, created_at, updated_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			v.Kind, v.Name, v.URL, v.APIKey, v.RootFolder, v.QualityProfileID, v.QualityProfileName, v.SeasonFolders, v.SearchOnAdd, v.Enabled, t, t)
+			v.Kind, v.Name, v.URL, s.box.Seal(v.APIKey), v.RootFolder, v.QualityProfileID, v.QualityProfileName, v.SeasonFolders, v.SearchOnAdd, v.Enabled, t, t)
 		if err != nil {
 			return Server{}, err
 		}
@@ -71,10 +107,10 @@ func (s *Store) SaveServer(v Server) (Server, error) {
 			return Server{}, err
 		}
 	} else if _, err := s.db.Exec(`UPDATE servers SET name = ?, url = ?, api_key = ?, root_folder = ?, quality_profile_id = ?, quality_profile_name = ?, season_folders = ?, search_on_add = ?, enabled = ?, updated_at = ? WHERE id = ?`,
-		v.Name, v.URL, v.APIKey, v.RootFolder, v.QualityProfileID, v.QualityProfileName, v.SeasonFolders, v.SearchOnAdd, v.Enabled, t, v.ID); err != nil {
+		v.Name, v.URL, s.box.Seal(v.APIKey), v.RootFolder, v.QualityProfileID, v.QualityProfileName, v.SeasonFolders, v.SearchOnAdd, v.Enabled, t, v.ID); err != nil {
 		return Server{}, err
 	}
-	return scanServer(s.db.QueryRow(`SELECT `+serverCols+` FROM servers WHERE id = ?`, v.ID))
+	return s.scanServer(s.db.QueryRow(`SELECT `+serverCols+` FROM servers WHERE id = ?`, v.ID))
 }
 
 // DeleteServer removes a connection.

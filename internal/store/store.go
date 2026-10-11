@@ -16,6 +16,8 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver: no cgo, so one static binary for amd64 and arm64
+
+	"github.com/Flixarr/flixarr/internal/secret"
 )
 
 //go:embed migrations/*.sql
@@ -25,20 +27,27 @@ var migrations embed.FS
 var ErrNotFound = errors.New("not found")
 
 // Store wraps the database handle.
-type Store struct{ db *sql.DB }
+type Store struct {
+	db  *sql.DB
+	box *secret.Box // encrypts stored secrets (API keys)
+}
 
 // Open opens (or creates) flixarr.db inside dataDir and applies pending migrations.
-func Open(dataDir string) (*Store, error) {
+func Open(dataDir string, box *secret.Box) (*Store, error) {
 	dsn := "file:" + filepath.Join(dataDir, "flixarr.db") + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1) // SQLite has one writer; a single connection avoids "database is locked"
-	s := &Store{db: db}
+	s := &Store{db: db, box: box}
 	if err := s.migrate(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
+	}
+	if err := s.sealServerKeys(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("encrypt keys: %w", err)
 	}
 	return s, nil
 }
