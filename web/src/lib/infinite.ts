@@ -1,6 +1,6 @@
 // Infinite scroll: put this action on an element after the grid. While it's within MARGIN of the screen it keeps
 // calling more() (one page at a time) until more() returns false or the element scrolls out of range.
-const MARGIN = '1200px';
+const MARGIN = '600px';
 
 export function infinite(node: Element, more: () => Promise<boolean>) {
 	let near = false;
