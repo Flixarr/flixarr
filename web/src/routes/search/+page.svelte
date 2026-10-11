@@ -36,7 +36,10 @@
 	// Debounced live search.
 	$effect(() => {
 		const term = q.trim();
-		replaceState(term ? `/search?q=${encodeURIComponent(term)}` : '/search', {});
+		// Only touch the URL when it actually changes: replacing the history entry on arrival would drop its saved
+		// back-button snapshot.
+		const url = term ? `/search?q=${encodeURIComponent(term)}` : '/search';
+		if (url !== page.url.pathname + page.url.search) replaceState(url, {});
 		if (!term) { hits = []; return; }
 		busy = true;
 		let alive = true;
