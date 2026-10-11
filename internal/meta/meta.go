@@ -53,9 +53,10 @@ const (
 
 // Counters are hits and misses since the app started.
 type Counters struct {
-	Hits   int64 `json:"hits"`   // answered from the cache
-	Misses int64 `json:"misses"` // fetched from the API
-	Stale  int64 `json:"stale"`  // the API was down, so an expired copy was used
+	Hits   int64     `json:"hits"`   // answered from the cache
+	Misses int64     `json:"misses"` // fetched from the API
+	Stale  int64     `json:"stale"`  // the API was down, so an expired copy was used
+	Since  time.Time `json:"since"`  // when the app started (counters reset on restart)
 }
 
 // Client proxies requests to the Flixarr API through the cache.
@@ -64,6 +65,7 @@ type Client struct {
 	HTTP  *http.Client
 	Store *store.Store
 
+	started time.Time
 	mu      sync.RWMutex
 	cfg     Config
 	hits    atomic.Int64
@@ -74,7 +76,7 @@ type Client struct {
 
 // New returns an API client. base is e.g. https://api.flixarr.app.
 func New(base, userAgent string, st *store.Store) *Client {
-	c := &Client{Base: strings.TrimRight(base, "/"), Store: st}
+	c := &Client{Base: strings.TrimRight(base, "/"), Store: st, started: time.Now().UTC()}
 	c.HTTP = &http.Client{Timeout: 15 * time.Second, Transport: uaTransport{ua: userAgent}}
 	c.cfg = c.loadConfig()
 	return c
@@ -140,7 +142,7 @@ func (c *Client) SetConfig(cfg Config) error {
 
 // Counters returns hits, misses and stale answers since the app started.
 func (c *Client) Counters() Counters {
-	return Counters{Hits: c.hits.Load(), Misses: c.misses.Load(), Stale: c.stale.Load()}
+	return Counters{Hits: c.hits.Load(), Misses: c.misses.Load(), Stale: c.stale.Load(), Since: c.started}
 }
 
 // allowed paths under /v1 (anything else is rejected before leaving the server)

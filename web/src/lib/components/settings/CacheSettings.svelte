@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { api, fmtBytes, fmtNum, prefs } from '#lib/api.ts';
+	import { api, fmtBytes, fmtNum, fmtDate, prefs } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import type { CacheState } from '#lib/types.ts';
@@ -21,8 +21,12 @@
 	const lookups = $derived(st ? st.counters.hits + st.counters.misses : 0);
 
 	$effect(() => {
-		api<CacheState>('/cache').then((d) => (st = d));
+		const load = () => api<CacheState>('/cache').then((d) => (st = d));
+		load();
+		const t = setInterval(load, 10000); // counts and hits stay current while the page is open
+		return () => clearInterval(t);
 	});
+	const since = $derived(st ? fmtDate(st.counters.since, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
 
 	async function save(change: (s: CacheState) => void, msg = 'Saved.') {
 		if (!st) return;
@@ -84,11 +88,11 @@
 			</div>
 			<div class="py-3 text-xs text-gray-400">
 				{#if lookups}
-					Since the app started: <span class="text-white">{fmtNum(st.counters.hits)}</span> answered from the cache, <span class="text-white">{fmtNum(st.counters.misses)}</span> fetched from the Flixarr API
+					Since the app started ({since}): <span class="text-white">{fmtNum(st.counters.hits)}</span> answered from the cache, <span class="text-white">{fmtNum(st.counters.misses)}</span> fetched from the Flixarr API
 					(<span class="text-green-400">{Math.round((st.counters.hits / lookups) * 100)}% from the cache</span>).
 					{#if st.counters.stale}<span class="block pt-1 text-yellow-400">{fmtNum(st.counters.stale)} served from an expired copy while the Flixarr API was down.</span>{/if}
 				{:else}
-					No lookups since the app started{st.settings.enabled ? '' : ' with saving on'}.
+					No lookups since the app started ({since}){st.settings.enabled ? '' : ' with saving on'}.
 				{/if}
 			</div>
 		</div>

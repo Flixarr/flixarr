@@ -298,11 +298,9 @@ func (s *Server) metaProxy(w http.ResponseWriter, r *http.Request, _ *store.User
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if s.Meta.Config().Enabled {
-		w.Header().Set("Cache-Control", "private, max-age=300")
-	} else {
-		w.Header().Set("Cache-Control", "no-store")
-	}
+	// no-store: the browser must not keep its own copy, or repeat visits never reach the cache (or its counters).
+	// A cache hit here takes under a millisecond, so nothing is lost.
+	w.Header().Set("Cache-Control", "no-store")
 	w.Write(body)
 }
 

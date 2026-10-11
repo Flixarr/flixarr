@@ -79,7 +79,7 @@ export interface CacheKind { kind: 'titles' | 'people' | 'lists' | 'searches'; c
 export interface CacheState {
 	settings: { enabled: boolean; pagesMinutes: number; listsMinutes: number; searchesMinutes: number; maxResults: number };
 	kinds: CacheKind[];
-	counters: { hits: number; misses: number; stale: number };
+	counters: { hits: number; misses: number; stale: number; since: string };
 	images: { enabled: boolean; days: number; count: number; bytes: number };
 }
 
