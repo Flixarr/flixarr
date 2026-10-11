@@ -7,9 +7,9 @@
 	import Modal from '#lib/components/Modal.svelte';
 
 	const KINDS = { titles: ['Titles', 'Movies, series, seasons, collections'], people: ['People', 'Cast and crew pages'], lists: ['Lists', 'Discover rows, browse pages, genres'], searches: ['Searches', 'Search results'] };
-	const PAGES = [[60, '1 hour'], [360, '6 hours'], [720, '12 hours'], [1440, '1 day'], [4320, '3 days'], [10080, '7 days']] as const;
-	const LISTS = [[15, '15 minutes'], [60, '1 hour'], [180, '3 hours'], [360, '6 hours'], [720, '12 hours'], [1440, '1 day']] as const;
-	const SEARCHES = [[15, '15 minutes'], [60, '1 hour'], [180, '3 hours'], [360, '6 hours'], [1440, '1 day']] as const;
+	const PAGES = [[360, '6 hours'], [720, '12 hours'], [1440, '1 day'], [4320, '3 days'], [10080, '7 days']] as const;
+	const LISTS = [[360, '6 hours'], [720, '12 hours'], [1440, '1 day'], [4320, '3 days']] as const;
+	const SEARCHES = [[360, '6 hours'], [720, '12 hours'], [1440, '1 day'], [4320, '3 days'], [10080, '7 days']] as const;
 	const MAX = [1000, 5000, 10000, 25000, 50000, 100000];
 	const DAYS = [7, 14, 30, 60, 90];
 	const API_OFF = 'Cache API responses is off.';

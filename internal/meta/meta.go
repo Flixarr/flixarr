@@ -41,7 +41,7 @@ type Config struct {
 }
 
 // DefaultConfig is what a new install starts with.
-var DefaultConfig = Config{Enabled: true, Auto: true, PagesMin: 24 * 60, ListsMin: 3 * 60, SearchesMin: 60, MaxResults: 10000}
+var DefaultConfig = Config{Enabled: true, Auto: true, PagesMin: 24 * 60, ListsMin: 12 * 60, SearchesMin: 24 * 60, MaxResults: 10000}
 
 // With Auto on, each answer is kept for as long as the API says it stays fresh (for title pages:
 // hours for airing series and new or upcoming movies, days for ended series, older movies and
