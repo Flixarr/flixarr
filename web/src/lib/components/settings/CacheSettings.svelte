@@ -79,7 +79,7 @@
 		{@render heading('Saved results')}
 		<div class="card divide-y divide-gray-700/40 px-4">
 			<div class="py-3">
-				<Toggle checked={st.settings.enabled} label="Save results" about="Keeps answers from the Flixarr API in this app's database, so repeat lookups are instant and don't leave your server. Saved results survive restarts and updates."
+				<Toggle checked={st.settings.enabled} label="Save results" about="Keeps answers from the Flixarr API in this app's database, so repeat lookups are instant and don't leave your server. Saved results survive restarts and updates. If the Flixarr API is unreachable, expired results are shown for up to a day."
 					onchange={(on) => save((s) => (s.settings.enabled = on), on ? 'Results are saved again.' : "Results aren't saved. Every lookup goes to the Flixarr API.")} />
 			</div>
 			{#each st.kinds as k (k.kind)}
@@ -109,12 +109,11 @@
 	<div>
 		{@render heading('How long to keep')}
 		<div class="card divide-y divide-gray-700/40 px-4">
-			{@render keep('Movie, series and people pages', 'pagesMinutes', PAGES, st.settings.pagesMinutes === 0 ? 'New and airing titles refresh every few hours, older ones weekly.' : '')}
+			{@render keep('Movie, series and people pages', 'pagesMinutes', PAGES, st.settings.pagesMinutes === 0 ? '6 hours to 7 days, depending on how much the title still changes.' : '')}
 			{@render keep('Discover rows and lists', 'listsMinutes', LISTS)}
 			{@render keep('Searches', 'searchesMinutes', SEARCHES)}
-			{@render keep('Size limit', 'maxResults', MAX.map((n) => [n, fmtNum(n) + ' results'] as const))}
+			{@render keep('Size limit', 'maxResults', MAX.map((n) => [n, fmtNum(n) + ' results'] as const), 'The oldest results are dropped first.')}
 		</div>
-		<p class="mt-2 text-xs text-gray-500">When the limit is reached, the oldest results are dropped. Expired results are kept for a day so the app can still show them if the Flixarr API is down, then the "Clear expired cache" job removes them (Settings → Jobs).</p>
 	</div>
 
 	<div>
