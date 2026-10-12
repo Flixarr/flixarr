@@ -5,6 +5,7 @@
 	import { notify } from '#lib/toast.svelte.ts';
 	import Toggle from '#lib/components/Toggle.svelte';
 	import Modal from '#lib/components/Modal.svelte';
+	import PlexMark from '#lib/components/PlexMark.svelte';
 
 	type Section = { key: string; type: 'movie' | 'show'; title: string; enabled: boolean; items: number };
 	type Status = { connected: boolean; id?: string; name?: string; url?: string; sections: Section[]; lastFull?: string; error?: string };
@@ -100,7 +101,7 @@
 {:else if st}
 	{#if st.connected && !picking}
 		<div class="card flex flex-wrap items-center gap-4 p-4">
-			<img src="/logos/plex.svg" alt="" class="size-10 shrink-0 rounded-xl" />
+			<span class="grid size-10 shrink-0 place-items-center rounded-xl bg-[#1f2326] ring-1 ring-white/10"><PlexMark class="h-3/5 w-3/5 translate-x-[6%]" /></span>
 			<div class="min-w-0 flex-1 text-sm">
 				<div class="font-medium">{st.name}</div>
 				<div class="truncate text-xs text-gray-400">{st.url}</div>

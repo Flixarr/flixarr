@@ -73,11 +73,15 @@ func (s *Server) requestStatus(w http.ResponseWriter, r *http.Request, _ *store.
 	for k, v := range got {
 		out[k] = brief{ID: v.ID, Status: v.Status, Progress: v.Progress}
 	}
-	// In Plex = available, whoever added it and whether or not it was requested.
+	// In Plex: a movie is available whoever added it. A series gets the Plex link, but an open request
+	// for more seasons keeps its own status.
 	if inPlex, err := s.Library.Lookup(keys); err == nil {
 		for k, it := range inPlex {
-			b := out[k]
-			b.Status, b.Progress, b.Plex = "available", 100, it.URL
+			b, requested := out[k]
+			if strings.HasPrefix(k, "movie:") || !requested || b.Status == "available" || b.Status == "failed" || b.Status == "declined" {
+				b.Status, b.Progress = "available", 100
+			}
+			b.Plex = it.URL
 			out[k] = b
 		}
 	}

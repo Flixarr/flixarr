@@ -4,6 +4,7 @@
 	import { api } from '#lib/api.ts';
 	import type { Movie, Series, RequestBrief } from '#lib/types.ts';
 	import Icon from './Icon.svelte';
+	import PlexMark from './PlexMark.svelte';
 	import RequestModal from './RequestModal.svelte';
 
 	// req: undefined while loading, null when never requested and not in Plex. Bindable so the page can show "In your library".
@@ -22,9 +23,14 @@
 </script>
 
 {#if req?.plex}
-	<a href={req.plex} target="_blank" rel="noopener" class="inline-flex items-center gap-2 rounded-lg bg-green-500/15 px-4 py-2 text-sm font-medium text-green-300 ring-1 ring-green-500/40 hover:bg-green-500/25">
-		<Icon name="play" class="size-4" />Available · Play on Plex
-	</a>
+	<a href={req.plex} target="_blank" rel="noopener" class="btn-plex"><PlexMark class="size-4" color="#111827" />Play on Plex</a>
+	{#if item.type === 'series'}
+		{#if req.status === 'available'}
+			<button class="btn-ghost px-4" onclick={() => (open = true)}><Icon name="plus" class="size-4" />Request more</button>
+		{:else}
+			<a href="/requests" class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium ring-1 {TONE[req.status] ?? 'bg-gray-800/70 text-gray-200 ring-gray-700/60'}">{TEXT[req.status]}{req.status === 'downloading' && req.progress ? ` ${req.progress}%` : ''}</a>
+		{/if}
+	{/if}
 {:else if req && req.status !== 'declined' && req.status !== 'failed'}
 	<a href="/requests" class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium ring-1 {TONE[req.status] ?? 'bg-gray-800/70 text-gray-200 ring-gray-700/60'}">
 		{#if req.status === 'available'}<Icon name="check" class="size-4" />{/if}{TEXT[req.status]}{req.status === 'downloading' && req.progress ? ` ${req.progress}%` : ''}
@@ -32,4 +38,4 @@
 {:else}
 	<button class="btn px-5" onclick={() => (open = true)}><Icon name="plus" class="size-4" />Request</button>
 {/if}
-<RequestModal bind:open {item} onrequested={(r) => (req = { id: r.id, status: r.status, progress: r.progress })} />
+<RequestModal bind:open {item} onrequested={(r) => (req = { id: r.id, status: r.status, progress: r.progress, plex: req?.plex })} />

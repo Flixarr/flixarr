@@ -36,7 +36,7 @@
 {:else if m}
 	<DetailHeader item={m}>
 		{#snippet chip()}
-			{#if brief?.plex}<span class="rounded-md bg-green-500/15 px-1.5 py-0.5 text-green-300 ring-1 ring-green-500/40">In your library</span>
+			{#if brief?.plex}<span class="rounded-md bg-green-500/15 px-1.5 py-0.5 text-green-400 ring-1 ring-green-500/40">✓ In your library</span>
 			{:else if brief !== undefined}<span class="rounded-md bg-gray-900/70 px-1.5 py-0.5 text-gray-300 ring-1 ring-gray-700/60">Not in your library</span>{/if}
 		{/snippet}
 		{#snippet actions()}

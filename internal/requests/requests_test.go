@@ -23,6 +23,8 @@ type fakeArr struct {
 	queue   string // JSON for queue/details
 	reject  bool   // answer adds with a validation error
 	inLib   bool   // the title is already in the library
+	put     map[string]any
+	cmds    []map[string]any
 }
 
 func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -72,6 +74,19 @@ func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			map[string]any{"seasonNumber": 1, "statistics": map[string]any{"episodeFileCount": have, "episodeCount": 8}},
 			map[string]any{"seasonNumber": 2, "statistics": map[string]any{"episodeFileCount": have, "episodeCount": 8}},
 			map[string]any{"seasonNumber": 3, "statistics": map[string]any{"episodeFileCount": 0, "episodeCount": 8}}}})
+	case p == "series/77" && r.Method == http.MethodGet:
+		json.NewEncoder(w).Encode(map[string]any{"id": 77, "monitored": true, "seasons": []any{
+			map[string]any{"seasonNumber": 0, "monitored": false}, map[string]any{"seasonNumber": 1, "monitored": true}, map[string]any{"seasonNumber": 2, "monitored": false}, map[string]any{"seasonNumber": 3, "monitored": false}}})
+	case p == "series/77" && r.Method == http.MethodPut:
+		b, _ := io.ReadAll(r.Body)
+		json.Unmarshal(b, &f.put)
+		w.Write(b)
+	case p == "command":
+		var body map[string]any
+		b, _ := io.ReadAll(r.Body)
+		json.Unmarshal(b, &body)
+		f.cmds = append(f.cmds, body)
+		w.Write([]byte(`{}`))
 	case p == "queue/details":
 		q := f.queue
 		if q == "" {
@@ -199,5 +214,43 @@ func TestPlexMakesAvailable(t *testing.T) {
 	st.DeleteRequest(r.ID)
 	if _, err := s.Create(ctx, admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix"}); err != ErrInPlex {
 		t.Fatalf("request something in Plex: %v", err)
+	}
+}
+
+func TestSeriesInPlexStillRequestable(t *testing.T) {
+	s, st, _, _, admin, _ := setup(t)
+	ctx := context.Background()
+	st.SavePlexItem(store.PlexItem{Type: "series", TmdbID: 1396, RatingKey: "7", Section: "2", SeenAt: "2026-01-01T00:00:00Z"})
+	r, err := s.Create(ctx, admin, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad", Seasons: []int{3}})
+	if err != nil || r.Status != "sent" {
+		t.Fatalf("series in Plex: %+v %v", r, err)
+	}
+	s.Refresh(ctx) // season 3 has no files: not available just because the show is in Plex
+	if r, _ = st.Request(r.ID); r.Status == "available" {
+		t.Fatalf("series marked available from Plex: %+v", r)
+	}
+}
+
+func TestMoreSeasonsOfSeriesInSonarr(t *testing.T) {
+	s, st, _, sonarr, admin, _ := setup(t)
+	ctx := context.Background()
+	sonarr.inLib = true
+	srv, _, _ := st.FirstServer("sonarr")
+	srv.SearchOnAdd = true
+	st.SaveServer(srv)
+	r, err := s.Create(ctx, admin, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad", Seasons: []int{3}})
+	if err != nil || r.Status != "sent" || r.ArrID != 77 || len(sonarr.added) != 0 {
+		t.Fatalf("create: %+v %v", r, err)
+	}
+	mon := map[int]bool{}
+	for _, x := range sonarr.put["seasons"].([]any) {
+		m := x.(map[string]any)
+		mon[int(m["seasonNumber"].(float64))] = m["monitored"].(bool)
+	}
+	if !mon[1] || mon[2] || !mon[3] || mon[0] {
+		t.Fatalf("monitored after request: %v", mon)
+	}
+	if len(sonarr.cmds) != 1 || sonarr.cmds[0]["name"] != "SeasonSearch" || sonarr.cmds[0]["seasonNumber"].(float64) != 3 {
+		t.Fatalf("search commands: %v", sonarr.cmds)
 	}
 }

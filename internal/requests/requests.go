@@ -66,7 +66,8 @@ func (s *Service) Create(ctx context.Context, u *store.User, in New) (store.Requ
 	if in.TmdbID <= 0 || strings.TrimSpace(in.Title) == "" {
 		return store.Request{}, errors.New("missing title")
 	}
-	if inPlex(s.Store, in.Type, in.TmdbID) {
+	// A movie in Plex is done. A series can still be missing seasons, so it can be requested.
+	if in.Type == "movie" && inPlex(s.Store, in.Type, in.TmdbID) {
 		return store.Request{}, ErrInPlex
 	}
 	if _, open, err := s.Store.OpenRequest(in.Type, in.TmdbID); err != nil {
@@ -190,13 +191,13 @@ func (s *Service) sendSeries(ctx context.Context, v store.Server, r *store.Reque
 		return errors.New("Sonarr couldn't find this series")
 	}
 	series := found[0]
-	if id := num(series["id"]); id > 0 { // already in Sonarr
-		r.ArrID, r.Status = id, "sent"
-		return nil
-	}
 	want := map[int]bool{}
 	for _, n := range r.Seasons {
 		want[n] = true
+	}
+	if id := num(series["id"]); id > 0 { // already in Sonarr: monitor the requested seasons and search for them
+		r.ArrID, r.Status = id, "sent"
+		return s.monitorSeasons(ctx, c, v, id, r.Mode == "all", want)
 	}
 	if seasons, ok := series["seasons"].([]any); ok {
 		for _, x := range seasons {
@@ -220,6 +221,39 @@ func (s *Service) sendSeries(ctx context.Context, v store.Server, r *store.Reque
 		return fmt.Errorf("Sonarr didn't add it: %w", err)
 	}
 	r.ArrID, r.Status = num(added["id"]), "sent"
+	return nil
+}
+
+// monitorSeasons turns on the requested seasons of a series already in Sonarr (it never turns any off)
+// and, if the server searches on request, searches for the newly monitored ones.
+func (s *Service) monitorSeasons(ctx context.Context, c *arr.Client, v store.Server, id int, all bool, want map[int]bool) error {
+	var sr map[string]any
+	if err := c.Get(ctx, fmt.Sprintf("series/%d", id), &sr); err != nil {
+		return fmt.Errorf("Sonarr couldn't read the series: %w", err)
+	}
+	var added []int
+	if seasons, ok := sr["seasons"].([]any); ok {
+		for _, x := range seasons {
+			m, _ := x.(map[string]any)
+			n := num(m["seasonNumber"])
+			if on, _ := m["monitored"].(bool); n > 0 && !on && (all || want[n]) {
+				m["monitored"] = true
+				added = append(added, n)
+			}
+		}
+	}
+	if len(added) == 0 && sr["monitored"] == true {
+		return nil // everything asked for is already monitored
+	}
+	sr["monitored"] = true
+	if err := c.Put(ctx, fmt.Sprintf("series/%d", id), sr, nil); err != nil {
+		return fmt.Errorf("Sonarr didn't update the series: %w", err)
+	}
+	if v.SearchOnAdd {
+		for _, n := range added {
+			c.Post(ctx, "command", map[string]any{"name": "SeasonSearch", "seriesId": id, "seasonNumber": n}, nil)
+		}
+	}
 	return nil
 }
 
@@ -255,8 +289,8 @@ func (s *Service) Refresh(ctx context.Context) error {
 			continue
 		}
 		before := r
-		if inPlex(s.Store, r.Type, r.TmdbID) {
-			r.Status, r.Progress = "available", 100 // Plex has it: that's what people care about
+		if r.Type == "movie" && inPlex(s.Store, r.Type, r.TmdbID) {
+			r.Status, r.Progress = "available", 100 // Plex has it (series go by Sonarr's season counts)
 		} else if err := s.follow(ctx, v, &r); err != nil {
 			continue // try again next minute
 		}
