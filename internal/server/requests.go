@@ -113,7 +113,11 @@ func (s *Server) requestApprove(w http.ResponseWriter, r *http.Request, u *store
 	}
 	s.Store.DecideRequest(req.ID, u.ID, "approved")
 	req.Status = "approved"
-	writeJSON(w, http.StatusOK, s.Requests.Send(r.Context(), req))
+	req = s.Requests.Send(r.Context(), req)
+	if req.Status != "failed" {
+		s.Notify.Send(s.Notify.FromRequest("request_approved", req))
+	}
+	writeJSON(w, http.StatusOK, req)
 }
 
 func (s *Server) requestDecline(w http.ResponseWriter, r *http.Request, u *store.User) {
@@ -127,6 +131,7 @@ func (s *Server) requestDecline(w http.ResponseWriter, r *http.Request, u *store
 	}
 	s.Store.DecideRequest(req.ID, u.ID, "declined")
 	req, _ = s.Store.Request(req.ID)
+	s.Notify.Send(s.Notify.FromRequest("request_declined", req))
 	writeJSON(w, http.StatusOK, req)
 }
 

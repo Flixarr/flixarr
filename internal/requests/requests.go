@@ -19,8 +19,15 @@ const KeyApproval = "requests_approval" // "true" = requests from non-admins wai
 
 // Service creates, sends and follows requests.
 type Service struct {
-	Store *store.Store
-	Log   *slog.Logger
+	Store  *store.Store
+	Log    *slog.Logger
+	Notify func(event string, r store.Request) // Settings → Notifications; nil = none
+}
+
+func (s *Service) notify(event string, r store.Request) {
+	if s.Notify != nil {
+		s.Notify(event, r)
+	}
 }
 
 // ErrAlready is returned when a title already has an open request.
@@ -126,6 +133,7 @@ func (s *Service) Create(ctx context.Context, u *store.User, in New) (store.Requ
 	if status == "approved" {
 		r = s.Send(ctx, r)
 	}
+	s.notify("request_submitted", r)
 	return r, nil
 }
 
@@ -154,6 +162,7 @@ func (s *Service) Send(ctx context.Context, r store.Request) store.Request {
 	if err != nil {
 		r.Status, r.Error = "failed", capitalize(err.Error())
 		s.Log.Warn("request failed", "title", r.Title, "err", err)
+		defer s.notify("request_failed", r)
 	} else {
 		r.Error = ""
 		s.Log.Info("request sent", "title", r.Title, "type", r.Type, "status", r.Status)
@@ -305,6 +314,9 @@ func (s *Service) Refresh(ctx context.Context) error {
 		}
 		if r.Status != before.Status || r.Progress != before.Progress {
 			s.Store.UpdateRequest(r)
+		}
+		if r.Status == "available" && before.Status != "available" {
+			s.notify("request_available", r)
 		}
 	}
 	return nil

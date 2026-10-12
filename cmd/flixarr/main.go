@@ -19,6 +19,7 @@ import (
 	"github.com/Flixarr/flixarr/internal/images"
 	"github.com/Flixarr/flixarr/internal/jobs"
 	"github.com/Flixarr/flixarr/internal/meta"
+	"github.com/Flixarr/flixarr/internal/notify"
 	"github.com/Flixarr/flixarr/internal/plex"
 	"github.com/Flixarr/flixarr/internal/plexlib"
 	"github.com/Flixarr/flixarr/internal/profiles"
@@ -94,7 +95,8 @@ func main() {
 			return plural(int64(n), "image") + " removed", err
 		}})
 	arrMon := &arrstatus.Monitor{Store: st, Log: log}
-	reqs := &requests.Service{Store: st, Log: log}
+	notifier := &notify.Notifier{Store: st, Log: log}
+	reqs := &requests.Service{Store: st, Log: log, Notify: func(ev string, r store.Request) { notifier.Send(notifier.FromRequest(ev, r)) }}
 	runner.Add(&jobs.Job{ID: "arr-status", Name: "Radarr / Sonarr: refresh status", Default: "* * * * *",
 		About: "Reads each Radarr and Sonarr connection's queue, health, disk space, indexers and download clients for the Services cards, and moves requests along (downloading, available).",
 		Run: func(ctx context.Context) (string, error) {
@@ -138,6 +140,7 @@ func main() {
 		Profiles: pm,
 		Requests: reqs,
 		Library:  lib,
+		Notify:   notifier,
 		Web:      webui.FS(),
 		Log:      log,
 		BaseCtx:  runCtx,

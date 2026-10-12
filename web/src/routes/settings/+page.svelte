@@ -14,6 +14,7 @@
 	import GeneralSettings from '#lib/components/settings/GeneralSettings.svelte';
 	import PlexSettings from '#lib/components/settings/PlexSettings.svelte';
 	import DiscoverSettings from '#lib/components/settings/DiscoverSettings.svelte';
+	import NotificationsSettings from '#lib/components/settings/NotificationsSettings.svelte';
 	import { markAlertsSeen, servicesUnread } from '#lib/alerts.svelte.ts';
 
 	// Section key → label, icon, one-line description (side menu / phone list).
@@ -22,7 +23,7 @@
 		['plex', 'Plex', 'play', 'Server, libraries, scans'],
 		['services', 'Services', 'plus', 'Radarr, Sonarr'],
 		['profiles', 'Quality profiles', 'flag', "Flixarr's profiles for Radarr and Sonarr"],
-		['notifications', 'Notifications', 'bell', 'Email, Discord, webhooks, push'],
+		['notifications', 'Notifications', 'bell', 'Discord, webhooks'],
 		['discover', 'Discover', 'discover', 'Discover page rows'],
 		['cache', 'Cache', 'refresh', 'Saved results, images'],
 		['jobs', 'Jobs', 'clock', 'Scheduled tasks'],
@@ -106,6 +107,8 @@
 					<ServicesSettings />
 				{:else if tab === 'profiles'}
 					<ProfilesSettings />
+				{:else if tab === 'notifications'}
+					<NotificationsSettings />
 				{:else if tab === 'discover'}
 					<DiscoverSettings />
 				{:else if tab === 'cache'}

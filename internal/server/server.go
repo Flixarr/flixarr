@@ -17,6 +17,7 @@ import (
 	"github.com/Flixarr/flixarr/internal/images"
 	"github.com/Flixarr/flixarr/internal/jobs"
 	"github.com/Flixarr/flixarr/internal/meta"
+	"github.com/Flixarr/flixarr/internal/notify"
 	"github.com/Flixarr/flixarr/internal/plex"
 	"github.com/Flixarr/flixarr/internal/plexlib"
 	"github.com/Flixarr/flixarr/internal/profiles"
@@ -40,6 +41,7 @@ type Server struct {
 	Profiles *profiles.Manager
 	Requests *requests.Service
 	Library  *plexlib.Library
+	Notify   *notify.Notifier
 	Web      fs.FS // built web app (index + assets)
 	Log      *slog.Logger
 	// BaseCtx outlives requests; jobs started with "Run now" use it.
@@ -107,6 +109,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/settings/general", s.auth(s.admin(s.generalSettings)))
 	mux.HandleFunc("GET /api/settings/users", s.auth(s.admin(s.userSettings)))
 	mux.HandleFunc("PUT /api/settings/users", s.auth(s.admin(s.userSettings)))
+	mux.HandleFunc("GET /api/notifications", s.auth(s.admin(s.notifyList)))
+	mux.HandleFunc("PUT /api/notifications/{channel}", s.auth(s.admin(s.notifySave)))
+	mux.HandleFunc("POST /api/notifications/{channel}/test", s.auth(s.admin(s.notifyTest)))
 	mux.HandleFunc("GET /api/jobs", s.auth(s.admin(s.jobList)))
 	mux.HandleFunc("PUT /api/jobs/{id}", s.auth(s.admin(s.jobSet)))
 	mux.HandleFunc("POST /api/jobs/{id}/run", s.auth(s.admin(s.jobRun)))
