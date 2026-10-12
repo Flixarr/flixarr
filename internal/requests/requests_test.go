@@ -29,6 +29,7 @@ type fakeArr struct {
 	cmds    []map[string]any
 	monitor map[string]any
 	epFile  bool
+	noFile  bool // in the library without a file
 }
 
 func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -42,7 +43,7 @@ func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case p == "movie" && r.Method == http.MethodGet:
 		if f.inLib {
-			json.NewEncoder(w).Encode([]any{map[string]any{"id": 77, "tmdbId": 603, "hasFile": true}})
+			json.NewEncoder(w).Encode([]any{map[string]any{"id": 77, "tmdbId": 603, "hasFile": !f.noFile, "monitored": false}})
 		} else {
 			w.Write([]byte(`[]`))
 		}
@@ -81,6 +82,10 @@ func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case p == "series/77" && r.Method == http.MethodGet:
 		json.NewEncoder(w).Encode(map[string]any{"id": 77, "monitored": true, "seasons": []any{
 			map[string]any{"seasonNumber": 0, "monitored": false}, map[string]any{"seasonNumber": 1, "monitored": true}, map[string]any{"seasonNumber": 2, "monitored": false}, map[string]any{"seasonNumber": 3, "monitored": false}}})
+	case p == "movie/77" && r.Method == http.MethodPut:
+		b, _ := io.ReadAll(r.Body)
+		json.Unmarshal(b, &f.put)
+		w.Write(b)
 	case p == "series/77" && r.Method == http.MethodPut:
 		b, _ := io.ReadAll(r.Body)
 		json.Unmarshal(b, &f.put)
@@ -430,4 +435,17 @@ func TestEpisodeRequests(t *testing.T) {
 	if _, err := s.Create(ctx, admin, New{Type: "series", TmdbID: 1399, Title: "Other", Episodes: [][2]int{{1, 1}}}); err == nil {
 		t.Fatal("episode request allowed while turned off")
 	}
+}
+
+func TestMovieInRadarrWithoutFile(t *testing.T) {
+	s, st, radarr, _, admin, _ := setup(t)
+	radarr.inLib, radarr.noFile = true, true
+	r, err := s.Create(context.Background(), admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix"})
+	if err != nil || r.Status != "sent" || r.ArrID != 77 {
+		t.Fatalf("create: %+v %v", r, err)
+	}
+	if radarr.put["monitored"] != true || len(radarr.cmds) != 1 || radarr.cmds[0]["name"] != "MoviesSearch" {
+		t.Fatalf("monitor + search: put %v cmds %v", radarr.put, radarr.cmds)
+	}
+	_ = st
 }

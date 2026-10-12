@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/Flixarr/flixarr/internal/store"
@@ -10,6 +11,13 @@ import (
 
 func (s *Server) alerts(w http.ResponseWriter, r *http.Request, u *store.User) {
 	s.Requests.SeenAlerts(u.ID) // a request alert already seen, with nothing still on its way, goes away
+	if list, err := s.Store.ActiveAlerts(u.ID, false); err == nil {
+		for _, a := range list {
+			if a.Key == fmt.Sprintf("issues:user:%d", u.ID) && !a.Unread {
+				s.Store.ResolveAlert(a.Key) // "your issue was fixed", already seen
+			}
+		}
+	}
 	list, err := s.Store.ActiveAlerts(u.ID, u.Can("admin"))
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "Database error.")

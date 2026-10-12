@@ -44,6 +44,9 @@ func (s *Server) issueList(w http.ResponseWriter, r *http.Request, u *store.User
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return
 	}
+	if u.Can("manageIssues") {
+		s.syncIssueAlerts(nil) // keeps the count right for issues reported before the bell counted them
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"issues": list, "kinds": issueKinds})
 }
 
@@ -97,6 +100,7 @@ func (s *Server) issueCreate(w http.ResponseWriter, r *http.Request, u *store.Us
 		return
 	}
 	s.Notify.Send(s.Notify.FromIssue("issue_reported", is))
+	s.syncIssueAlerts(nil)
 	writeJSON(w, http.StatusCreated, is)
 }
 
@@ -165,6 +169,7 @@ func (s *Server) issueStatus(status string) func(http.ResponseWriter, *http.Requ
 		if status == "resolved" {
 			s.Notify.Send(s.Notify.FromIssue("issue_resolved", is))
 		}
+		s.syncIssueAlerts(&is)
 		writeJSON(w, http.StatusOK, is)
 	}
 }
@@ -178,5 +183,25 @@ func (s *Server) issueDelete(w http.ResponseWriter, r *http.Request, u *store.Us
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return
 	}
+	s.syncIssueAlerts(nil)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// syncIssueAlerts keeps the bell current (grouped, Rule 19): one "N open issues" for people who manage
+// issues, and one "Your issues" for a reporter whose issue was just resolved.
+func (s *Server) syncIssueAlerts(changed *store.Issue) {
+	if n := s.Store.OpenIssueCount(); n == 0 {
+		s.Store.ResolveAlert("issues:open")
+	} else {
+		title := "1 open issue"
+		if n > 1 {
+			title = fmt.Sprintf("%d open issues", n)
+		}
+		s.Store.RaiseAlert(store.Alert{Key: "issues:open", Audience: "admins", Severity: "warning", Title: title,
+			Detail: "Reported problems on titles in your library", Link: "/issues", Sig: fmt.Sprint(n)})
+	}
+	if changed != nil && changed.Status == "resolved" {
+		s.Store.RaiseAlert(store.Alert{Key: fmt.Sprintf("issues:user:%d", changed.UserID), Audience: fmt.Sprintf("user:%d", changed.UserID), Severity: "info",
+			Title: "Your issues", Detail: changed.Title + " was fixed", Link: "/issues", Sig: fmt.Sprint(changed.ID)})
+	}
 }

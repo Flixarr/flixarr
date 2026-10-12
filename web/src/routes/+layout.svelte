@@ -15,6 +15,23 @@
 	// Pages with a full-bleed banner start with a transparent top bar.
 	const transparent = $derived(page.url.pathname === '/' || /^\/(movie|series|collection)\/\d+/.test(page.url.pathname));
 
+	// iOS home-screen app: after the keyboard closes, iOS sometimes leaves the page laid out as if it were
+	// still open, so the tab bar floats above the bottom. Nudging the scroll position makes it lay out again.
+	$effect(() => {
+		const fix = () =>
+			setTimeout(() => {
+				const y = scrollY;
+				scrollTo(scrollX, y + 1);
+				requestAnimationFrame(() => scrollTo(scrollX, y));
+			}, 80);
+		addEventListener('focusout', fix);
+		visualViewport?.addEventListener('resize', fix);
+		return () => {
+			removeEventListener('focusout', fix);
+			visualViewport?.removeEventListener('resize', fix);
+		};
+	});
+
 	$effect(() => {
 		loadSession().catch((e) => (failed = e instanceof Error ? e.message : 'Flixarr is unreachable.'));
 	});

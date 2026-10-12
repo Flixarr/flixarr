@@ -294,6 +294,21 @@ func (s *Service) sendMovie(ctx context.Context, v store.Server, r *store.Reques
 		r.ArrID, r.Status = num(have[0]["id"]), "sent"
 		if b, _ := have[0]["hasFile"].(bool); b {
 			s.filesDone(ctx, r, nil)
+			return nil
+		}
+		// In Radarr without a file (often unmonitored after a file was deleted): turn it back on and search,
+		// or the request would sit at Requested forever.
+		movie := have[0]
+		if on, _ := movie["monitored"].(bool); !on {
+			movie["monitored"] = true
+			if err := c.Put(ctx, fmt.Sprintf("movie/%d", r.ArrID), movie, nil); err != nil {
+				return fmt.Errorf("Radarr didn't turn it back on: %w", err)
+			}
+		}
+		if v.SearchOnAdd {
+			if err := c.Post(ctx, "command", map[string]any{"name": "MoviesSearch", "movieIds": []int{r.ArrID}}, nil); err != nil {
+				return fmt.Errorf("Radarr didn't start a search: %w", err)
+			}
 		}
 		return nil
 	}
