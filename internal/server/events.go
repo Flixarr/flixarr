@@ -10,7 +10,9 @@ import (
 )
 
 // events streams job start/finish events to admins (Server-Sent Events), so the app can show
-// exactly when a job is talking to Radarr or Sonarr.
+// exactly when a job is talking to Radarr or Sonarr. Proxies like Cloudflare cut long-held
+// connections (over HTTP/3 that shows as a QUIC protocol error in the browser), so the stream ends
+// itself cleanly after a minute and tells the browser to reconnect half a second later.
 func (s *Server) events(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	fl, ok := w.(http.Flusher)
 	if !ok {
@@ -22,13 +24,16 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	w.Header().Set("X-Accel-Buffering", "no")
 	ch, stop := s.Jobs.Subscribe()
 	defer stop()
-	fmt.Fprint(w, ": connected\n\n")
+	fmt.Fprint(w, "retry: 500\n: connected\n\n")
 	fl.Flush()
-	keep := time.NewTicker(25 * time.Second)
+	keep := time.NewTicker(20 * time.Second)
 	defer keep.Stop()
+	end := time.After(55 * time.Second)
 	for {
 		select {
 		case <-r.Context().Done():
+			return
+		case <-end:
 			return
 		case <-keep.C:
 			fmt.Fprint(w, ": keep-alive\n\n")
