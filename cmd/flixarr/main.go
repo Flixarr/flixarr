@@ -19,6 +19,7 @@ import (
 	"github.com/Flixarr/flixarr/internal/backup"
 	"github.com/Flixarr/flixarr/internal/images"
 	"github.com/Flixarr/flixarr/internal/jobs"
+	"github.com/Flixarr/flixarr/internal/live"
 	"github.com/Flixarr/flixarr/internal/meta"
 	"github.com/Flixarr/flixarr/internal/notify"
 	"github.com/Flixarr/flixarr/internal/plex"
@@ -102,7 +103,9 @@ func main() {
 			n, err := ic.Cleanup()
 			return plural(int64(n), "image") + " removed", err
 		}})
-	arrMon := &arrstatus.Monitor{Store: st, Log: log}
+	hub := live.New() // changes to open browsers as they happen
+	st.OnAlert = func(audience string) { hub.Publish(live.Event{Type: "alerts", For: live.ForAudience(audience)}) }
+	arrMon := &arrstatus.Monitor{Store: st, Log: log, OnRefresh: func() { hub.Publish(live.Event{Type: "services", For: live.Admins}) }}
 	notifier := &notify.Notifier{Store: st, Log: log}
 	reqs := &requests.Service{Store: st, Log: log, Notify: func(ev string, r store.Request) { notifier.Send(notifier.FromRequest(ev, r)) }}
 	runner.Add(&jobs.Job{ID: "arr-status", Name: "Radarr / Sonarr: refresh status", Default: "* * * * *",
@@ -122,8 +125,14 @@ func main() {
 	// Plex: what's in the server's libraries, so titles show as available whoever added them.
 	lib := &plexlib.Library{Store: st, ClientID: clientID, Version: version.Full(), Log: log}
 	reqs.Plex = lib
-	// Follow active requests every few seconds (grabbed, downloading %, importing, in Plex); webhooks from
-	// Radarr/Sonarr nudge it at once. Idle when nothing is active: one small database read.
+	lib.OnAdded = func(keys []string) {
+		hub.Publish(live.Event{Type: "plex", Data: keys})
+		go reqs.FollowImporting(runCtx) // anything waiting for Plex: check now
+	}
+	go lib.Listen(runCtx) // Plex's own "added to the library" messages
+	// Follow active requests: each is checked when it's due (every 30 s while downloading or importing,
+	// every 2 minutes while waiting for a grab); webhooks and Plex messages check at once. Idle when nothing
+	// is active: one small database read every 5 seconds.
 	go func() {
 		t := time.NewTicker(5 * time.Second)
 		defer t.Stop()
@@ -143,8 +152,8 @@ func main() {
 	runner.Add(&jobs.Job{ID: "plex-full", Name: "Plex: full library scan", Default: "0 3 * * *",
 		About: "Reads every title in the chosen Plex libraries, and notices ones that were removed.",
 		Run:   lib.FullScan})
-	runner.Add(&jobs.Job{ID: "plex-recent", Name: "Plex: recently added scan", Default: "*/5 * * * *",
-		About: "Reads the newest additions to the chosen Plex libraries, so new titles show as available within minutes.",
+	runner.Add(&jobs.Job{ID: "plex-recent", Name: "Plex: recently added scan", Default: "*/30 * * * *",
+		About: "Reads the newest additions to the chosen Plex libraries. A backup: Plex itself tells Flixarr about new titles the moment they're added.",
 		Run:   lib.RecentScan})
 	wl := &watchlist.Syncer{Store: st, Requests: reqs, Meta: mc, ClientID: clientID, Log: log}
 	runner.Add(&jobs.Job{ID: "watchlist", Name: "Plex Watchlist: sync", Default: "*/15 * * * *",
@@ -171,10 +180,13 @@ func main() {
 		Library:  lib,
 		Notify:   notifier,
 		Backups:  backups,
+		Live:     hub,
 		Web:      webui.FS(),
 		Log:      log,
 		BaseCtx:  runCtx,
 	}
+	reqs.Changed = srv.PublishRequest // request changes reach open pages
+
 	hs := &http.Server{Addr: addr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 
 	go func() {

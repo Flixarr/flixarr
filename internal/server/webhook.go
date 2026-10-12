@@ -70,7 +70,7 @@ func (s *Server) webhook(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Log.Info("webhook", "from", in.InstanceName, "event", in.EventType, "type", typ, "id", id)
 	if id == 0 && !strings.EqualFold(in.EventType, "Test") {
-		s.Jobs.RunNow(s.BaseCtx, "arr-status") // a health problem (or it cleared): the cards and bell alerts now
+		go s.Arr.RefreshAll(s.BaseCtx) // a health problem (or it cleared): the cards and bell alerts now
 	}
 	if id != 0 && !strings.EqualFold(in.EventType, "Test") {
 		go func() {
@@ -81,7 +81,7 @@ func (s *Server) webhook(w http.ResponseWriter, r *http.Request) {
 				s.Requests.Nudge(ctx, typ, id)
 				cancel()
 			}
-			s.Jobs.RunNow(s.BaseCtx, "arr-status") // the Services cards too
+			s.Arr.RefreshAll(s.BaseCtx) // the Services cards too
 		}()
 	}
 	w.WriteHeader(http.StatusOK)

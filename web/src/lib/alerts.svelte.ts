@@ -1,5 +1,6 @@
 // Alerts: what the bell shows (inside Flixarr only; notifications are what gets sent out).
 import { api } from './api';
+import { on } from './live.svelte';
 
 export interface Alert { id: number; key: string; severity: 'info' | 'warning' | 'error'; title: string; detail: string; link: string; startedAt: string; changedAt: string; unread: boolean }
 
@@ -22,9 +23,10 @@ export async function markAlertsSeen() {
 	alerts.list = (await api<{ alerts: Alert[] }>('/alerts/seen', { method: 'POST' })).alerts;
 }
 
-// Poll while signed in (every 15 seconds, so request news shows up quickly); returns a stop function.
+// Load now, then again whenever the bell changes (pushed over the live connection); returns a stop function.
 export function watchAlerts() {
 	loadAlerts();
-	const t = setInterval(loadAlerts, 15000);
-	return () => clearInterval(t);
+	const a = on('alerts', loadAlerts);
+	const b = on('resync', loadAlerts);
+	return () => { a(); b(); };
 }

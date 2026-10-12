@@ -6,14 +6,15 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Flixarr/flixarr/internal/live"
 	"github.com/Flixarr/flixarr/internal/store"
 )
 
-// events streams job start/finish events to admins (Server-Sent Events), so the app can show
-// exactly when a job is talking to Radarr or Sonarr. Some reverse proxies cut long-held
-// connections (over HTTP/3 that shows as a QUIC protocol error in the browser), so the stream ends
-// itself cleanly after a minute and tells the browser to reconnect half a second later.
-func (s *Server) events(w http.ResponseWriter, r *http.Request, _ *store.User) {
+// liveStream sends changes to the browser as they happen (Server-Sent Events): request status, bell
+// alerts, titles added to Plex, and job runs for admins. Some reverse proxies cut long-held connections,
+// so the stream ends itself cleanly after about a minute; the browser reconnects half a second later
+// with Last-Event-ID and gets what it missed (or "resync" if that's no longer possible).
+func (s *Server) liveStream(w http.ResponseWriter, r *http.Request, u *store.User) {
 	fl, ok := w.(http.Flusher)
 	if !ok {
 		writeErr(w, http.StatusInternalServerError, "Streaming isn't supported.")
@@ -22,9 +23,27 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Accel-Buffering", "no")
-	ch, stop := s.Jobs.Subscribe()
+	ch, missed, resync, stop := s.Live.Subscribe(r.Header.Get("Last-Event-ID"))
 	defer stop()
+	jobs, stopJobs := s.Jobs.Subscribe()
+	defer stopJobs()
 	fmt.Fprint(w, "retry: 500\n: connected\n\n")
+	send := func(e live.Event) {
+		if e.For != nil && !e.For(u) {
+			return
+		}
+		b, _ := json.Marshal(e.Data)
+		if e.ID != "" {
+			fmt.Fprintf(w, "id: %s\n", e.ID)
+		}
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", e.Type, b)
+	}
+	if resync {
+		send(live.Event{Type: "resync"})
+	}
+	for _, e := range missed {
+		send(e)
+	}
 	fl.Flush()
 	keep := time.NewTicker(20 * time.Second)
 	defer keep.Stop()
@@ -37,11 +56,30 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, _ *store.User) {
 			return
 		case <-keep.C:
 			fmt.Fprint(w, ": keep-alive\n\n")
-			fl.Flush()
 		case e := <-ch:
-			b, _ := json.Marshal(e)
-			fmt.Fprintf(w, "event: job\ndata: %s\n\n", b)
-			fl.Flush()
+			send(e)
+		case j := <-jobs:
+			if u.Can("admin") {
+				send(live.Event{Type: "job", Data: j})
+			}
+		}
+		fl.Flush()
+	}
+}
+
+// PublishRequest sends a request's new state to the people who can see it: the requester, and anyone
+// who can view or manage all requests.
+func (s *Server) PublishRequest(r store.Request) {
+	key := fmt.Sprintf("%s:%d", r.Type, r.TmdbID)
+	brief := map[string]any{"id": r.ID, "status": r.Status, "progress": r.Progress}
+	if r.Status == "deleted" {
+		brief = nil
+	} else if got, err := s.Library.Lookup([]string{key}); err == nil {
+		if it, ok := got[key]; ok {
+			brief["plex"] = it.URL
 		}
 	}
+	owner := r.UserID
+	s.Live.Publish(live.Event{Type: "request", Data: map[string]any{"key": key, "brief": brief, "request": r},
+		For: func(u *store.User) bool { return u.ID == owner || u.Can("viewRequests") || u.Can("manageRequests") }})
 }

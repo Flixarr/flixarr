@@ -30,6 +30,9 @@ var ErrNotFound = errors.New("not found")
 type Store struct {
 	db  *sql.DB
 	box *secret.Box // encrypts stored secrets (API keys)
+
+	// OnAlert is told when the bell changes for an audience ("admins", "user:<id>", "everyone").
+	OnAlert func(audience string)
 }
 
 // Open opens (or creates) flixarr.db inside dataDir and applies pending migrations.

@@ -8,6 +8,7 @@
 	import Toast from '#lib/components/Toast.svelte';
 	import PullRefresh from '#lib/components/PullRefresh.svelte';
 	import { session, loadSession } from '#lib/session.svelte.ts';
+	import { startLive } from '#lib/live.svelte.ts';
 
 	let { children } = $props();
 	let failed = $state('');
@@ -30,6 +31,11 @@
 			removeEventListener('focusout', fix);
 			visualViewport?.removeEventListener('resize', fix);
 		};
+	});
+
+	// The live connection while signed in.
+	$effect(() => {
+		if (session.me) return startLive();
 	});
 
 	$effect(() => {

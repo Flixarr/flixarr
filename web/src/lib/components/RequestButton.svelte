@@ -8,7 +8,8 @@
 	import { can } from '#lib/session.svelte.ts';
 	import { page } from '$app/state';
 	import { remember } from '#lib/availability.svelte.ts';
-	import { TONE, NEUTRAL, text, isActive } from '#lib/requeststatus.ts';
+	import { TONE, NEUTRAL, text } from '#lib/requeststatus.ts';
+	import { on } from '#lib/live.svelte.ts';
 	import RequestModal from './RequestModal.svelte';
 	import Modal from './Modal.svelte';
 	import { notify } from '#lib/toast.svelte.ts';
@@ -29,16 +30,15 @@
 	$effect(() => {
 		const k = key;
 		req = undefined;
-		let alive = true;
-		let t: ReturnType<typeof setTimeout>;
-		// Live: every 4 seconds while it's on its way, so the button moves from Requested to Available by itself.
-		const load = () =>
-			api<Record<string, RequestBrief>>(`/requests/status?keys=${k}`)
-				.then((d) => alive && (req = d[k] ?? null))
-				.catch(() => alive && req === undefined && (req = null))
-				.finally(() => alive && (t = setTimeout(load, isActive(req?.status) ? 4000 : 60000)));
+		const load = () => api<Record<string, RequestBrief>>(`/requests/status?keys=${k}`).then((d) => (req = d[k] ?? null)).catch(() => req === undefined && (req = null));
 		load();
-		return () => { alive = false; clearTimeout(t); };
+		// Live: the request moves along (Grabbed, Downloading %, Available) without asking again.
+		const offs = [
+			on('request', (d: { key: string; brief: RequestBrief | null }) => d.key === k && (req = d.brief ? { ...d.brief, plex: d.brief.plex ?? req?.plex } : null)),
+			on('plex', (keys: string[]) => keys.includes(k) && load()),
+			on('resync', load)
+		];
+		return () => offs.forEach((off) => off());
 	});
 
 	// Series in Plex: offer Request more only while some season that has aired isn't fully there.

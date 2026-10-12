@@ -161,6 +161,7 @@ func (s *Server) requestDecline(w http.ResponseWriter, r *http.Request, u *store
 		s.Store.UpdateRequest(req)
 	}
 	s.Notify.Send(s.Notify.FromRequest("request_declined", req))
+	s.Requests.Publish(req)
 	s.Requests.Alert(req)
 	writeJSON(w, http.StatusOK, req)
 }
@@ -192,6 +193,8 @@ func (s *Server) requestDelete(w http.ResponseWriter, r *http.Request, u *store.
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return
 	}
+	req.Status = "deleted"
+	s.Requests.Publish(req)
 	s.Requests.Forgotten()
 	w.WriteHeader(http.StatusNoContent)
 }

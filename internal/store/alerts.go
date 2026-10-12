@@ -34,22 +34,44 @@ func (s *Store) RaiseAlert(a Alert) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		_, err = s.db.Exec(`INSERT INTO alerts (key, audience, severity, title, detail, link, sig, started_at, changed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			a.Key, a.Audience, a.Severity, a.Title, a.Detail, a.Link, a.Sig, t, t)
+		s.alertChanged(a.Audience)
 		return err
 	}
 	if err != nil {
 		return err
 	}
+	var res sql.Result
 	if sig != a.Sig {
-		_, err = s.db.Exec(`UPDATE alerts SET severity = ?, title = ?, detail = ?, link = ?, sig = ?, changed_at = ? WHERE id = ?`, a.Severity, a.Title, a.Detail, a.Link, a.Sig, t, id)
+		res, err = s.db.Exec(`UPDATE alerts SET severity = ?, title = ?, detail = ?, link = ?, sig = ?, changed_at = ? WHERE id = ?`, a.Severity, a.Title, a.Detail, a.Link, a.Sig, t, id)
 	} else {
-		_, err = s.db.Exec(`UPDATE alerts SET severity = ?, title = ?, detail = ?, link = ? WHERE id = ?`, a.Severity, a.Title, a.Detail, a.Link, id)
+		// Same alert, maybe new wording: only tell browsers if something actually changed.
+		res, err = s.db.Exec(`UPDATE alerts SET severity = ?, title = ?, detail = ?, link = ? WHERE id = ? AND (severity != ? OR title != ? OR detail != ? OR link != ?)`,
+			a.Severity, a.Title, a.Detail, a.Link, id, a.Severity, a.Title, a.Detail, a.Link)
+	}
+	if err == nil {
+		if n, _ := res.RowsAffected(); n > 0 {
+			s.alertChanged(a.Audience)
+		}
 	}
 	return err
 }
 
+func (s *Store) alertChanged(audience string) {
+	if s.OnAlert != nil {
+		s.OnAlert(audience)
+	}
+}
+
 // ResolveAlert closes the active alert for a key, if there is one.
 func (s *Store) ResolveAlert(key string) error {
+	var audience string
+	if s.db.QueryRow(`SELECT audience FROM alerts WHERE key = ? AND resolved_at IS NULL`, key).Scan(&audience) != nil {
+		return nil // nothing open
+	}
 	_, err := s.db.Exec(`UPDATE alerts SET resolved_at = ? WHERE key = ? AND resolved_at IS NULL`, now(), key)
+	if err == nil {
+		s.alertChanged(audience)
+	}
 	return err
 }
 

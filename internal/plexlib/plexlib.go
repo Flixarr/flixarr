@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Flixarr/flixarr/internal/store"
@@ -38,6 +39,10 @@ type Library struct {
 	Log       *slog.Logger
 	HTTP      *http.Client
 	TVBaseURL string // plex.tv, for tests
+
+	// OnAdded is told about titles that just showed up in Plex ("movie:603" keys).
+	OnAdded func(keys []string)
+	live    atomic.Bool
 }
 
 func (l *Library) client() *http.Client {
@@ -364,7 +369,7 @@ func (l *Library) RecentScan(ctx context.Context) (string, error) {
 		return "", err
 	}
 	now := stamp()
-	added := 0
+	added, keys := 0, []string{}
 	for _, sec := range secs {
 		if !sec.Enabled {
 			continue
@@ -383,9 +388,13 @@ func (l *Library) RecentScan(ctx context.Context) (string, error) {
 			if id := m.tmdb(); id > 0 {
 				if isNew, _ := l.Store.SavePlexItem(store.PlexItem{Type: kindOf(sec.Type), TmdbID: id, RatingKey: m.RatingKey, Section: sec.Key, Title: m.Title, AddedAt: m.AddedAt, SeenAt: now}); isNew {
 					added++
+					keys = append(keys, fmt.Sprintf("%s:%d", kindOf(sec.Type), id))
 				}
 			}
 		}
+	}
+	if len(keys) > 0 && l.OnAdded != nil {
+		l.OnAdded(keys)
 	}
 	return fmt.Sprintf("%d new in Plex", added), nil
 }

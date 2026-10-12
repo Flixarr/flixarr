@@ -48,6 +48,12 @@ func (s *Server) viewOf(v store.Server) serviceView {
 			sv.UpdatesPaused = !j.Enabled
 			if j.Enabled && !j.Next.IsZero() {
 				n := j.Next
+				// Idle last time (empty queue, healthy): the job skips it until 5 minutes have passed.
+				if st := sv.Status; st != nil && st.Connected && len(st.Queue) == 0 && len(st.Health) == 0 {
+					for n.Before(st.UpdatedAt.Add(5 * time.Minute)) {
+						n = n.Add(time.Minute)
+					}
+				}
 				sv.NextUpdate = &n
 			}
 		}

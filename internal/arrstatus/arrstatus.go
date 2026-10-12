@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Flixarr/flixarr/internal/arr"
 	"github.com/Flixarr/flixarr/internal/store"
@@ -15,8 +16,9 @@ import (
 
 // Monitor holds the latest snapshot per server.
 type Monitor struct {
-	Store *store.Store
-	Log   *slog.Logger
+	Store     *store.Store
+	Log       *slog.Logger
+	OnRefresh func() // after a refresh: the Services cards reload
 
 	mu    sync.RWMutex
 	snaps map[int64]arr.Snapshot
@@ -58,8 +60,21 @@ func (m *Monitor) RefreshOne(ctx context.Context, v store.Server) arr.Snapshot {
 	return snap
 }
 
-// Refresh reads every connection; it's the "Radarr / Sonarr: refresh status" job.
-func (m *Monitor) Refresh(ctx context.Context) (string, error) {
+// Refresh is the "Radarr / Sonarr: refresh status" job (every minute). A server that was idle last time
+// (nothing in its queue, no health problems) is only read every 5 minutes: grabs, imports and health
+// changes come in through its webhook (RefreshAll) when that's set up.
+func (m *Monitor) Refresh(ctx context.Context) (string, error) { return m.refresh(ctx, false) }
+
+// RefreshAll reads every connection now (a webhook said something changed).
+func (m *Monitor) RefreshAll(ctx context.Context) (string, error) { return m.refresh(ctx, true) }
+
+func (m *Monitor) refresh(ctx context.Context, force bool) (string, error) {
+	read := false // only tell the cards when something was actually read
+	defer func() {
+		if read && m.OnRefresh != nil {
+			m.OnRefresh()
+		}
+	}()
 	servers, err := m.Store.Servers()
 	if err != nil {
 		return "", err
@@ -70,6 +85,11 @@ func (m *Monitor) Refresh(ctx context.Context) (string, error) {
 	var wg sync.WaitGroup
 	ok := make([]bool, len(servers))
 	for i, v := range servers {
+		if prev, has := m.Get(v.ID); !force && has && prev.Connected && len(prev.Queue) == 0 && len(prev.Health) == 0 && time.Since(prev.UpdatedAt) < 5*time.Minute {
+			ok[i] = true // idle: read again in a few minutes, or when a webhook arrives
+			continue
+		}
+		read = true
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

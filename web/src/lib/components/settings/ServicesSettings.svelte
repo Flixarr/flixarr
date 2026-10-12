@@ -8,6 +8,7 @@
 	import Select from '#lib/components/Select.svelte';
 	import Tooltip from '#lib/components/Tooltip.svelte';
 	import WebhooksCard from './WebhooksCard.svelte';
+	import { on } from '#lib/live.svelte.ts';
 
 	// Each kind is a list of connection cards. Connections are stored as a list; for now each kind
 	// takes one, so "Add" shows only while a list is empty.
@@ -82,39 +83,18 @@
 		return { addProfiles: [], defaultProfile: '', name: nameOf(k), url: '', webUrl: '', apiKey: '', rootFolder: '', qualityProfileId: 0, seasonFolders: true, searchOnAdd: true, enabled: true };
 	}
 
-	// The cards show what the "Radarr / Sonarr: refresh status" job last read. They reload right after
-	// each run of the job (its "done" event), with a slow backup check in case the event stream drops.
+	// The cards show what Radarr/Sonarr were last read as. They reload when that changes (pushed over the
+	// live connection after every read, including webhook-triggered ones) or after a gap in the connection.
 	let load = () => {};
 	$effect(() => {
-		// Backup check: only fires when no fresh data has come in for 90 seconds (the events stream
-		// broke). Every load restarts it, so while events work there's one call per job run.
-		let backup: ReturnType<typeof setTimeout>;
-		load = () => api<Record<ServiceKind, ServiceView | null>>('/services').then((d) => {
-			clearTimeout(backup);
-			backup = setTimeout(load, 90000);
-			saved = d;
-		}).catch(() => {
-			// Couldn't reach Flixarr: try again on the backup schedule.
-			clearTimeout(backup);
-			backup = setTimeout(load, 90000);
-		});
+		load = () => api<Record<ServiceKind, ServiceView | null>>('/services').then((d) => (saved = d)).catch(() => {});
 		load();
-		const tick = setInterval(() => (now = Date.now()), 5000);
+		const tick = setInterval(() => (now = Date.now()), 5000); // "Updated N sec ago" only; no requests
+		const offs = [on('services', () => load()), on('resync', () => load())];
 		return () => {
-			clearTimeout(backup);
 			clearInterval(tick);
+			offs.forEach((off) => off());
 		};
-	});
-
-	// Reload the cards right after each run of the refresh-status job (pushed over /api/events).
-	$effect(() => {
-		const es = new EventSource('/api/events');
-		es.addEventListener('job', (m) => {
-			const e = JSON.parse((m as MessageEvent).data) as { job: string; phase: string; result?: string; error?: string; seconds?: number };
-			if (e.job !== 'arr-status') return;
-			if (e.phase === 'done') load();
-		});
-		return () => es.close();
 	});
 
 	function ago(iso: string | null | undefined) {
@@ -131,7 +111,7 @@
 		const st = v.status!;
 		const age = `Updated ${ago(st.updatedAt)}`;
 		if (v.updatesPaused) return { text: 'Updates paused', title: age, warn: false };
-		if (now - Date.parse(st.updatedAt) > 180000) return { text: age, title: 'The refresh-status job is overdue', warn: true };
+		if (now - Date.parse(st.updatedAt) > 420000) return { text: age, title: 'The refresh-status job is overdue', warn: true }; // idle servers are read every 5 min
 		const secs = v.nextUpdate ? Math.round((Date.parse(v.nextUpdate) - now) / 1000) : -1;
 		if (secs <= 0) return { text: 'Updating…', title: age, warn: false };
 		const left = secs < 60 ? `${secs} sec` : secs < 3600 ? `${Math.round(secs / 60)} min` : `${Math.round(secs / 3600)} hr`;

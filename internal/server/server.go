@@ -17,6 +17,7 @@ import (
 	"github.com/Flixarr/flixarr/internal/backup"
 	"github.com/Flixarr/flixarr/internal/images"
 	"github.com/Flixarr/flixarr/internal/jobs"
+	"github.com/Flixarr/flixarr/internal/live"
 	"github.com/Flixarr/flixarr/internal/meta"
 	"github.com/Flixarr/flixarr/internal/notify"
 	"github.com/Flixarr/flixarr/internal/plex"
@@ -44,6 +45,7 @@ type Server struct {
 	Library  *plexlib.Library
 	Notify   *notify.Notifier
 	Backups  *backup.Manager
+	Live     *live.Hub
 	Web      fs.FS // built web app (index + assets)
 	Log      *slog.Logger
 	// BaseCtx outlives requests; jobs started with "Run now" use it.
@@ -75,7 +77,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/cache", s.auth(s.admin(s.cacheInfo)))
 	mux.HandleFunc("PUT /api/cache/settings", s.auth(s.admin(s.cacheSettings)))
 	mux.HandleFunc("DELETE /api/cache/{kind}", s.auth(s.admin(s.cacheFlush)))
-	mux.HandleFunc("GET /api/events", s.auth(s.admin(s.events)))
+	mux.HandleFunc("GET /api/live", s.auth(s.liveStream))
+	mux.HandleFunc("GET /api/events", s.auth(s.liveStream)) // older pages
 	mux.HandleFunc("GET /api/requests", s.auth(s.requestList))
 	mux.HandleFunc("POST /api/requests", s.auth(s.requestCreate))
 	mux.HandleFunc("GET /api/requests/status", s.auth(s.requestStatus))

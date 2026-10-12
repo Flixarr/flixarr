@@ -9,7 +9,8 @@
 	import Modal from '#lib/components/Modal.svelte';
 	import PlexMark from '#lib/components/PlexMark.svelte';
 	import { statusOf } from '#lib/availability.svelte.ts';
-	import { STEPS, step, text, isActive } from '#lib/requeststatus.ts';
+	import { STEPS, step, text } from '#lib/requeststatus.ts';
+	import { on } from '#lib/live.svelte.ts';
 
 	let list = $state<Request[] | null>(null);
 	let approval = $state(false);
@@ -32,14 +33,18 @@
 	$effect(() => {
 		document.title = 'Flixarr · Requests';
 		load();
-		// Every 4 seconds while something is on its way (so downloads move live), otherwise every 30.
-		let t: ReturnType<typeof setTimeout>;
-		const tick = async () => {
-			await load();
-			t = setTimeout(tick, list?.some((r) => isActive(r.status)) ? 4000 : 30000);
-		};
-		t = setTimeout(tick, 4000);
-		return () => clearTimeout(t);
+		// Live: requests change in place; a new one (or a gap in the connection) reloads the list.
+		const offs = [
+			on('request', (d: { request: Request }) => {
+				const r = d.request;
+				if (!list) return;
+				if (r.status === ('deleted' as Request['status'])) list = list.filter((x) => x.id !== r.id);
+				else if (list.some((x) => x.id === r.id)) list = list.map((x) => (x.id === r.id ? { ...x, ...r, userName: x.userName || r.userName } : x));
+				else load();
+			}),
+			on('resync', load)
+		];
+		return () => offs.forEach((off) => off());
 	});
 
 	const GROUPS: Record<string, Request['status'][]> = { waiting: ['pending'], active: ['approved', 'sent', 'grabbed', 'downloading', 'importing'], available: ['available'], problems: ['failed', 'declined'] };

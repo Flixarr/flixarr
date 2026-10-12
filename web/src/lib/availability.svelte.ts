@@ -1,7 +1,8 @@
 // Where titles stand (in Plex, requested, downloading) for the dots on posters. Posters ask for their
-// own key; the asks are batched into one /requests/status call and kept for a minute.
+// own key once; the asks are batched into one /requests/status call, and live updates keep them current.
 import { api } from './api';
 import type { RequestBrief } from './types';
+import { on } from './live.svelte';
 
 const known = $state<Record<string, RequestBrief | null>>({});
 const at: Record<string, number> = {};
@@ -27,14 +28,21 @@ async function flush() {
 	}
 }
 
+// Live: a request changed (use it as sent), something was added to Plex (ask again), or reload all.
+on('request', (d: { key: string; brief: RequestBrief | null }) => remember(d.key, d.brief));
+on('plex', (keys: string[]) => keys.forEach((k) => k in at && ask(k)));
+on('resync', () => Object.keys(at).forEach(ask));
+
+function ask(key: string) {
+	if (!waiting.has(key)) {
+		waiting.add(key);
+		timer ??= setTimeout(flush, 50);
+	}
+}
+
 // statusOf returns what's known about a title ("movie:603") and asks for it if that's missing or old.
 export function statusOf(key: string): RequestBrief | null | undefined {
-	if (!(key in at) || Date.now() - at[key] > 60_000) {
-		if (!waiting.has(key)) {
-			waiting.add(key);
-			timer ??= setTimeout(flush, 50);
-		}
-	}
+	if (!(key in at)) ask(key); // after that, live updates keep it current
 	return known[key];
 }
 

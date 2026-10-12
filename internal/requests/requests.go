@@ -22,16 +22,35 @@ const KeyApproval = "requests_approval" // "true" = requests from non-admins wai
 
 // Service creates, sends and follows requests.
 type Service struct {
-	Store    *store.Store
-	Log      *slog.Logger
-	Notify   func(event string, r store.Request) // Settings → Notifications; nil = none
-	Plex     Plex                                // nil = no Plex checks (tests)
-	OnChange func(before, after store.Request)   // a request's status or progress changed (bell alerts)
+	Store   *store.Store
+	Log     *slog.Logger
+	Notify  func(event string, r store.Request) // Settings → Notifications; nil = none
+	Plex    Plex                                // nil = no Plex checks (tests)
+	Changed func(r store.Request)               // a request was created, moved along or removed (live updates)
 
 	mu         sync.Mutex
 	lastRecent time.Time
 	rescanned  map[int64]time.Time
 	rescans    map[int64]int
+	checked    map[int64]time.Time // last follow of each active request
+}
+
+// Publish tells open pages about a request (status "deleted" when it was removed).
+func (s *Service) Publish(r store.Request) {
+	if s.Changed != nil {
+		s.Changed(r)
+	}
+}
+
+// How often an active request is checked when nothing tells Flixarr about it. Download progress has no
+// event (Radarr and Sonarr themselves only re-read the download client about once a minute), so 30
+// seconds is as fresh as it gets; waiting for a grab is slower because the Grab webhook reports it.
+func followEvery(status string) time.Duration {
+	switch status {
+	case "grabbed", "downloading", "importing":
+		return 30 * time.Second
+	}
+	return 2 * time.Minute
 }
 
 func (s *Service) notify(event string, r store.Request) {
@@ -246,6 +265,7 @@ func (s *Service) Create(ctx context.Context, u *store.User, in New) (store.Requ
 		r = s.Send(ctx, r)
 	}
 	s.notify("request_submitted", r)
+	s.Publish(r)
 	if r.Status == "pending" || r.Status == "failed" {
 		s.Alert(r)
 	}
@@ -283,6 +303,7 @@ func (s *Service) Send(ctx context.Context, r store.Request) store.Request {
 		s.Log.Info("request sent", "title", r.Title, "type", r.Type, "status", r.Status)
 	}
 	s.Store.UpdateRequest(r)
+	s.Publish(r)
 	return r
 }
 
@@ -483,6 +504,7 @@ type Plex interface {
 	Seasons(ctx context.Context, tmdbID int) (map[int]int, error)
 	Rescan(ctx context.Context, typ string) error // ask Plex to scan its movie or TV libraries
 	RecentScan(ctx context.Context) (string, error)
+	Live() bool // Plex's own "added to the library" messages are coming in (no need to keep reading)
 }
 
 // Refresh moves active requests along: grabbed → downloading (with progress) → importing → available.
@@ -493,7 +515,36 @@ func (s *Service) Refresh(ctx context.Context) error {
 	if err != nil || len(reqs) == 0 {
 		return err
 	}
-	return s.refresh(ctx, reqs)
+	s.mu.Lock()
+	due := []store.Request{}
+	for _, r := range reqs {
+		if time.Since(s.checked[r.ID]) >= followEvery(r.Status) {
+			due = append(due, r)
+		}
+	}
+	s.mu.Unlock()
+	if len(due) == 0 {
+		return nil
+	}
+	return s.refresh(ctx, due)
+}
+
+// FollowImporting checks the requests waiting for Plex right away (Plex said something was added).
+func (s *Service) FollowImporting(ctx context.Context) error {
+	reqs, err := s.Store.ActiveRequests()
+	if err != nil {
+		return err
+	}
+	list := []store.Request{}
+	for _, r := range reqs {
+		if r.Status == "importing" {
+			list = append(list, r)
+		}
+	}
+	if len(list) == 0 {
+		return nil
+	}
+	return s.refresh(ctx, list)
 }
 
 // Nudge follows the requests for one Radarr/Sonarr item right away (a webhook arrived for it).
@@ -516,8 +567,9 @@ func (s *Service) refresh(ctx context.Context, reqs []store.Request) error {
 	}
 	// Something waiting for Plex: read Plex's newest additions first (cheap), so it's seen within seconds.
 	for _, r := range reqs {
-		// Only shortly after asking Plex to scan; a title Plex never matches doesn't keep this going.
-		if r.Status == "importing" && s.Plex != nil && s.Plex.Connected() && time.Since(s.lastRecent) > 10*time.Second && time.Since(s.rescanned[r.ID]) < 5*time.Minute {
+		// Only without Plex's live messages, and shortly after asking Plex to scan; a title Plex never
+		// matches doesn't keep this going.
+		if r.Status == "importing" && s.Plex != nil && s.Plex.Connected() && !s.Plex.Live() && time.Since(s.lastRecent) > 25*time.Second && time.Since(s.rescanned[r.ID]) < 5*time.Minute {
 			s.lastRecent = time.Now()
 			s.Plex.RecentScan(ctx)
 			break
@@ -529,6 +581,10 @@ func (s *Service) refresh(ctx context.Context, reqs []store.Request) error {
 			continue
 		}
 		before := r
+		if s.checked == nil {
+			s.checked = map[int64]time.Time{}
+		}
+		s.checked[r.ID] = time.Now()
 		if r.Type == "movie" && inPlex(s.Store, r.Type, r.TmdbID) {
 			r.Status, r.Progress = "available", 100 // Plex has it, however it got there
 		} else if err := s.follow(ctx, v, &r); err != nil {
@@ -539,9 +595,7 @@ func (s *Service) refresh(ctx context.Context, reqs []store.Request) error {
 		}
 		if r.Status != before.Status || r.Progress != before.Progress {
 			s.Store.UpdateRequest(r)
-			if s.OnChange != nil {
-				s.OnChange(before, r)
-			}
+			s.Publish(r)
 		}
 		if r.Status == "available" && before.Status != "available" {
 			s.notify("request_available", r)

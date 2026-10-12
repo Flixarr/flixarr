@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/Flixarr/flixarr/internal/secret"
 	"github.com/Flixarr/flixarr/internal/store"
@@ -154,12 +153,14 @@ func TestMovieRequestFlow(t *testing.T) {
 	}
 	// In the queue: downloading with progress. Then the file is there: available.
 	radarr.queue = `[{"size":1000,"sizeleft":250}]`
+	s.checked = nil
 	s.Refresh(ctx)
 	r, _ = st.Request(r.ID)
 	if r.Status != "downloading" || r.Progress != 75 {
 		t.Fatalf("downloading: %+v", r)
 	}
 	radarr.queue, radarr.hasFile = "", true
+	s.checked = nil
 	s.Refresh(ctx)
 	r, _ = st.Request(r.ID)
 	if r.Status != "available" {
@@ -185,6 +186,7 @@ func TestSeriesSeasonsAndAnime(t *testing.T) {
 	}
 	// Seasons 1 and 2 complete (3 wasn't requested): available.
 	sonarr.hasFile = true
+	s.checked = nil
 	s.Refresh(ctx)
 	if r, _ = st.Request(r.ID); r.Status != "available" {
 		t.Fatalf("series available: %+v", r)
@@ -225,6 +227,7 @@ func TestPlexMakesAvailable(t *testing.T) {
 	ctx := context.Background()
 	r, _ := s.Create(ctx, admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix"})
 	st.SavePlexItem(store.PlexItem{Type: "movie", TmdbID: 603, RatingKey: "1", Section: "1", SeenAt: "2026-01-01T00:00:00Z"})
+	s.checked = nil
 	s.Refresh(ctx)
 	if r, _ = st.Request(r.ID); r.Status != "available" {
 		t.Fatalf("in Plex: %+v", r)
@@ -345,6 +348,7 @@ type fakePlex struct {
 }
 
 func (f *fakePlex) Connected() bool                                   { return true }
+func (f *fakePlex) Live() bool                                        { return false }
 func (f *fakePlex) Seasons(context.Context, int) (map[int]int, error) { return map[int]int{}, nil }
 func (f *fakePlex) Rescan(context.Context, string) error              { f.rescans++; return nil }
 func (f *fakePlex) RecentScan(context.Context) (string, error) {
@@ -362,6 +366,8 @@ func TestStatesGrabbedImportingPlex(t *testing.T) {
 	r, _ := s.Create(ctx, admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix"})
 	step := func(want string) {
 		t.Helper()
+		s.checked = nil // each step is a later check
+		s.checked = nil
 		s.Refresh(ctx)
 		if r, _ = st.Request(r.ID); r.Status != want {
 			t.Fatalf("want %s, got %+v", want, r)
@@ -380,8 +386,10 @@ func TestStatesGrabbedImportingPlex(t *testing.T) {
 		t.Fatalf("rescans: %d", px.rescans)
 	}
 	px.has = true
-	s.lastRecent = time.Time{}
-	step("available")
+	s.FollowImporting(ctx) // what a Plex "added" message does
+	if r, _ = st.Request(r.ID); r.Status != "available" {
+		t.Fatalf("after Plex added it: %+v", r)
+	}
 }
 
 func TestRequestAlerts(t *testing.T) {
@@ -426,6 +434,7 @@ func TestEpisodeRequests(t *testing.T) {
 		t.Fatalf("monitored: %v", sonarr.monitor)
 	}
 	sonarr.epFile = true
+	s.checked = nil
 	s.Refresh(ctx)
 	if r, _ = st.Request(r.ID); r.Status != "available" {
 		t.Fatalf("episodes with files: %+v", r)

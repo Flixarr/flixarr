@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { on } from '#lib/live.svelte.ts';
 	import { api } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import * as cron from '#lib/cron.ts';
@@ -27,8 +28,9 @@
 	const load = () => api<Job[]>('/jobs').then((d) => (list = d));
 	$effect(() => {
 		load();
-		const t = setInterval(load, 15000); // keeps "Last" and "Next" current
-		return () => clearInterval(t);
+		// "Last" and "Next" change when a job starts or finishes: reload then (pushed live), not on a timer.
+		const offs = [on('job', load), on('resync', load)];
+		return () => offs.forEach((off) => off());
 	});
 
 	function edit(j: Job) {
