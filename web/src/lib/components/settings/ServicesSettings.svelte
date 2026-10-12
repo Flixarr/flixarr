@@ -79,7 +79,6 @@
 	// each run of the job (its "done" event), with a slow backup check in case the event stream drops.
 	let load = () => {};
 	$effect(() => {
-		// TESTING ONLY (not committed): a toast each time the browser asks Flixarr for the cards.
 		// Backup check: only fires when no fresh data has come in for 90 seconds (the events stream
 		// broke). Every load restarts it, so while events work there's one call per job run.
 		let backup: ReturnType<typeof setTimeout>;
