@@ -15,7 +15,7 @@
 	];
 	const nameOf = (kind: ServiceKind) => KINDS.find((k) => k.kind === kind)!.name;
 
-	type Form = { name: string; url: string; apiKey: string; rootFolder: string; qualityProfileId: number; seasonFolders: boolean; searchOnAdd: boolean; enabled: boolean };
+	type Form = { name: string; url: string; webUrl: string; apiKey: string; rootFolder: string; qualityProfileId: number; seasonFolders: boolean; searchOnAdd: boolean; enabled: boolean };
 	let saved = $state<Record<ServiceKind, ServiceView | null> | null>(null);
 	let now = $state(Date.now());
 
@@ -31,9 +31,41 @@
 	let finding = $state(false);
 	let found = $state<string[] | null>(null);
 	let confirmRemove = $state(false);
+	let more = $state<ServiceKind | null>(null); // which card's ⋯ menu is open
+	let refreshing = $state<ServiceKind | null>(null);
+
+	$effect(() => {
+		if (!more) return;
+		const away = (e: PointerEvent) => !(e.target as Element).closest('[data-svc-menu]') && (more = null);
+		document.addEventListener('pointerdown', away);
+		return () => document.removeEventListener('pointerdown', away);
+	});
+
+	async function refresh(k: ServiceKind) {
+		refreshing = k;
+		try {
+			saved![k] = await api<ServiceView>(`/services/${k}/refresh`, { method: 'POST' });
+			notify(`${saved![k]!.name} refreshed.`);
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Could not refresh.', 'orange');
+		} finally {
+			refreshing = null;
+			more = null;
+		}
+	}
+
+	async function copy(text: string) {
+		more = null;
+		try {
+			await navigator.clipboard.writeText(text);
+			notify('Address copied.');
+		} catch {
+			notify(text, 'orange');
+		}
+	}
 
 	function blank(k: ServiceKind): Form {
-		return { name: nameOf(k), url: '', apiKey: '', rootFolder: '', qualityProfileId: 0, seasonFolders: true, searchOnAdd: true, enabled: true };
+		return { name: nameOf(k), url: '', webUrl: '', apiKey: '', rootFolder: '', qualityProfileId: 0, seasonFolders: true, searchOnAdd: true, enabled: true };
 	}
 
 	// The cards show what the "Radarr / Sonarr: refresh status" job last read; reload while the page is open.
@@ -70,7 +102,7 @@
 	function edit(k: ServiceKind) {
 		const v = saved![k];
 		kind = k;
-		form = v ? { name: v.name, url: v.url, apiKey: '', rootFolder: v.rootFolder, qualityProfileId: v.qualityProfileId, seasonFolders: v.seasonFolders, searchOnAdd: v.searchOnAdd, enabled: v.enabled } : blank(k);
+		form = v ? { name: v.name, url: v.url, webUrl: v.webUrl, apiKey: '', rootFolder: v.rootFolder, qualityProfileId: v.qualityProfileId, seasonFolders: v.seasonFolders, searchOnAdd: v.searchOnAdd, enabled: v.enabled } : blank(k);
 		info = null;
 		error = '';
 		showKey = false;
@@ -165,10 +197,14 @@
 				{#if v}
 					{@const st = v.status}
 					{@const issues = st?.health.length ?? 0}
-					<button class="card block w-full p-4 text-left transition hover:border-gray-600" onclick={() => edit(s.kind)}>
+					{@const web = v.webUrl || v.url}
+					<div class="card block w-full overflow-hidden text-left"><div class="p-4">
 						<span class="flex items-center gap-3">
-							<img src="/logos/{s.kind}.svg" alt="" class="size-8 shrink-0" />
-							<span class="min-w-0 flex-1"><span class="block font-semibold">{v.name}</span><span class="block truncate text-[11px] text-gray-500">{v.url}{st?.version ? ` · ${short(st.version)}` : ''}</span></span>
+							<a href={web} target="_blank" rel="noopener" title="Open {v.name}" class="shrink-0 rounded-md transition hover:opacity-80"><img src="/logos/{s.kind}.svg" alt="" class="size-8" /></a>
+							<span class="min-w-0 flex-1">
+								<a href={web} target="_blank" rel="noopener" title="Open {v.name}" class="group/n inline-flex items-center gap-1 font-semibold hover:underline hover:underline-offset-4">{v.name}<span class="text-gray-500 opacity-0 transition group-hover/n:opacity-100"><Icon name="external" class="size-3" /></span></a>
+								<span class="block truncate text-[11px] text-gray-500">{v.url}{st?.version ? ` · ${short(st.version)}` : ''}</span>
+							</span>
 							{#if !st}<span class="text-xs text-gray-500">Checking…</span>
 							{:else if !st.connected}<span class="flex items-center gap-1.5 text-xs text-red-400"><span class="size-2 rounded-full bg-red-500"></span>Not connected</span>
 							{:else if issues}<span class="flex items-center gap-1.5 text-xs text-yellow-400"><span class="size-2 rounded-full bg-yellow-400"></span>{issues} issue{issues > 1 ? 's' : ''}</span>
@@ -200,10 +236,18 @@
 								</span>
 							{/if}
 
+							{@const cut = st.folder.lastIndexOf('/')}
+							{@const used = st.totalSpace ? Math.round((1 - st.freeSpace / st.totalSpace) * 100) : 0}
 							<span class="mt-4 block">
-								<span class="flex justify-between gap-3 text-[11px]"><span class="truncate text-gray-400">{st.folder}</span>
-									<span class="shrink-0 tabular-nums text-gray-300">{st.totalSpace ? `${fmtBytes(st.totalSpace - st.freeSpace)} · ` : ''}{fmtBytes(st.freeSpace)} free</span></span>
-								{#if st.totalSpace}<span class="mt-1 block h-1.5 overflow-hidden rounded-full bg-gray-700/60"><span class="block h-full rounded-full" style="width:{Math.round((1 - st.freeSpace / st.totalSpace) * 100)}%; background:{s.color}"></span></span>{/if}
+								<span class="flex items-end justify-between gap-3">
+									<span class="flex min-w-0 items-center gap-2">
+										<span class="grid size-7 shrink-0 place-items-center rounded-md bg-gray-900/70 text-gray-400 ring-1 ring-gray-700/50"><Icon name="folder" class="size-3.5" /></span>
+										<span class="min-w-0 leading-tight"><span class="block truncate text-xs font-medium text-gray-200">{st.folder.slice(cut + 1) || st.folder}</span><span class="block truncate font-mono text-[10px] text-gray-500">{st.folder.slice(0, cut + 1)}</span></span>
+									</span>
+									<span class="shrink-0 text-right leading-tight"><span class="block text-xs font-semibold tabular-nums text-gray-100">{fmtBytes(st.freeSpace)} free</span>
+										{#if st.totalSpace}<span class="block text-[10px] tabular-nums text-gray-500">{used}% of {fmtBytes(st.totalSpace)} used</span>{/if}</span>
+								</span>
+								{#if st.totalSpace}<span class="mt-2 block h-1.5 overflow-hidden rounded-full bg-gray-700/60"><span class="block h-full rounded-full" style="width:{used}%; background:{used > 90 ? '#ef4444' : s.color}"></span></span>{/if}
 							</span>
 							<span class="mt-3 flex flex-wrap items-center gap-1.5">
 								{#each st.clients as c (c)}{@render chip(c, st.clientsDown)}{/each}
@@ -217,7 +261,22 @@
 								</span>
 							{/if}
 						{/if}
-					</button>
+					</div>
+						<div class="grid grid-cols-[1fr_1fr_auto] divide-x divide-gray-700/40 border-t border-gray-700/40 text-xs">
+							<button class="flex items-center justify-center gap-1.5 py-2.5 text-gray-300 hover:bg-white/5 hover:text-white" onclick={() => edit(s.kind)}><Icon name="settings" class="size-3.5" />Edit connection</button>
+							<a href={web} target="_blank" rel="noopener" class="flex items-center justify-center gap-1.5 py-2.5 text-gray-300 hover:bg-white/5 hover:text-white">Open {v.name}<Icon name="external" class="size-3.5" /></a>
+							<span class="relative" data-svc-menu>
+								<button class="grid h-full place-items-center px-3 text-gray-400 hover:bg-white/5 hover:text-white" aria-label="More for {v.name}" aria-expanded={more === s.kind} onclick={() => (more = more === s.kind ? null : s.kind)}><Icon name="dots" class="size-4" /></button>
+								{#if more === s.kind}
+									<span class="absolute bottom-full right-0 z-20 mb-1 block w-44 overflow-hidden rounded-lg border border-gray-700/60 bg-gray-900 py-1 shadow-[0_16px_40px_-4px_rgb(0_0_0/0.75),0_4px_12px_rgb(0_0_0/0.5)]">
+										<button class="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-300 hover:bg-white/5 hover:text-white disabled:opacity-50" disabled={refreshing === s.kind} onclick={() => refresh(s.kind)}><Icon name="refresh" class="size-3.5" />{refreshing === s.kind ? 'Refreshing…' : 'Refresh now'}</button>
+										<button class="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-300 hover:bg-white/5 hover:text-white" onclick={() => copy(web)}><Icon name="copy" class="size-3.5" />Copy address</button>
+										<button class="flex w-full items-center gap-2 px-3 py-2 text-left text-red-300 hover:bg-white/5" onclick={() => { more = null; kind = s.kind; confirmRemove = true; }}><Icon name="trash" class="size-3.5" />Remove</button>
+									</span>
+								{/if}
+							</span>
+						</div>
+					</div>
 				{:else}
 					<button class="flex items-center justify-center gap-2 rounded-xl border border-dashed border-gray-700 p-6 text-sm text-gray-400 transition hover:border-gray-500 hover:text-white" onclick={() => edit(s.kind)}>
 						<Icon name="plus" class="size-4" />Add {s.name} server
@@ -288,6 +347,11 @@
 					<div>
 						<label for="svc-name" class="block text-sm">Name</label>
 						<input id="svc-name" bind:value={form.name} maxlength="60" placeholder={k.name} class={input} />
+					</div>
+					<div>
+						<label for="svc-web" class="block text-sm">Web address <span class="text-gray-500">(optional)</span></label>
+						<input id="svc-web" bind:value={form.webUrl} placeholder={form.url || `https://${k.kind}.example.com`} autocomplete="off" spellcheck="false" class={input} />
+						<p class="mt-1 text-xs text-gray-500">What "Open {k.name}" uses. Set it when the address above only works from the server, like a Docker address.</p>
 					</div>
 				</div>
 			{/if}

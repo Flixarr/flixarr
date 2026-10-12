@@ -36,6 +36,7 @@ func (s *Server) viewOf(v store.Server) serviceView {
 type serviceInput struct {
 	Name             string `json:"name"`
 	URL              string `json:"url"`
+	WebURL           string `json:"webUrl"` // optional
 	APIKey           string `json:"apiKey"` // empty = keep the saved key
 	RootFolder       string `json:"rootFolder"`
 	QualityProfileID int    `json:"qualityProfileId"`
@@ -138,6 +139,13 @@ func (s *Server) serviceSave(w http.ResponseWriter, r *http.Request, _ *store.Us
 	if v.Name == "" {
 		v.Name = arr.Kinds[kind]
 	}
+	v.WebURL = ""
+	if strings.TrimSpace(in.WebURL) != "" {
+		if v.WebURL, err = arr.NormalizeURL(in.WebURL); err != nil {
+			writeErr(w, http.StatusBadRequest, "Web address: "+err.Error()+".")
+			return
+		}
+	}
 	if len(v.Name) > 60 {
 		v.Name = v.Name[:60]
 	}
@@ -186,6 +194,17 @@ func nonNil(f []arr.Found) []arr.Found {
 		return []arr.Found{}
 	}
 	return f
+}
+
+// serviceRefresh reads one connection's status right away ("Refresh now" on the card).
+func (s *Server) serviceRefresh(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	v, ok, err := s.Store.FirstServer(r.PathValue("kind"))
+	if err != nil || !ok {
+		writeErr(w, http.StatusNotFound, "Not connected.")
+		return
+	}
+	s.Arr.RefreshOne(r.Context(), v)
+	writeJSON(w, http.StatusOK, s.viewOf(v))
 }
 
 // serviceDelete removes the connection.

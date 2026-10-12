@@ -101,7 +101,7 @@ export interface Job {
 export type ServiceKind = 'radarr' | 'sonarr';
 
 export interface ServiceView {
-	id: number; kind: ServiceKind; name: string; url: string; rootFolder: string; qualityProfileId: number; qualityProfileName: string;
+	id: number; kind: ServiceKind; name: string; url: string; webUrl: string; rootFolder: string; qualityProfileId: number; qualityProfileName: string;
 	seasonFolders: boolean; searchOnAdd: boolean; enabled: boolean; createdAt: string; updatedAt: string; apiKeySet: boolean; apiKeyEnd: string;
 	status: ArrStatus | null;
 }

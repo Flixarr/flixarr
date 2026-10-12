@@ -13,7 +13,8 @@ type Server struct {
 	Kind               string `json:"kind"` // "radarr" or "sonarr"
 	Name               string `json:"name"`
 	URL                string `json:"url"`
-	APIKey             string `json:"-"` // never sent to the browser
+	WebURL             string `json:"webUrl"` // for opening it in a browser; blank = URL
+	APIKey             string `json:"-"`      // never sent to the browser
 	RootFolder         string `json:"rootFolder"`
 	QualityProfileID   int    `json:"qualityProfileId"`
 	QualityProfileName string `json:"qualityProfileName"`
@@ -24,13 +25,13 @@ type Server struct {
 	UpdatedAt          string `json:"updatedAt"`
 }
 
-const serverCols = `id, kind, name, url, api_key, root_folder, quality_profile_id, quality_profile_name, season_folders, search_on_add, enabled, created_at, updated_at`
+const serverCols = `id, kind, name, url, web_url, api_key, root_folder, quality_profile_id, quality_profile_name, season_folders, search_on_add, enabled, created_at, updated_at`
 
 // scanServer reads a row and decrypts its API key. A key that can't be decrypted (the secret key
 // changed) comes back empty, so the screen asks for it again instead of failing.
 func (s *Store) scanServer(row interface{ Scan(...any) error }) (Server, error) {
 	var v Server
-	err := row.Scan(&v.ID, &v.Kind, &v.Name, &v.URL, &v.APIKey, &v.RootFolder, &v.QualityProfileID, &v.QualityProfileName, &v.SeasonFolders, &v.SearchOnAdd, &v.Enabled, &v.CreatedAt, &v.UpdatedAt)
+	err := row.Scan(&v.ID, &v.Kind, &v.Name, &v.URL, &v.WebURL, &v.APIKey, &v.RootFolder, &v.QualityProfileID, &v.QualityProfileName, &v.SeasonFolders, &v.SearchOnAdd, &v.Enabled, &v.CreatedAt, &v.UpdatedAt)
 	if err == nil {
 		if v.APIKey, err = s.box.Open(v.APIKey); err != nil {
 			v.APIKey, err = "", nil
@@ -97,17 +98,17 @@ func (s *Store) FirstServer(kind string) (Server, bool, error) {
 func (s *Store) SaveServer(v Server) (Server, error) {
 	t := now()
 	if v.ID == 0 {
-		res, err := s.db.Exec(`INSERT INTO servers (kind, name, url, api_key, root_folder, quality_profile_id, quality_profile_name, season_folders, search_on_add, enabled, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			v.Kind, v.Name, v.URL, s.box.Seal(v.APIKey), v.RootFolder, v.QualityProfileID, v.QualityProfileName, v.SeasonFolders, v.SearchOnAdd, v.Enabled, t, t)
+		res, err := s.db.Exec(`INSERT INTO servers (kind, name, url, web_url, api_key, root_folder, quality_profile_id, quality_profile_name, season_folders, search_on_add, enabled, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			v.Kind, v.Name, v.URL, v.WebURL, s.box.Seal(v.APIKey), v.RootFolder, v.QualityProfileID, v.QualityProfileName, v.SeasonFolders, v.SearchOnAdd, v.Enabled, t, t)
 		if err != nil {
 			return Server{}, err
 		}
 		if v.ID, err = res.LastInsertId(); err != nil {
 			return Server{}, err
 		}
-	} else if _, err := s.db.Exec(`UPDATE servers SET name = ?, url = ?, api_key = ?, root_folder = ?, quality_profile_id = ?, quality_profile_name = ?, season_folders = ?, search_on_add = ?, enabled = ?, updated_at = ? WHERE id = ?`,
-		v.Name, v.URL, s.box.Seal(v.APIKey), v.RootFolder, v.QualityProfileID, v.QualityProfileName, v.SeasonFolders, v.SearchOnAdd, v.Enabled, t, v.ID); err != nil {
+	} else if _, err := s.db.Exec(`UPDATE servers SET name = ?, url = ?, web_url = ?, api_key = ?, root_folder = ?, quality_profile_id = ?, quality_profile_name = ?, season_folders = ?, search_on_add = ?, enabled = ?, updated_at = ? WHERE id = ?`,
+		v.Name, v.URL, v.WebURL, s.box.Seal(v.APIKey), v.RootFolder, v.QualityProfileID, v.QualityProfileName, v.SeasonFolders, v.SearchOnAdd, v.Enabled, t, v.ID); err != nil {
 		return Server{}, err
 	}
 	return s.scanServer(s.db.QueryRow(`SELECT `+serverCols+` FROM servers WHERE id = ?`, v.ID))
