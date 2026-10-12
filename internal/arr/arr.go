@@ -2,6 +2,7 @@
 package arr
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -75,14 +76,40 @@ func NormalizeURL(raw string) (string, error) {
 }
 
 func (c *Client) get(ctx context.Context, path string, out any) error {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	return c.do(ctx, http.MethodGet, path, nil, out)
+}
+
+// Post, Put and Get are for packages that change Radarr/Sonarr (quality profiles); the body is sent as JSON.
+func (c *Client) Get(ctx context.Context, path string, out any) error {
+	return c.do(ctx, http.MethodGet, path, nil, out)
+}
+func (c *Client) Post(ctx context.Context, path string, body, out any) error {
+	return c.do(ctx, http.MethodPost, path, body, out)
+}
+func (c *Client) Put(ctx context.Context, path string, body, out any) error {
+	return c.do(ctx, http.MethodPut, path, body, out)
+}
+
+func (c *Client) do(ctx context.Context, method, path string, in, out any) error {
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.URL+"/api/v3/"+path, nil)
+	var rd io.Reader
+	if in != nil {
+		b, err := json.Marshal(in)
+		if err != nil {
+			return err
+		}
+		rd = bytes.NewReader(b)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.URL+"/api/v3/"+path, rd)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("X-Api-Key", c.APIKey)
 	req.Header.Set("Accept", "application/json")
+	if in != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	hc := c.HTTP
 	if hc == nil {
 		hc = http.DefaultClient
@@ -91,27 +118,58 @@ func (c *Client) get(ctx context.Context, path string, out any) error {
 	if err != nil {
 		var ne net.Error
 		if errors.As(err, &ne) && ne.Timeout() {
-			return errors.New("no answer within 10 seconds; check the address and that it's running")
+			return errors.New("no answer in time; check the address and that it's running")
 		}
 		return errors.New("couldn't reach it; check the address and that it's running")
 	}
 	defer res.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(res.Body, 8<<20))
 	switch {
 	case res.StatusCode == http.StatusUnauthorized:
 		return errors.New("the API key was refused")
-	case res.StatusCode == http.StatusNotFound:
+	case res.StatusCode == http.StatusNotFound && method == http.MethodGet:
 		return fmt.Errorf("this address doesn't answer like %s; check the address and any URL base", Kinds[c.Kind])
 	case res.StatusCode >= 300:
-		return fmt.Errorf("it answered with an error (%d)", res.StatusCode)
+		return &StatusError{Code: res.StatusCode, Body: firstMessage(body)}
 	}
-	body, err := io.ReadAll(io.LimitReader(res.Body, 4<<20))
-	if err != nil {
-		return err
+	if out == nil || len(body) == 0 {
+		return nil
 	}
 	if err := json.Unmarshal(body, out); err != nil {
 		return fmt.Errorf("this address doesn't answer like %s", Kinds[c.Kind])
 	}
 	return nil
+}
+
+// StatusError is an error answer from Radarr/Sonarr, with its own message when it gave one.
+type StatusError struct {
+	Code int
+	Body string
+}
+
+func (e *StatusError) Error() string {
+	if e.Body != "" {
+		return fmt.Sprintf("it answered with an error (%d): %s", e.Code, e.Body)
+	}
+	return fmt.Sprintf("it answered with an error (%d)", e.Code)
+}
+
+// firstMessage pulls a readable message out of an error body: Radarr/Sonarr answer validation
+// failures with a list of {propertyName, errorMessage}.
+func firstMessage(b []byte) string {
+	var list []struct {
+		ErrorMessage string `json:"errorMessage"`
+	}
+	if json.Unmarshal(b, &list) == nil && len(list) > 0 {
+		return list[0].ErrorMessage
+	}
+	var one struct {
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(b, &one) == nil {
+		return one.Message
+	}
+	return ""
 }
 
 // Test checks the connection and returns the version, quality profiles and root folders.

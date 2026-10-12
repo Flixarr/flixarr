@@ -18,6 +18,7 @@ import (
 	"github.com/Flixarr/flixarr/internal/jobs"
 	"github.com/Flixarr/flixarr/internal/meta"
 	"github.com/Flixarr/flixarr/internal/plex"
+	"github.com/Flixarr/flixarr/internal/profiles"
 	"github.com/Flixarr/flixarr/internal/store"
 	"github.com/Flixarr/flixarr/internal/update"
 	"github.com/Flixarr/flixarr/internal/version"
@@ -27,15 +28,16 @@ const sessionCookie = "flixarr_session"
 
 // Server holds everything the handlers need.
 type Server struct {
-	Store  *store.Store
-	Plex   *plex.Client
-	Meta   *meta.Client
-	Images *images.Cache
-	Jobs   *jobs.Runner
-	Update *update.Checker
-	Arr    *arrstatus.Monitor
-	Web    fs.FS // built web app (index + assets)
-	Log    *slog.Logger
+	Store    *store.Store
+	Plex     *plex.Client
+	Meta     *meta.Client
+	Images   *images.Cache
+	Jobs     *jobs.Runner
+	Update   *update.Checker
+	Arr      *arrstatus.Monitor
+	Profiles *profiles.Manager
+	Web      fs.FS // built web app (index + assets)
+	Log      *slog.Logger
 	// BaseCtx outlives requests; jobs started with "Run now" use it.
 	BaseCtx context.Context
 
@@ -67,6 +69,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/services/{kind}/test", s.auth(s.admin(s.serviceTest)))
 	mux.HandleFunc("POST /api/services/{kind}/discover", s.auth(s.admin(s.serviceDiscover)))
 	mux.HandleFunc("POST /api/services/{kind}/refresh", s.auth(s.admin(s.serviceRefresh)))
+	mux.HandleFunc("POST /api/services/{kind}/profiles", s.auth(s.admin(s.serviceProfilesAdd)))
+	mux.HandleFunc("POST /api/services/{kind}/profiles/{key}/use-flixarr", s.auth(s.admin(s.serviceProfileUseFlixarr)))
+	mux.HandleFunc("GET /api/profiles", s.auth(s.admin(s.profilesInfo)))
 	mux.HandleFunc("PUT /api/services/{kind}", s.auth(s.admin(s.serviceSave)))
 	mux.HandleFunc("DELETE /api/services/{kind}", s.auth(s.admin(s.serviceDelete)))
 	mux.HandleFunc("GET /api/jobs", s.auth(s.admin(s.jobList)))

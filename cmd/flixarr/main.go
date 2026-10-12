@@ -20,6 +20,7 @@ import (
 	"github.com/Flixarr/flixarr/internal/jobs"
 	"github.com/Flixarr/flixarr/internal/meta"
 	"github.com/Flixarr/flixarr/internal/plex"
+	"github.com/Flixarr/flixarr/internal/profiles"
 	"github.com/Flixarr/flixarr/internal/secret"
 	"github.com/Flixarr/flixarr/internal/server"
 	"github.com/Flixarr/flixarr/internal/store"
@@ -94,20 +95,33 @@ func main() {
 	runner.Add(&jobs.Job{ID: "arr-status", Name: "Radarr / Sonarr: refresh status", Default: "* * * * *",
 		About: "Reads each Radarr and Sonarr connection's queue, health, disk space, indexers and download clients for the Services cards.",
 		Run:   arrMon.Refresh})
+	// Flixarr's quality profiles: downloaded from the API, added to Radarr/Sonarr on request, kept up to date.
+	pm := &profiles.Manager{Store: st, API: api, UserAgent: "Flixarr/" + version.Full(), Log: log}
+	runner.Add(&jobs.Job{ID: "profiles-sync", Name: "Quality profiles: sync", Default: "30 4 * * *",
+		About: "Downloads Flixarr's quality profiles and updates the ones added to Radarr and Sonarr. Profiles edited there are left alone.",
+		Run:   pm.SyncAll})
+	// The daily update check also says which profiles version is current; a new one syncs right away.
+	checker.OnResult = func(r *update.Result) {
+		if r.Profiles != nil && (pm.Doc() == nil || pm.Doc().Version != r.Profiles.Version) {
+			runner.RunNow(runCtx, "profiles-sync")
+		}
+	}
 	runner.Start(runCtx)
+	runner.RunNow(runCtx, "profiles-sync")
 	runner.RunNow(runCtx, "arr-status") // fill the cards right away instead of waiting for the first minute
 
 	srv := &server.Server{
-		Store:   st,
-		Plex:    plex.New(clientID, version.Full()),
-		Meta:    mc,
-		Images:  ic,
-		Jobs:    runner,
-		Update:  checker,
-		Arr:     arrMon,
-		Web:     webui.FS(),
-		Log:     log,
-		BaseCtx: runCtx,
+		Store:    st,
+		Plex:     plex.New(clientID, version.Full()),
+		Meta:     mc,
+		Images:   ic,
+		Jobs:     runner,
+		Update:   checker,
+		Arr:      arrMon,
+		Profiles: pm,
+		Web:      webui.FS(),
+		Log:      log,
+		BaseCtx:  runCtx,
 	}
 	hs := &http.Server{Addr: addr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 

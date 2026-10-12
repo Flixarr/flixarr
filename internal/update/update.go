@@ -42,6 +42,11 @@ type Latest struct {
 type Result struct {
 	UpdateAvailable bool    `json:"updateAvailable"`
 	Latest          *Latest `json:"latest"`
+	// The quality profiles' current version, so installs know when to sync them.
+	Profiles *struct {
+		Version string            `json:"version"`
+		Revs    map[string]string `json:"revs"`
+	} `json:"profiles,omitempty"`
 }
 
 // Checker runs the daily check.
@@ -51,6 +56,8 @@ type Checker struct {
 	ForceOff bool   // FLIXARR_UPDATE_CHECK=false
 	Log      *slog.Logger
 	HTTP     *http.Client
+	// OnResult runs after each successful check (the quality profiles hook into it).
+	OnResult func(*Result)
 }
 
 // Enabled reports whether checks run (env override wins).
@@ -122,6 +129,9 @@ func (c *Checker) Check(ctx context.Context) (*Result, error) {
 	raw, _ := json.Marshal(r)
 	c.Store.SetSetting(keyResult, string(raw))
 	c.Store.SetSetting(keyChecked, time.Now().UTC().Format(time.RFC3339))
+	if c.OnResult != nil {
+		c.OnResult(&r)
+	}
 	return &r, nil
 }
 

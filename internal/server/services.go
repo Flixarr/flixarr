@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Flixarr/flixarr/internal/arr"
+	"github.com/Flixarr/flixarr/internal/profiles"
 	"github.com/Flixarr/flixarr/internal/store"
 )
 
@@ -20,6 +21,9 @@ type serviceView struct {
 	APIKeySet bool          `json:"apiKeySet"`
 	APIKeyEnd string        `json:"apiKeyEnd"` // last 4 characters, so it can be recognized
 	Status    *arr.Snapshot `json:"status"`    // latest card data from the refresh-status job
+	// Flixarr's quality profiles on this server (added or not).
+	Profiles []profiles.ProfileStatus `json:"profiles"`
+	Warning  string                   `json:"warning,omitempty"` // e.g. saved, but adding profiles failed
 	// When the refresh-status job runs next (nil when it's paused), for the card's countdown.
 	NextUpdate    *time.Time `json:"nextUpdate"`
 	UpdatesPaused bool       `json:"updatesPaused"`
@@ -33,6 +37,10 @@ func (s *Server) viewOf(v store.Server) serviceView {
 	sv := serviceView{Server: v, APIKeySet: v.APIKey != "", APIKeyEnd: end}
 	if snap, ok := s.Arr.Get(v.ID); ok {
 		sv.Status = &snap
+	}
+	sv.Profiles, _ = s.Profiles.Status(v)
+	if sv.Profiles == nil {
+		sv.Profiles = []profiles.ProfileStatus{}
 	}
 	for _, j := range s.Jobs.List() {
 		if j.ID == "arr-status" {
@@ -55,7 +63,10 @@ type serviceInput struct {
 	QualityProfileID int    `json:"qualityProfileId"`
 	SeasonFolders    bool   `json:"seasonFolders"`
 	SearchOnAdd      bool   `json:"searchOnAdd"`
-	Enabled          bool   `json:"enabled"`
+	// First setup: Flixarr profiles to add right after saving, and one of them to use as the default quality.
+	AddProfiles    []string `json:"addProfiles"`
+	DefaultProfile string   `json:"defaultProfile"`
+	Enabled        bool     `json:"enabled"`
 }
 
 func (s *Server) services(w http.ResponseWriter, r *http.Request, _ *store.User) {
@@ -178,9 +189,12 @@ func (s *Server) serviceSave(w http.ResponseWriter, r *http.Request, _ *store.Us
 		writeErr(w, http.StatusBadRequest, "Pick a root folder.")
 		return
 	}
-	if v.QualityProfileID == 0 {
+	if v.QualityProfileID == 0 && in.DefaultProfile == "" {
 		writeErr(w, http.StatusBadRequest, "Pick a default quality.")
 		return
+	}
+	if v.QualityProfileID == 0 && len(info.Profiles) > 0 { // replaced by the Flixarr profile below
+		v.QualityProfileID, v.QualityProfileName = info.Profiles[0].ID, info.Profiles[0].Name
 	}
 	v, err = s.Store.SaveServer(v)
 	if err != nil {
@@ -188,8 +202,28 @@ func (s *Server) serviceSave(w http.ResponseWriter, r *http.Request, _ *store.Us
 		return
 	}
 	s.Log.Info("service saved", "kind", kind, "url", v.URL)
+	warn := ""
+	if len(in.AddProfiles) > 0 {
+		if err := s.Profiles.Add(r.Context(), v, in.AddProfiles); err != nil {
+			warn = "Saved, but Flixarr's quality profiles couldn't be added: " + err.Error() + "."
+		} else if in.DefaultProfile != "" {
+			links, _ := s.Store.ProfileLinks(v.ID)
+			for _, l := range links {
+				if l.Key == in.DefaultProfile {
+					for _, p := range s.Profiles.Doc().Profiles {
+						if p.ID == l.Key {
+							v.QualityProfileID, v.QualityProfileName = l.ArrID, profiles.ArrName(p)
+						}
+					}
+				}
+			}
+			v, _ = s.Store.SaveServer(v)
+		}
+	}
 	s.Arr.RefreshOne(r.Context(), v)
-	writeJSON(w, http.StatusOK, s.viewOf(v))
+	sv := s.viewOf(v)
+	sv.Warning = warn
+	writeJSON(w, http.StatusOK, sv)
 }
 
 // serviceDiscover looks for Radarr or Sonarr on the usual addresses and returns what answered.
@@ -207,6 +241,70 @@ func nonNil(f []arr.Found) []arr.Found {
 		return []arr.Found{}
 	}
 	return f
+}
+
+// serviceProfilesAdd adds Flixarr quality profiles (all, or the keys given) to a connected server.
+func (s *Server) serviceProfilesAdd(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	v, ok, err := s.Store.FirstServer(r.PathValue("kind"))
+	if err != nil || !ok {
+		writeErr(w, http.StatusNotFound, "Not connected.")
+		return
+	}
+	var in struct {
+		Keys []string `json:"keys"`
+	}
+	json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in)
+	if err := s.Profiles.Add(r.Context(), v, in.Keys); err != nil {
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		return
+	}
+	writeJSON(w, http.StatusOK, s.viewOf(v))
+}
+
+// serviceProfileUseFlixarr replaces a profile someone edited in Radarr/Sonarr with Flixarr's current version.
+func (s *Server) serviceProfileUseFlixarr(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	v, ok, err := s.Store.FirstServer(r.PathValue("kind"))
+	if err != nil || !ok {
+		writeErr(w, http.StatusNotFound, "Not connected.")
+		return
+	}
+	if err := s.Profiles.UseFlixarrVersion(r.Context(), v, r.PathValue("key")); err != nil {
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		return
+	}
+	writeJSON(w, http.StatusOK, s.viewOf(v))
+}
+
+// profilesInfo lists Flixarr's quality profiles (for the first-setup window, before anything is added).
+func (s *Server) profilesInfo(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	d := s.Profiles.Doc()
+	if d == nil {
+		if _, err := s.Profiles.Refresh(r.Context()); err != nil {
+			writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+			return
+		}
+		d = s.Profiles.Doc()
+	}
+	type entry struct {
+		ID          string   `json:"id"`
+		Name        string   `json:"name"`
+		Label       string   `json:"label"`
+		Description string   `json:"description"`
+		ArrName     string   `json:"arrName"`
+		Apps        []string `json:"apps"`
+	}
+	out := []entry{}
+	for _, p := range d.Profiles {
+		e := entry{ID: p.ID, Name: p.Name, Label: p.Label, Description: p.Description, ArrName: profiles.ArrName(p)}
+		if p.Radarr != nil {
+			e.Apps = append(e.Apps, "radarr")
+		}
+		if p.Sonarr != nil {
+			e.Apps = append(e.Apps, "sonarr")
+		}
+		out = append(out, e)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"version": d.Version, "source": d.Source, "profiles": out})
 }
 
 // serviceRefresh reads one connection's status right away ("Refresh now" on the card).
