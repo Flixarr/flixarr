@@ -16,6 +16,7 @@
 	import DiscoverSettings from '#lib/components/settings/DiscoverSettings.svelte';
 	import NotificationsSettings from '#lib/components/settings/NotificationsSettings.svelte';
 	import BackupsSettings from '#lib/components/settings/BackupsSettings.svelte';
+	import BlocklistSettings from '#lib/components/settings/BlocklistSettings.svelte';
 	import { markAlertsSeen, servicesUnread } from '#lib/alerts.svelte.ts';
 
 	// Section key → label, icon, one-line description (side menu / phone list).
@@ -26,6 +27,7 @@
 		['profiles', 'Quality profiles', 'flag', "Flixarr's profiles for Radarr and Sonarr"],
 		['notifications', 'Notifications', 'bell', 'Discord, webhooks, email, push'],
 		['discover', 'Discover', 'discover', 'Discover page rows'],
+		['blocklist', 'Blocklist', 'close', "Titles that can't be requested"],
 		['cache', 'Cache', 'refresh', 'Saved results, images'],
 		['jobs', 'Jobs', 'clock', 'Scheduled tasks'],
 		['backups', 'Backups', 'folder', 'Daily copies of your data'],
@@ -115,6 +117,8 @@
 					<DiscoverSettings />
 				{:else if tab === 'cache'}
 					<CacheSettings />
+				{:else if tab === 'blocklist'}
+					<BlocklistSettings />
 				{:else if tab === 'backups'}
 					<BackupsSettings />
 				{:else if tab === 'jobs'}

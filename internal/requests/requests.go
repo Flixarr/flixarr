@@ -36,6 +36,9 @@ var ErrAlready = errors.New("already requested")
 // ErrNotAllowed is returned when the user may not request this type.
 var ErrNotAllowed = errors.New("not allowed")
 
+// ErrBlocked is returned for titles on the blocklist.
+var ErrBlocked = errors.New("blocked")
+
 // ErrInPlex is returned when the title is already in Plex.
 var ErrInPlex = errors.New("already in Plex")
 
@@ -100,6 +103,9 @@ func (s *Service) Create(ctx context.Context, u *store.User, in New) (store.Requ
 	}
 	if in.TmdbID <= 0 || strings.TrimSpace(in.Title) == "" {
 		return store.Request{}, errors.New("missing title")
+	}
+	if s.Store.IsBlocked(in.Type, in.TmdbID) {
+		return store.Request{}, ErrBlocked
 	}
 	if (in.Type == "movie" && !u.Can("requestMovies")) || (in.Type == "series" && !u.Can("requestTv")) {
 		return store.Request{}, ErrNotAllowed

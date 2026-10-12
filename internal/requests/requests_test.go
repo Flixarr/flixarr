@@ -308,3 +308,15 @@ func TestLimits(t *testing.T) {
 		t.Fatalf("usage: %+v", got)
 	}
 }
+
+func TestBlocked(t *testing.T) {
+	s, st, _, _, admin, _ := setup(t)
+	st.Block(store.Blocked{Type: "movie", TmdbID: 603, Title: "The Matrix"}, admin.ID)
+	if _, err := s.Create(context.Background(), admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix"}); err != ErrBlocked {
+		t.Fatalf("blocked: %v", err)
+	}
+	st.Unblock("movie", 603)
+	if _, err := s.Create(context.Background(), admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix"}); err != nil {
+		t.Fatalf("unblocked: %v", err)
+	}
+}

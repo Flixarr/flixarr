@@ -132,4 +132,4 @@ export interface Request {
 	serverId: number; arrId: number; profileId: number; profileName: string; mode: 'all' | 'seasons'; seasons: number[]; progress: number; error: string; anime: boolean;
 	createdAt: string; updatedAt: string;
 }
-export type RequestBrief = { id: number; status: Request['status']; progress: number; plex?: string };
+export type RequestBrief = { id: number; status: Request['status'] | 'blocked'; progress: number; plex?: string; blocked?: boolean };

@@ -9,6 +9,8 @@
 	import { page } from '$app/state';
 	import { remember } from '#lib/availability.svelte.ts';
 	import RequestModal from './RequestModal.svelte';
+	import Modal from './Modal.svelte';
+	import { notify } from '#lib/toast.svelte.ts';
 
 	// req: undefined while loading, null when never requested and not in Plex. Bindable so the page can show "In your library".
 	let { item, req = $bindable() }: { item: Movie | Series; req?: RequestBrief | null } = $props();
@@ -29,6 +31,29 @@
 		api<Record<string, RequestBrief>>(`/requests/status?keys=${k}`).then((d) => (req = d[k] ?? null)).catch(() => (req = null));
 	});
 
+	let blockOpen = $state(false);
+	async function block() {
+		blockOpen = false;
+		try {
+			await api('/blocklist', { method: 'POST', body: JSON.stringify({ type: item.type, tmdbId: item.id, title: item.title, year: item.year, poster: item.poster ?? '' }) });
+			req = { id: 0, status: 'blocked', progress: 0, blocked: true };
+			remember(key, req);
+			notify(`${item.title} is blocked.`);
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Could not block it.', 'orange');
+		}
+	}
+	async function unblock() {
+		try {
+			await api(`/blocklist/${item.type}/${item.id}`, { method: 'DELETE' });
+			req = null;
+			remember(key, null);
+			notify(`${item.title} can be requested again.`);
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Could not unblock it.', 'orange');
+		}
+	}
+
 	const TEXT: Record<string, string> = { pending: 'Requested · waiting for approval', approved: 'Requested', sent: 'Requested', downloading: 'Downloading', available: 'Available', failed: 'Request failed', declined: 'Declined' };
 	const TONE: Record<string, string> = { available: 'bg-green-500/15 text-green-300 ring-green-500/40', downloading: 'bg-primary/15 text-primary-light ring-primary/40', failed: 'bg-red-500/15 text-red-300 ring-red-500/40' };
 </script>
@@ -42,6 +67,9 @@
 			<a href="/requests" class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium ring-1 {TONE[req.status] ?? 'bg-gray-800/70 text-gray-200 ring-gray-700/60'}">{TEXT[req.status]}{req.status === 'downloading' && req.progress ? ` ${req.progress}%` : ''}</a>
 		{/if}
 	{/if}
+{:else if req?.blocked}
+	<span class="btn-ghost cursor-default px-4 text-gray-400">Can't be requested</span>
+	{#if can('admin')}<button class="btn-ghost px-4 text-sm" onclick={unblock}>Unblock</button>{/if}
 {:else if req && req.status !== 'declined' && req.status !== 'failed'}
 	<a href="/requests" class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium ring-1 {TONE[req.status] ?? 'bg-gray-800/70 text-gray-200 ring-gray-700/60'}">
 		{#if req.status === 'available'}<Icon name="check" class="size-4" />{/if}{TEXT[req.status]}{req.status === 'downloading' && req.progress ? ` ${req.progress}%` : ''}
@@ -50,5 +78,13 @@
 	<span class="btn-ghost cursor-default px-4 text-gray-400">You can't request {item.type === 'series' ? 'series' : 'movies'}</span>
 {:else}
 	<button class="btn px-5" onclick={() => (open = true)}><Icon name="plus" class="size-4" />Request</button>
+	{#if can('admin') && req === null}<button class="btn-ghost px-3 text-sm text-gray-400" onclick={() => (blockOpen = true)}>Block</button>{/if}
 {/if}
+<Modal bind:open={blockOpen} title="Block {item.title}?">
+	<p class="p-5 text-sm text-gray-300">Nobody can request it until it's unblocked (Settings → Blocklist).</p>
+	{#snippet footer()}
+		<button class="btn-ghost" onclick={() => (blockOpen = false)}>Cancel</button>
+		<button class="btn px-6" onclick={block}>Block</button>
+	{/snippet}
+</Modal>
 <RequestModal bind:open {item} onrequested={(r) => { req = { id: r.id, status: r.status, progress: r.progress, plex: req?.plex }; remember(key, req); }} />

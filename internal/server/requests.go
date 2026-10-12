@@ -44,6 +44,10 @@ func (s *Server) requestCreate(w http.ResponseWriter, r *http.Request, u *store.
 		writeErr(w, http.StatusForbidden, "You can't request "+map[string]string{"movie": "movies", "series": "series"}[in.Type]+".")
 		return
 	}
+	if errors.Is(err, requests.ErrBlocked) {
+		writeErr(w, http.StatusForbidden, "That title can't be requested.")
+		return
+	}
 	if errors.Is(err, requests.ErrInPlex) {
 		writeErr(w, http.StatusConflict, "That's already on Plex.")
 		return
@@ -77,10 +81,18 @@ func (s *Server) requestStatus(w http.ResponseWriter, r *http.Request, _ *store.
 		Status   string `json:"status"`
 		Progress int    `json:"progress"`
 		Plex     string `json:"plex,omitempty"` // opens it in Plex
+		Blocked  bool   `json:"blocked,omitempty"`
 	}
 	out := map[string]brief{}
 	for k, v := range got {
 		out[k] = brief{ID: v.ID, Status: v.Status, Progress: v.Progress}
+	}
+	for _, k := range keys {
+		typ, id, _ := strings.Cut(k, ":")
+		n, _ := strconv.Atoi(id)
+		if _, has := out[k]; !has && s.Store.IsBlocked(typ, n) {
+			out[k] = brief{Status: "blocked", Blocked: true}
+		}
 	}
 	// In Plex: a movie is available whoever added it. A series gets the Plex link, but an open request
 	// for more seasons keeps its own status.
