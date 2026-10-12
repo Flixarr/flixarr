@@ -97,13 +97,16 @@
 	const short = (v?: string) => (v ? 'v' + v.split('.').slice(0, 2).join('.') : '');
 	const STATE_TEXT: Record<string, string> = { queued: 'Waiting', paused: 'Paused', importing: 'Importing', warning: 'Needs attention', error: 'Failed' };
 	const STATE_TONE: Record<string, string> = { warning: 'text-yellow-400', error: 'text-red-400', paused: 'text-gray-400', queued: 'text-gray-500', importing: 'text-green-400' };
-	function queueLabel(q: QueueRow[]) {
-		if (q.length && q.every((r) => r.state === 'paused')) return `${q.length} paused`;
+	// Queue summary parts, e.g. 2 downloading · 1 waiting · 3 need attention (that part in yellow, red when something failed).
+	function queueLabel(q: QueueRow[]): { text: string; tone: string }[] {
+		if (q.length && q.every((r) => r.state === 'paused')) return [{ text: `${q.length} paused`, tone: '' }];
 		const n = (f: (r: QueueRow) => boolean) => q.filter(f).length;
-		return ([[n((r) => r.state === 'downloading'), 'downloading'], [n((r) => r.state === 'importing'), 'importing'], [n((r) => r.state === 'queued'), 'waiting'],
-			[n((r) => r.state === 'warning' || r.state === 'error'), 'need attention'], [n((r) => r.state === 'paused'), 'paused']] as [number, string][])
-			.filter(([c]) => c).map(([c, w]) => `${c} ${w}`).join(' · ');
+		const failed = n((r) => r.state === 'error');
+		return ([[n((r) => r.state === 'downloading'), 'downloading', ''], [n((r) => r.state === 'importing'), 'importing', ''], [n((r) => r.state === 'queued'), 'waiting', ''],
+			[n((r) => r.state === 'warning' || r.state === 'error'), 'need attention', failed ? 'text-red-400' : 'text-yellow-400'], [n((r) => r.state === 'paused'), 'paused', '']] as [number, string, string][])
+			.filter(([c]) => c).map(([c, w, tone]) => ({ text: `${c} ${w === 'need attention' && c === 1 ? 'needs attention' : w}`, tone }));
 	}
+
 
 	function edit(k: ServiceKind) {
 		const v = saved![k];
@@ -248,15 +251,15 @@
 								{@const big = expanded[s.kind]}
 								<span class="mt-4 block rounded-lg bg-gray-900/50 px-3 pb-1 pt-2 ring-1 ring-gray-700/40">
 									<span class="flex items-center justify-between gap-3 text-[11px]"><span class="font-semibold uppercase tracking-wide text-gray-500">Queue</span>
-										<span class="flex min-w-0 items-center gap-2"><span class="truncate text-gray-400">{queueLabel(st.queue)}</span>
-											{#if st.queue.length > 1}<button class="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-gray-400 hover:bg-white/5 hover:text-white" aria-expanded={big} onclick={() => toggleQueue(s.kind)}>{big ? 'Hide' : 'Show'}<span class="transition {big ? '-rotate-90' : 'rotate-90'}"><Icon name="chevron" class="size-3.5" /></span></button>{/if}</span></span>
+										<span class="flex min-w-0 items-center gap-2"><span class="truncate text-gray-400">{#each queueLabel(st.queue) as part, i (part.text)}{i ? ' · ' : ''}<span class={part.tone}>{part.text}</span>{/each}</span></span></span>
 									<span class="block divide-y divide-gray-700/30">
 										{#each st.queue.slice(0, big ? 3 : 1) as q, i (i)}{@render queueRow(q, s.color)}{/each}
 									</span>
-									{#if !big && st.queue.length > 1}
-										<span class="block pb-2 text-[11px] text-gray-500">+ {st.queue.length - 1} more</span>
-									{:else if big && st.queue.length > 3}
-										<span class="block border-t border-gray-700/30 py-2 text-[11px] text-gray-500">+ {st.queue.length - 3} more in the queue</span>
+									{#if st.queue.length > 1}
+										<span class="flex items-center justify-between gap-3 pb-1.5 text-[11px] text-gray-500 {big ? 'border-t border-gray-700/30 pt-1.5' : ''}">
+											<span>{#if !big}+ {st.queue.length - 1} more{:else if st.queue.length > 3}+ {st.queue.length - 3} more in the queue{/if}</span>
+											<button class="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-gray-400 hover:bg-white/5 hover:text-white" aria-expanded={big} onclick={() => toggleQueue(s.kind)}>{big ? 'Hide' : 'Show'}<span class="transition {big ? '-rotate-90' : 'rotate-90'}"><Icon name="chevron" class="size-3.5" /></span></button>
+										</span>
 									{/if}
 								</span>
 							{/if}
