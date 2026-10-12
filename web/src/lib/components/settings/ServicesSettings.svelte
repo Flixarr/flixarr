@@ -250,7 +250,7 @@
 							{:else}
 								{@const big = expanded[s.kind]}
 								<span class="mt-4 block rounded-lg bg-gray-900/50 px-3 pb-1 pt-2 ring-1 ring-gray-700/40">
-									<span class="flex items-center justify-between gap-3 text-[11px]"><span class="font-semibold uppercase tracking-wide text-gray-500">Queue</span>
+									<span class="flex items-center justify-between gap-3 border-b border-gray-700/30 pb-2 text-[11px]"><span class="font-semibold uppercase tracking-wide text-gray-500">Queue</span>
 										<span class="flex min-w-0 items-center gap-2"><span class="truncate text-gray-400">{#each queueLabel(st.queue) as part, i (part.text)}{i ? ' · ' : ''}<span class={part.tone}>{part.text}</span>{/each}</span></span></span>
 									<span class="block divide-y divide-gray-700/30">
 										{#each st.queue.slice(0, big ? 3 : 1) as q, i (i)}{@render queueRow(q, s.color)}{/each}
