@@ -116,8 +116,10 @@
 								<div class="flex items-center gap-3 px-4 py-2"><Avatar user={session.me} class="size-9 text-sm" /><div><div class="text-sm font-medium">{session.me.username}</div><div class="text-xs text-gray-400">{session.me.role}</div></div></div>
 								<div class="my-1 border-t border-gray-700/40"></div>
 								<a href="/profile" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 hover:text-white"><Icon name="profile" class="size-4" />Profile</a>
+								{#if can('manageIssues') || can('reportIssues')}
+									<a href="/issues" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 hover:text-white"><Icon name="issues" class="size-4" />{can('manageIssues') ? 'Issues' : 'My issues'}</a>
+								{/if}
 								{#if admin}
-									<a href="/issues" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 hover:text-white"><Icon name="issues" class="size-4" />Issues</a>
 									<a href="/users" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 hover:text-white"><Icon name="users" class="size-4" />Users</a>
 									<a href="/settings" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 hover:text-white"><Icon name="settings" class="size-4" />Settings{#if servicesUnread()}<span class="alert-dot ml-auto"></span>{/if}</a>
 								{/if}

@@ -19,7 +19,7 @@ import (
 	"github.com/Flixarr/flixarr/internal/store"
 )
 
-// Events, in the order Settings shows them. The issue events arrive with Issues.
+// Events, in the order Settings shows them.
 var Events = []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved"}
 
 // Channels Flixarr can send through.
@@ -42,7 +42,7 @@ type Config struct {
 }
 
 var defaults = map[string]Config{
-	"discord": {Events: []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed"}, BotName: "Flixarr", Poster: true},
+	"discord": {Events: []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved"}, BotName: "Flixarr", Poster: true},
 	"webhook": {Events: []string{"request_available", "request_failed"}, Method: "POST"},
 }
 
@@ -135,6 +135,8 @@ var eventText = map[string]struct {
 	"request_declined":  {"Request declined", 0x6b7280},
 	"request_available": {"Now available", 0x22c55e},
 	"request_failed":    {"Request failed", 0xef4444},
+	"issue_reported":    {"Issue reported", 0xeab308},
+	"issue_resolved":    {"Issue resolved", 0x22c55e},
 	"test":              {"Test notification", 0xf97316},
 }
 
@@ -179,6 +181,38 @@ func (n *Notifier) FromRequest(event string, r store.Request) Message {
 	}
 	if base := n.Store.Setting("app_url", ""); base != "" {
 		m.Link = fmt.Sprintf("%s/%s/%d", base, r.Type, r.TmdbID)
+	}
+	return m
+}
+
+// FromIssue builds the message for an issue event.
+func (n *Notifier) FromIssue(event string, i store.Issue) Message {
+	title := i.Title
+	if i.Year != "" {
+		title += " (" + i.Year + ")"
+	}
+	what := i.Kind
+	if i.Sub != "" {
+		what += ": " + i.Sub
+	}
+	where := ""
+	if i.Type == "series" && i.Season > 0 {
+		where = fmt.Sprintf("Season %d", i.Season)
+		if i.Episode > 0 {
+			where += fmt.Sprintf(", episode %d", i.Episode)
+		}
+	}
+	m := Message{Event: event, Title: title, User: i.UserName, Status: i.Status, Type: i.Type, TmdbID: i.TmdbID, Poster: i.Poster, Seasons: where, Request: i.ID}
+	if event == "issue_reported" {
+		m.Text = what + ". Reported by " + i.UserName
+		if i.Note != "" {
+			m.Text += ": " + i.Note
+		}
+	} else {
+		m.Text = what + ", reported by " + i.UserName + ", is fixed"
+	}
+	if base := n.Store.Setting("app_url", ""); base != "" {
+		m.Link = base + "/issues"
 	}
 	return m
 }
@@ -229,7 +263,11 @@ func discordBody(c Config, m Message) map[string]any {
 	}
 	fields := []any{}
 	if m.Seasons != "" {
-		fields = append(fields, map[string]any{"name": "Seasons", "value": m.Seasons, "inline": true})
+		name := "Seasons"
+		if strings.HasPrefix(m.Event, "issue_") {
+			name = "Where"
+		}
+		fields = append(fields, map[string]any{"name": name, "value": m.Seasons, "inline": true})
 	}
 	if len(fields) > 0 {
 		embed["fields"] = fields
@@ -252,7 +290,11 @@ func webhookBody(m Message) map[string]any {
 	out := map[string]any{"event": m.Event, "title": m.Title, "message": m.Text}
 	if m.Event != "test" {
 		out["media"] = map[string]any{"type": m.Type, "tmdbId": m.TmdbID, "poster": m.Poster}
-		out["request"] = map[string]any{"id": m.Request, "status": m.Status, "user": m.User, "seasons": m.Seasons, "error": m.Error}
+		if strings.HasPrefix(m.Event, "issue_") {
+			out["issue"] = map[string]any{"id": m.Request, "status": m.Status, "user": m.User, "where": m.Seasons}
+		} else {
+			out["request"] = map[string]any{"id": m.Request, "status": m.Status, "user": m.User, "seasons": m.Seasons, "error": m.Error}
+		}
 	}
 	if m.Link != "" {
 		out["url"] = m.Link

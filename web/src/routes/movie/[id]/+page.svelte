@@ -11,6 +11,8 @@
 	import Trailer from '#lib/components/Trailer.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import RequestButton from '#lib/components/RequestButton.svelte';
+	import IssueModal from '#lib/components/IssueModal.svelte';
+	import { can } from '#lib/session.svelte.ts';
 	import type { RequestBrief } from '#lib/types.ts';
 	import Img from '#lib/components/Img.svelte';
 
@@ -29,6 +31,7 @@
 		return () => (alive = false);
 	});
 	let brief = $state<RequestBrief | null | undefined>(undefined);
+	let issueOpen = $state(false);
 </script>
 
 {#if error}
@@ -41,9 +44,11 @@
 		{/snippet}
 		{#snippet actions()}
 			{#if m}<RequestButton item={m} bind:req={brief} />{/if}
+			{#if m && (brief?.plex || brief?.status === 'available') && can('reportIssues')}<button class="btn-ghost px-4" onclick={() => (issueOpen = true)}><Icon name="issues" class="size-4" />Report issue</button>{/if}
 			{#if m?.trailer}<button class="btn-ghost px-4" onclick={() => (trailer = true)}><Icon name="play" class="size-4" />Trailer</button>{/if}
 		{/snippet}
 	</DetailHeader>
+	<IssueModal bind:open={issueOpen} item={m} />
 
 	<main class="relative z-10 mx-auto max-w-[1600px] space-y-9 pt-9 laptop:px-10">
 		<div class="grid gap-9 laptop:grid-cols-[1fr_340px]">

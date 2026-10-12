@@ -22,10 +22,10 @@
 		request_declined: ['Request declined', 'A waiting request was declined.'],
 		request_available: ['Available', 'A requested title is ready to watch in Plex.'],
 		request_failed: ['Failed', "Radarr or Sonarr couldn't add it."],
-		issue_reported: ['Issue reported', 'Arrives with Issues.'],
-		issue_resolved: ['Issue resolved', 'Arrives with Issues.']
+		issue_reported: ['Issue reported', 'Someone reported a problem with a title.'],
+		issue_resolved: ['Issue resolved', 'A reported problem was fixed.']
 	};
-	const SOON = ['issue_reported', 'issue_resolved'];
+	const SOON: string[] = [];
 	const input = 'mt-1 w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/60';
 
 	let info = $state<Info | null>(null);

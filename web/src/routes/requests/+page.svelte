@@ -7,6 +7,8 @@
 	import type { Request } from '#lib/types.ts';
 	import Img from '#lib/components/Img.svelte';
 	import Modal from '#lib/components/Modal.svelte';
+	import PlexMark from '#lib/components/PlexMark.svelte';
+	import { statusOf } from '#lib/availability.svelte.ts';
 
 	let list = $state<Request[] | null>(null);
 	let approval = $state(false);
@@ -113,6 +115,9 @@
 							{#if r.error}<p class="mt-2 text-xs text-red-300">{r.error}</p>{/if}
 						</div>
 						<div class="flex shrink-0 flex-col items-end gap-2">
+							{#if r.status === 'available' && statusOf(`${r.type}:${r.tmdbId}`)?.plex}
+								<a href={statusOf(`${r.type}:${r.tmdbId}`)?.plex} target="_blank" rel="noopener" class="btn-plex px-3 py-1 text-xs"><PlexMark class="size-3.5" color="#111827" />Play</a>
+							{/if}
 							{#if admin && r.status === 'pending'}
 								<button class="btn px-3 py-1 text-xs" disabled={busy === r.id} onclick={() => act(r, 'approve')}>Approve</button>
 								<button class="btn-ghost px-3 py-1 text-xs" disabled={busy === r.id} onclick={() => act(r, 'decline')}>Decline</button>
