@@ -97,7 +97,7 @@ type Server struct {
 	token       string
 }
 
-// Servers lists the Plex servers on the admin's account.
+// Servers lists the Plex servers the admin's account owns.
 func (l *Library) Servers(ctx context.Context) ([]Server, error) {
 	tok := l.Store.SecretSetting(keyAdminToken, "")
 	if tok == "" {
@@ -120,8 +120,8 @@ func (l *Library) Servers(ctx context.Context) ([]Server, error) {
 	}
 	out := []Server{}
 	for _, r := range res {
-		if !strings.Contains(r.Provides, "server") {
-			continue
+		if !strings.Contains(r.Provides, "server") || !r.Owned {
+			continue // only servers you own: a shared server's library isn't yours to manage
 		}
 		cs := append([]Connection(nil), r.Connections...)
 		// Local first, relay last: the order Flixarr tries them in.

@@ -68,7 +68,7 @@ export interface UpdateStatus {
 }
 
 export interface Status {
-	setupRequired: boolean;
+	setupRequired: boolean; setupWizard?: boolean;
 	version: { version: string; build: string; full: string; commit: string; channel: string };
 	update: UpdateStatus;
 	imageCache: boolean;

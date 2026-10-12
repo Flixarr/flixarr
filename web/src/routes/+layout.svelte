@@ -12,7 +12,7 @@
 
 	let { children } = $props();
 	let failed = $state('');
-	const bare = $derived(page.url.pathname === '/setup' || page.url.pathname === '/login');
+	const bare = $derived(page.url.pathname === '/setup' || page.url.pathname === '/login' || page.url.pathname === '/welcome');
 	// Pages with a full-bleed banner start with a transparent top bar.
 	const transparent = $derived(page.url.pathname === '/' || /^\/(movie|series|collection)\/\d+/.test(page.url.pathname));
 
@@ -47,7 +47,8 @@
 		const p = page.url.pathname;
 		if (session.status?.setupRequired && p !== '/setup') goto('/setup', { replaceState: true });
 		else if (!session.status?.setupRequired && !session.me && p !== '/login') goto('/login', { replaceState: true });
-		else if (session.me && bare) goto('/', { replaceState: true });
+		else if (session.me && session.status?.setupWizard && session.me.perms.includes('admin') && p !== '/welcome') goto('/welcome', { replaceState: true });
+		else if (session.me && bare && !(p === '/welcome' && session.status?.setupWizard)) goto('/', { replaceState: true });
 	});
 </script>
 

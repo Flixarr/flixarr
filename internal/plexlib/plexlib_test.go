@@ -31,6 +31,7 @@ func (f *fakePlex) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		json.NewEncoder(w).Encode([]any{
 			map[string]any{"name": "Phone", "provides": "player", "clientIdentifier": "p"},
+			map[string]any{"name": "Friend's", "provides": "server", "owned": false, "clientIdentifier": "f", "accessToken": "x"},
 			map[string]any{"name": "Home", "provides": "server", "owned": true, "clientIdentifier": "abc", "accessToken": "srv",
 				"connections": []any{map[string]any{"uri": "http://127.0.0.1:1", "local": false, "relay": true}, map[string]any{"uri": f.url, "local": true}}},
 		})

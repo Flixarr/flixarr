@@ -8,7 +8,7 @@
 	async function done(u: User) {
 		await loadSession();
 		session.me = u;
-		goto('/', { replaceState: true });
+		goto('/welcome', { replaceState: true }); // the rest of setup: Plex server, Radarr/Sonarr
 	}
 </script>
 

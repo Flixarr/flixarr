@@ -63,6 +63,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/webhook/{token}", s.webhook)
 	mux.HandleFunc("GET /api/webhook", s.auth(s.admin(s.webhookInfo)))
 	mux.HandleFunc("GET /api/me", s.auth(s.me))
+	mux.HandleFunc("POST /api/setup/done", s.auth(s.admin(func(w http.ResponseWriter, r *http.Request, _ *store.User) {
+		s.Store.SetSetting("setup_done", "true")
+		w.WriteHeader(http.StatusNoContent)
+	})))
 	mux.HandleFunc("GET /api/me/stats", s.auth(s.myStats))
 	mux.HandleFunc("GET /api/me/watchlist", s.auth(s.myWatchlist))
 	mux.HandleFunc("PUT /api/me/watchlist", s.auth(s.myWatchlist))
@@ -225,9 +229,11 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"setupRequired": n == 0,
-		"version":       map[string]string{"version": version.Version, "build": version.Build, "full": version.Full(), "commit": version.Commit, "channel": version.Channel},
-		"update":        s.Update.Last(),
-		"imageCache":    s.Images.Enabled(),
+		// After the first sign-in: the rest of setup (Plex server, libraries, Radarr/Sonarr) until finished or skipped.
+		"setupWizard": n > 0 && s.Store.Setting("setup_done", "") != "true",
+		"version":     map[string]string{"version": version.Version, "build": version.Build, "full": version.Full(), "commit": version.Commit, "channel": version.Channel},
+		"update":      s.Update.Last(),
+		"imageCache":  s.Images.Enabled(),
 	})
 }
 
