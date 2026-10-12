@@ -3,8 +3,20 @@
 	import { session, signOut, can } from '#lib/session.svelte.ts';
 	import Avatar from '#lib/components/Avatar.svelte';
 	import Icon from '#lib/components/Icon.svelte';
+	import Row from '#lib/components/Row.svelte';
+	import Poster from '#lib/components/Poster.svelte';
+	import { api } from '#lib/api.ts';
+	import type { Card, Page } from '#lib/types.ts';
 
 	const v = $derived(session.status?.version);
+	type Stats = { requests: number; available: number; waiting: number; inProgress: number; openIssues: number };
+	let stats = $state<Stats | null>(null);
+	let mine = $state<Card[]>([]);
+	$effect(() => {
+		document.title = 'Flixarr · Profile';
+		api<Stats>('/me/stats').then((d) => (stats = d)).catch(() => {});
+		api<Page<Card>>('/discover/recent-requests?mine=1').then((p) => (mine = p.results)).catch(() => {});
+	});
 
 	async function out() {
 		await signOut();
@@ -24,6 +36,17 @@
 			</div>
 			<button class="btn-ghost text-sm" onclick={out}><Icon name="out" class="size-4" />Sign out</button>
 		</section>
+
+		{#if stats}
+			<section class="grid grid-cols-2 gap-2 tablet:grid-cols-4">
+				{#each [['Requests', stats.requests, '/requests'], ['Available', stats.available, '/requests'], ['In progress', stats.inProgress + stats.waiting, '/requests'], ['Open issues', stats.openIssues, '/issues']] as [l, n, h] (l)}
+					<a href={h as string} class="card px-4 py-3 transition hover:ring-1 hover:ring-primary/50"><div class="text-2xl font-bold">{n}</div><div class="text-xs text-gray-400">{l}</div></a>
+				{/each}
+			</section>
+		{/if}
+		{#if mine.length}
+			<div class="-mx-4 laptop:mx-0"><Row title="My requests" items={mine} more="/requests">{#snippet item(c)}<Poster item={c} />{/snippet}</Row></div>
+		{/if}
 
 		{#if can('admin')}
 			<section>

@@ -59,6 +59,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/status", s.status)
 	mux.HandleFunc("GET /api/me", s.auth(s.me))
+	mux.HandleFunc("GET /api/me/stats", s.auth(s.myStats))
 	mux.HandleFunc("POST /api/auth/plex/pin", s.plexPin)
 	mux.HandleFunc("POST /api/auth/plex/check", s.plexCheck)
 	mux.HandleFunc("POST /api/auth/logout", s.logout)

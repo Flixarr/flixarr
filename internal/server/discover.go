@@ -97,7 +97,7 @@ func (s *Server) recentlyAdded(w http.ResponseWriter, r *http.Request, _ *store.
 // otherwise your own.
 func (s *Server) recentRequests(w http.ResponseWriter, r *http.Request, u *store.User) {
 	owner := u.ID
-	if u.Can("viewRequests") || u.Can("manageRequests") {
+	if (u.Can("viewRequests") || u.Can("manageRequests")) && r.URL.Query().Get("mine") == "" {
 		owner = 0
 	}
 	list, err := s.Store.Requests(owner, 20)
@@ -112,4 +112,28 @@ func (s *Server) recentRequests(w http.ResponseWriter, r *http.Request, u *store
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"page": 1, "totalPages": 1, "results": s.cards(r, refs)})
+}
+
+// myStats is the Profile page's tiles: your requests by where they are, and your open issues.
+func (s *Server) myStats(w http.ResponseWriter, r *http.Request, u *store.User) {
+	list, err := s.Store.Requests(u.ID, 1000)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "Database error.")
+		return
+	}
+	out := map[string]int{"requests": len(list), "available": 0, "waiting": 0, "inProgress": 0, "openIssues": 0}
+	for _, q := range list {
+		switch q.Status {
+		case "available":
+			out["available"]++
+		case "pending":
+			out["waiting"]++
+		case "approved", "sent", "downloading":
+			out["inProgress"]++
+		}
+	}
+	if issues, err := s.Store.Issues(u.ID, "open"); err == nil {
+		out["openIssues"] = len(issues)
+	}
+	writeJSON(w, http.StatusOK, out)
 }
