@@ -8,6 +8,7 @@
 	import { api } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import Toggle from '#lib/components/Toggle.svelte';
+	import { pushSupported, needsHomeScreen, subscribed, subscribe, unsubscribe } from '#lib/push.ts';
 	import type { Card, Page } from '#lib/types.ts';
 
 	const v = $derived(session.status?.version);
@@ -19,7 +20,28 @@
 		api<Stats>('/me/stats').then((d) => (stats = d)).catch(() => {});
 		api<Page<Card>>('/discover/recent-requests?mine=1').then((p) => (mine = p.results)).catch(() => {});
 		api<Watch>('/me/watchlist').then((d) => (watch = d)).catch(() => {});
+		api<{ on: boolean }>('/push').then((d) => (pushOn = d.on)).catch(() => {});
+		subscribed().then((v) => (device = v));
 	});
+
+	// Web Push on this device.
+	let pushOn = $state(false);
+	let device = $state(false);
+	let pushBusy = $state(false);
+	async function setDevice(on: boolean) {
+		pushBusy = true;
+		try {
+			if (on) await subscribe();
+			else await unsubscribe();
+			device = await subscribed();
+			notify(device ? 'Notifications are on for this device.' : 'Notifications are off for this device.');
+		} catch (e) {
+			device = await subscribed();
+			notify(e instanceof Error ? e.message : 'Could not change it.', 'orange');
+		} finally {
+			pushBusy = false;
+		}
+	}
 
 	type Watch = { on: boolean; allowed: boolean; signedIn: boolean };
 	let watch = $state<Watch | null>(null);
@@ -60,6 +82,20 @@
 		{/if}
 		{#if mine.length}
 			<div class="-mx-4 laptop:mx-0"><Row title="My requests" items={mine} more="/requests">{#snippet item(c)}<Poster item={c} />{/snippet}</Row></div>
+		{/if}
+
+		{#if pushOn}
+			<section>
+				<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Notifications</div>
+				<div class="card px-4 py-3">
+					{#if !pushSupported() || needsHomeScreen()}
+						<p class="text-sm text-gray-300">Notifications on this device</p>
+						<p class="text-xs text-gray-500">{needsHomeScreen() ? 'On iPhone and iPad, add Flixarr to your home screen first (Share, Add to Home Screen), open it from there, then turn this on.' : "This browser can't receive notifications."}</p>
+					{:else}
+						<Toggle checked={device} disabled={pushBusy} label="Notifications on this device" about="Your requests (approved, available, declined, failed) and your issues. Admins also get new requests and new issues." onchange={setDevice} />
+					{/if}
+				</div>
+			</section>
 		{/if}
 
 		{#if watch?.allowed}

@@ -3,6 +3,9 @@ package notify
 import (
 	"bufio"
 	"context"
+	"crypto/ecdh"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -168,5 +171,43 @@ func TestEmailRecipients(t *testing.T) {
 	}
 	if !strings.Contains(seen["<admin@x.test>"], "New request") || !strings.Contains(seen["<eryn@x.test>"], "Now available") {
 		t.Fatalf("mails: %v", seen)
+	}
+}
+
+func TestPushRoutingAndGone(t *testing.T) {
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	st, _ := store.Open(dir, box)
+	defer st.Close()
+	st.CreateUser(store.User{PlexID: 1, Username: "admin", Role: "Admin"})
+	eryn, _ := st.CreateUser(store.User{PlexID: 2, Username: "eryn", Role: "User"})
+	var mu sync.Mutex
+	hits := map[string]string{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		hits[r.URL.Path] = r.Header.Get("Authorization") + "|" + r.Header.Get("Content-Encoding")
+		mu.Unlock()
+		if r.URL.Path == "/gone" {
+			w.WriteHeader(http.StatusGone)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+	ua, _ := ecdh.P256().GenerateKey(rand.Reader)
+	key := base64.RawURLEncoding.EncodeToString(ua.PublicKey().Bytes())
+	st.SavePushSub(store.PushSub{Endpoint: srv.URL + "/eryn", UserID: eryn.ID, P256dh: key, Auth: "BTBZMqHH6r4Tts7J_aSIgg"})
+	st.SavePushSub(store.PushSub{Endpoint: srv.URL + "/gone", UserID: eryn.ID, P256dh: key, Auth: "BTBZMqHH6r4Tts7J_aSIgg"})
+	n := &Notifier{Store: st, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	n.Save("push", Config{On: true, Events: []string{"request_available"}})
+	n.Send(n.FromRequest("request_available", store.Request{ID: 1, Type: "movie", TmdbID: 603, Title: "The Matrix", UserID: eryn.ID}))
+	time.Sleep(500 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if !strings.HasPrefix(hits["/eryn"], "vapid t=") || !strings.HasSuffix(hits["/eryn"], "|aes128gcm") {
+		t.Fatalf("push: %v", hits)
+	}
+	if subs, _ := st.PushSubs(eryn.ID); len(subs) != 1 {
+		t.Fatalf("gone subscription kept: %d", len(subs))
 	}
 }

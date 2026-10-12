@@ -16,7 +16,8 @@
 	const CHANNELS: [string, string, string][] = [
 		['discord', 'Discord', 'Channel webhook'],
 		['webhook', 'Webhook', 'Any service (n8n, Home Assistant…)'],
-		['email', 'Email', 'SMTP, to the people involved']
+		['email', 'Email', 'SMTP, to the people involved'],
+		['push', 'Web Push', 'Browser and phone notifications']
 	];
 	const EVENTS: Record<string, [string, string]> = {
 		request_submitted: ['Request submitted', 'Someone requests something.'],
@@ -47,7 +48,7 @@
 		form = { ...info!.channels[k], secret: '', auth: '', clearAuth: false };
 	}
 	const saved = $derived(info?.channels[tab]);
-	const hasSecret = $derived(tab === 'discord' ? !!saved?.webhookUrlHint : tab === 'email' ? !!(form.host?.trim() && form.from?.trim()) : !!saved?.urlHint);
+	const hasSecret = $derived(tab === 'push' ? true : tab === 'discord' ? !!saved?.webhookUrlHint : tab === 'email' ? !!(form.host?.trim() && form.from?.trim()) : !!saved?.urlHint);
 
 	function body() {
 		const b: Record<string, unknown> = { on: form.on, events: form.events, poster: form.poster, mentionHere: form.mentionHere, botName: form.botName, method: form.method };
@@ -122,6 +123,8 @@
 				</div>
 				<div class="py-3"><Toggle checked={form.poster} label="Include the poster" onchange={(on) => (form.poster = on)} /></div>
 				<div class="py-3"><Toggle checked={form.mentionHere} label="Mention @here for new requests" about="Pings everyone online in the channel when someone requests something." onchange={(on) => (form.mentionHere = on)} /></div>
+			{:else if tab === 'push'}
+				<p class="py-3 text-sm text-gray-400">No setup needed. Each person turns it on for each of their devices in their Profile. On iPhone, Flixarr has to be added to the home screen first (iOS 16.4 or newer). Like email, it goes to the people involved. Send test goes to your own devices.</p>
 			{:else if tab === 'email'}
 				<div class="grid gap-4 py-3 tablet:grid-cols-[1fr_7rem_10rem]">
 					<div><label for="n-host" class="block text-sm">SMTP server</label><input id="n-host" class={input} bind:value={form.host} placeholder="smtp.example.com" autocomplete="off" spellcheck="false" /></div>
@@ -170,7 +173,7 @@
 				<div class="py-3"><Toggle checked={form.events.includes(k)} label={EVENTS[k]?.[0] ?? k} about={EVENTS[k]?.[1]} disabled={SOON.includes(k)} onchange={(on) => setEvent(k, on)} /></div>
 			{/each}
 		</div>
-		<p class="mt-2 text-xs text-gray-500">Which events send through {name}. Web Push comes later.</p>
+		<p class="mt-2 text-xs text-gray-500">Which events send through {name}.</p>
 	</div>
 
 	<div class="flex justify-end">

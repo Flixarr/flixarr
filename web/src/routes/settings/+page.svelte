@@ -24,7 +24,7 @@
 		['plex', 'Plex', 'play', 'Server, libraries, scans'],
 		['services', 'Services', 'plus', 'Radarr, Sonarr'],
 		['profiles', 'Quality profiles', 'flag', "Flixarr's profiles for Radarr and Sonarr"],
-		['notifications', 'Notifications', 'bell', 'Discord, webhooks, email'],
+		['notifications', 'Notifications', 'bell', 'Discord, webhooks, email, push'],
 		['discover', 'Discover', 'discover', 'Discover page rows'],
 		['cache', 'Cache', 'refresh', 'Saved results, images'],
 		['jobs', 'Jobs', 'clock', 'Scheduled tasks'],

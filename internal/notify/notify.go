@@ -23,7 +23,7 @@ import (
 var Events = []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved"}
 
 // Channels Flixarr can send through.
-var Channels = []string{"discord", "webhook", "email"}
+var Channels = []string{"discord", "webhook", "email", "push"}
 
 // Config is one channel's settings. Secret fields (the Discord webhook URL, the webhook's address and
 // Authorization header) are stored encrypted and never sent back to the browser.
@@ -48,11 +48,13 @@ type Config struct {
 	From     string `json:"from,omitempty"`
 	FromName string `json:"fromName,omitempty"`
 	TestTo   string `json:"testTo,omitempty"` // where Send test goes (not saved)
+	TestUser int64  `json:"-"`                // whose devices the Web Push test goes to
 }
 
 var defaults = map[string]Config{
 	"discord": {Events: []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved"}, BotName: "Flixarr", Poster: true},
 	"webhook": {Events: []string{"request_available", "request_failed"}, Method: "POST"},
+	"push":    {Events: []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved"}},
 	"email":   {Events: []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved"}, Port: 587, Security: "starttls", FromName: "Flixarr"},
 }
 
@@ -92,18 +94,29 @@ func (n *Notifier) Save(ch string, c Config) error {
 // recipients: news about a request or issue goes to the person who made it; new requests go to people
 // who manage requests, new issues to people who manage issues. Only people with an email address.
 func (n *Notifier) recipients(m Message) []string {
-	perm := map[string]string{"request_submitted": "manageRequests", "issue_reported": "manageIssues"}[m.Event]
 	out := []string{}
-	if perm == "" {
-		if u, err := n.Store.UserByID(m.UserID); err == nil && u.Email != "" {
+	for _, u := range n.people(m) {
+		if u.Email != "" {
 			out = append(out, u.Email)
 		}
-		return out
 	}
-	users, _ := n.Store.Users()
-	for _, u := range users {
-		if u.Can(perm) && u.Email != "" && u.ID != m.UserID {
-			out = append(out, u.Email)
+	return out
+}
+
+// people is who an event is for (email and Web Push).
+func (n *Notifier) people(m Message) []store.User {
+	perm := map[string]string{"request_submitted": "manageRequests", "issue_reported": "manageIssues"}[m.Event]
+	if perm == "" {
+		if u, err := n.Store.UserByID(m.UserID); err == nil {
+			return []store.User{*u}
+		}
+		return nil
+	}
+	out := []store.User{}
+	rows, _ := n.Store.Users()
+	for _, u := range rows {
+		if u.Can(perm) && u.ID != m.UserID {
+			out = append(out, u.User)
 		}
 	}
 	return out
@@ -281,6 +294,11 @@ func (n *Notifier) Test(ctx context.Context, ch string, c Config) error {
 	if err := c.validate(ch); err != nil {
 		return err
 	}
+	if ch == "push" {
+		if subs, _ := n.Store.PushSubs(c.TestUser); len(subs) == 0 {
+			return errors.New("turn on notifications for this device in your Profile first")
+		}
+	}
 	if ch == "email" && !strings.Contains(c.TestTo, "@") {
 		return errors.New("there's no email address to send the test to")
 	}
@@ -303,6 +321,15 @@ func (n *Notifier) deliver(ctx context.Context, ch string, c Config, m Message) 
 			return nil
 		}
 		return sendMail(ctx, c, to, m)
+	case "push":
+		ids := []int64{}
+		for _, u := range n.people(m) {
+			ids = append(ids, u.ID)
+		}
+		if m.Event == "test" {
+			ids = []int64{c.TestUser}
+		}
+		return n.push(ctx, ids, m)
 	}
 	return errors.New("unknown channel")
 }

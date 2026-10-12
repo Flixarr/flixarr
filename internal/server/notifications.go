@@ -97,7 +97,7 @@ func (s *Server) notifyTest(w http.ResponseWriter, r *http.Request, u *store.Use
 	if !ok {
 		return
 	}
-	c.TestTo = u.Email // the email test goes to whoever pressed it
+	c.TestTo, c.TestUser = u.Email, u.ID // the test goes to whoever pressed it
 	if err := s.Notify.Test(r.Context(), ch, c); err != nil {
 		writeErr(w, http.StatusBadGateway, "Test not sent: "+err.Error()+".")
 		return

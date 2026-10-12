@@ -122,6 +122,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/settings/general", s.auth(s.admin(s.generalSettings)))
 	mux.HandleFunc("GET /api/settings/users", s.auth(s.admin(s.userSettings)))
 	mux.HandleFunc("PUT /api/settings/users", s.auth(s.admin(s.userSettings)))
+	mux.HandleFunc("GET /api/push", s.auth(s.pushKey))
+	mux.HandleFunc("POST /api/push", s.auth(s.pushSubscribe))
+	mux.HandleFunc("DELETE /api/push", s.auth(s.pushSubscribe))
 	mux.HandleFunc("GET /api/notifications", s.auth(s.admin(s.notifyList)))
 	mux.HandleFunc("PUT /api/notifications/{channel}", s.auth(s.admin(s.notifySave)))
 	mux.HandleFunc("POST /api/notifications/{channel}/test", s.auth(s.admin(s.notifyTest)))
@@ -400,6 +403,12 @@ func (s *Server) spa() http.Handler {
 				if st != nil && !st.IsDir() {
 					if strings.HasPrefix(p, "_app/immutable/") {
 						w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+					}
+					switch p {
+					case "manifest.webmanifest":
+						w.Header().Set("Content-Type", "application/manifest+json")
+					case "sw.js":
+						w.Header().Set("Cache-Control", "no-cache") // a new service worker is picked up right away
 					}
 					files.ServeHTTP(w, r)
 					return
