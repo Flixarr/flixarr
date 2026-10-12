@@ -104,6 +104,8 @@ export interface ServiceView {
 	id: number; kind: ServiceKind; name: string; url: string; webUrl: string; rootFolder: string; qualityProfileId: number; qualityProfileName: string;
 	seasonFolders: boolean; searchOnAdd: boolean; enabled: boolean; createdAt: string; updatedAt: string; apiKeySet: boolean; apiKeyEnd: string;
 	status: ArrStatus | null;
+	nextUpdate: string | null;
+	updatesPaused: boolean;
 }
 
 export interface QueueRow { title: string; quality: string; size: number; percent: number; timeLeft: string; state: 'downloading' | 'queued' | 'paused' | 'importing' | 'warning' | 'error'; message?: string }

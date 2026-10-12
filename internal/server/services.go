@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Flixarr/flixarr/internal/arr"
 	"github.com/Flixarr/flixarr/internal/store"
@@ -19,6 +20,9 @@ type serviceView struct {
 	APIKeySet bool          `json:"apiKeySet"`
 	APIKeyEnd string        `json:"apiKeyEnd"` // last 4 characters, so it can be recognized
 	Status    *arr.Snapshot `json:"status"`    // latest card data from the refresh-status job
+	// When the refresh-status job runs next (nil when it's paused), for the card's countdown.
+	NextUpdate    *time.Time `json:"nextUpdate"`
+	UpdatesPaused bool       `json:"updatesPaused"`
 }
 
 func (s *Server) viewOf(v store.Server) serviceView {
@@ -29,6 +33,15 @@ func (s *Server) viewOf(v store.Server) serviceView {
 	sv := serviceView{Server: v, APIKeySet: v.APIKey != "", APIKeyEnd: end}
 	if snap, ok := s.Arr.Get(v.ID); ok {
 		sv.Status = &snap
+	}
+	for _, j := range s.Jobs.List() {
+		if j.ID == "arr-status" {
+			sv.UpdatesPaused = !j.Enabled
+			if j.Enabled && !j.Next.IsZero() {
+				n := j.Next
+				sv.NextUpdate = &n
+			}
+		}
 	}
 	return sv
 }

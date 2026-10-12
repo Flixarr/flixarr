@@ -79,7 +79,7 @@
 		const load = () => api<Record<ServiceKind, ServiceView | null>>('/services').then((d) => (saved = d));
 		load();
 		const t = setInterval(load, 10000);
-		const tick = setInterval(() => (now = Date.now()), 5000);
+		const tick = setInterval(() => (now = Date.now()), 1000);
 		return () => {
 			clearInterval(t);
 			clearInterval(tick);
@@ -93,6 +93,18 @@
 		if (s < 3600) return `${Math.round(s / 60)} min ago`;
 		if (s < 86400) return `${Math.round(s / 3600)} hr ago`;
 		return `${Math.round(s / 86400)} days ago`;
+	}
+	// "Next update in 42 sec" normally; "Updates paused" when the job is off; "Updated X ago" in
+	// yellow when the last read is overdue (more than 3 minutes old). The other wording is the hover text.
+	function updateText(v: ServiceView): { text: string; title: string; warn: boolean } {
+		const st = v.status!;
+		const age = `Updated ${ago(st.updatedAt)}`;
+		if (v.updatesPaused) return { text: 'Updates paused', title: age, warn: false };
+		if (now - Date.parse(st.updatedAt) > 180000) return { text: age, title: 'The refresh-status job is overdue', warn: true };
+		const secs = v.nextUpdate ? Math.round((Date.parse(v.nextUpdate) - now) / 1000) : -1;
+		if (secs <= 0) return { text: 'Updating…', title: age, warn: false };
+		const left = secs < 60 ? `${secs} sec` : secs < 3600 ? `${Math.round(secs / 60)} min` : `${Math.round(secs / 3600)} hr`;
+		return { text: `Next update in ${left}`, title: age, warn: false };
 	}
 	const short = (v?: string) => (v ? 'v' + v.split('.').slice(0, 2).join('.') : '');
 	const STATE_TEXT: Record<string, string> = { queued: 'Waiting', paused: 'Paused', importing: 'Importing', warning: 'Needs attention', error: 'Failed' };
@@ -280,7 +292,7 @@
 							<span class="mt-3 flex flex-wrap items-center gap-1.5">
 								{#each st.clients as c (c)}{@render chip(c, st.clientsDown)}{/each}
 								{@render chip(`${st.indexers} indexer${st.indexers === 1 ? '' : 's'}${st.indexersDown ? ` · ${st.indexersDown} down` : ''}`, st.indexersDown > 0)}
-								<span class="ml-auto text-[11px] text-gray-500">Updated {ago(st.updatedAt)}</span>
+								<span class="ml-auto text-[11px] tabular-nums {updateText(v).warn ? 'text-yellow-400' : 'text-gray-500'}" title={updateText(v).title}>{updateText(v).text}</span>
 							</span>
 							{#if issues}
 								<span class="mt-3 block rounded-lg bg-yellow-500/10 px-2.5 py-1.5 text-[11px] text-yellow-300 ring-1 ring-yellow-500/30">
