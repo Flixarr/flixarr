@@ -17,8 +17,8 @@ import (
 
 func (s *Server) requestList(w http.ResponseWriter, r *http.Request, u *store.User) {
 	owner := u.ID
-	if u.Role == "Admin" {
-		owner = 0 // admins see everyone's
+	if u.Can("viewRequests") || u.Can("manageRequests") {
+		owner = 0 // everyone's
 	}
 	list, err := s.Store.Requests(owner, 200)
 	if err != nil {
@@ -35,6 +35,10 @@ func (s *Server) requestCreate(w http.ResponseWriter, r *http.Request, u *store.
 		return
 	}
 	req, err := s.Requests.Create(r.Context(), u, in)
+	if errors.Is(err, requests.ErrNotAllowed) {
+		writeErr(w, http.StatusForbidden, "You can't request "+map[string]string{"movie": "movies", "series": "series"}[in.Type]+".")
+		return
+	}
 	if errors.Is(err, requests.ErrInPlex) {
 		writeErr(w, http.StatusConflict, "That's already on Plex.")
 		return
@@ -145,7 +149,7 @@ func (s *Server) requestDelete(w http.ResponseWriter, r *http.Request, u *store.
 	if !ok {
 		return
 	}
-	if u.Role != "Admin" && (req.UserID != u.ID || req.Status != "pending") {
+	if !u.Can("manageRequests") && (req.UserID != u.ID || req.Status != "pending") {
 		writeErr(w, http.StatusForbidden, "You can only cancel your own requests while they're waiting.")
 		return
 	}
@@ -178,7 +182,8 @@ func (s *Server) requestOptions(w http.ResponseWriter, r *http.Request, u *store
 	if r.URL.Query().Get("type") == "series" {
 		kind = "sonarr"
 	}
-	out := map[string]any{"connected": false, "server": arr.Kinds[kind], "approval": s.Requests.ApprovalRequired() && u.Role != "Admin"}
+	out := map[string]any{"connected": false, "server": arr.Kinds[kind], "approval": s.Requests.ApprovalRequired() && !u.Can("autoApprove"),
+		"allowed": u.Can(map[string]string{"radarr": "requestMovies", "sonarr": "requestTv"}[kind])}
 	v, ok, err := s.Store.FirstServer(kind)
 	if err != nil || !ok || !v.Enabled {
 		writeJSON(w, http.StatusOK, out)
@@ -190,7 +195,7 @@ func (s *Server) requestOptions(w http.ResponseWriter, r *http.Request, u *store
 		Name string `json:"name"`
 	}
 	list := []prof{}
-	if u.Role == "Admin" {
+	if u.Can("advanced") {
 		var all []prof
 		if err := (&arr.Client{Kind: v.Kind, URL: v.URL, APIKey: v.APIKey}).Get(r.Context(), "qualityprofile", &all); err == nil {
 			for _, p := range all {

@@ -4,7 +4,7 @@
 	import { page } from '$app/state';
 	import Icon from './Icon.svelte';
 	import Avatar from './Avatar.svelte';
-	import { session, signOut } from '#lib/session.svelte.ts';
+	import { session, signOut, can } from '#lib/session.svelte.ts';
 	import { alerts, markAlertsSeen, servicesUnread, unreadCount, watchAlerts } from '#lib/alerts.svelte.ts';
 
 	let { transparent = false }: { transparent?: boolean } = $props();
@@ -14,7 +14,7 @@
 	const NAV = [['Discover', '/'], ['Movies', '/movies'], ['Series', '/series'], ['Requests', '/requests']] as const;
 	const active = (h: string) => (h === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(h));
 	const solid = $derived(!transparent || scrolled);
-	const admin = $derived(session.me?.role === 'Admin');
+	const admin = $derived(can('admin'));
 
 	$effect(() => {
 		const check = () => (scrolled = scrollY > 40);

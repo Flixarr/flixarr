@@ -9,7 +9,7 @@ import (
 // ---------- alerts (the bell) ----------
 
 func (s *Server) alerts(w http.ResponseWriter, r *http.Request, u *store.User) {
-	list, err := s.Store.ActiveAlerts(u.ID, u.Role == "Admin")
+	list, err := s.Store.ActiveAlerts(u.ID, u.Can("admin"))
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return

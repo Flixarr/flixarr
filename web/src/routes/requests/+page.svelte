@@ -1,9 +1,9 @@
 <script lang="ts">
-	// Requests: newest first. Everyone sees their own; admins see everyone's and can approve, decline,
-	// retry and remove. Statuses update on their own while the page is open.
+	// Requests: newest first. Everyone sees their own; View all requests shows everyone's, and Manage
+	// requests can approve, decline, retry and remove. Statuses update on their own while the page is open.
 	import { api, fmtDate } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
-	import { session } from '#lib/session.svelte.ts';
+	import { session, can } from '#lib/session.svelte.ts';
 	import type { Request } from '#lib/types.ts';
 	import Img from '#lib/components/Img.svelte';
 	import Modal from '#lib/components/Modal.svelte';
@@ -14,7 +14,8 @@
 	let busy = $state(0);
 	let removing = $state<Request | null>(null);
 	let removeOpen = $state(false);
-	const admin = $derived(session.me?.role === 'Admin');
+	const admin = $derived(can('manageRequests'));
+	const everyone = $derived(can('viewRequests') || admin);
 
 	async function load() {
 		try {
@@ -73,7 +74,7 @@
 
 <main class="mx-auto max-w-[1200px] px-4 pb-28 pt-20 laptop:px-10 laptop:pt-24">
 	<h1 class="text-2xl font-bold laptop:text-3xl">Requests</h1>
-	<p class="text-sm text-gray-400">{admin ? "Everyone's requests." : 'Your requests.'} {approval ? 'New requests wait for an admin to approve them.' : 'Requests are sent straight to Radarr and Sonarr.'}</p>
+	<p class="text-sm text-gray-400">{everyone ? "Everyone's requests." : 'Your requests.'} {approval ? 'New requests wait for an admin to approve them.' : 'Requests are sent straight to Radarr and Sonarr.'}</p>
 
 	<div class="mt-5 flex gap-2 overflow-x-auto pb-1 text-sm">
 		{#each [['all', 'All', list?.length ?? 0], ['waiting', 'Waiting', count('waiting')], ['active', 'In progress', count('active')], ['available', 'Available', count('available')], ['problems', 'Failed or declined', count('problems')]] as [k, l, n] (k)}

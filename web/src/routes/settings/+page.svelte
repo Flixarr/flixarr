@@ -3,7 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { api, fmtDate } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
-	import { session } from '#lib/session.svelte.ts';
+	import { session, can } from '#lib/session.svelte.ts';
 	import type { UpdateStatus } from '#lib/types.ts';
 	import Icon from '#lib/components/Icon.svelte';
 	import { CREDITS } from '#lib/credits.ts';
@@ -28,7 +28,7 @@
 		['about', 'About', 'info', 'Version, updates, credits']
 	];
 
-	const isAdmin = $derived(session.me?.role === 'Admin');
+	const isAdmin = $derived(can('admin'));
 	const v = $derived(session.status?.version);
 	const hash = $derived(page.url.hash.slice(1));
 	const tab = $derived(SECTIONS.some(([k]) => k === hash) ? hash : 'about');

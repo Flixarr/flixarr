@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { session, signOut } from '#lib/session.svelte.ts';
+	import { session, signOut, can } from '#lib/session.svelte.ts';
 	import Avatar from '#lib/components/Avatar.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 
@@ -25,7 +25,7 @@
 			<button class="btn-ghost text-sm" onclick={out}><Icon name="out" class="size-4" />Sign out</button>
 		</section>
 
-		{#if session.me.role === 'Admin'}
+		{#if can('admin')}
 			<section>
 				<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Admin</div>
 				<div class="grid gap-2 tablet:grid-cols-3">

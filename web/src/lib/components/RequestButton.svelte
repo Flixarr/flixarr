@@ -5,6 +5,7 @@
 	import type { Movie, Series, RequestBrief } from '#lib/types.ts';
 	import Icon from './Icon.svelte';
 	import PlexMark from './PlexMark.svelte';
+	import { can } from '#lib/session.svelte.ts';
 	import RequestModal from './RequestModal.svelte';
 
 	// req: undefined while loading, null when never requested and not in Plex. Bindable so the page can show "In your library".
@@ -25,7 +26,7 @@
 {#if req?.plex}
 	<a href={req.plex} target="_blank" rel="noopener" class="btn-plex"><PlexMark class="size-4" color="#111827" />Play on Plex</a>
 	{#if item.type === 'series'}
-		{#if req.status === 'available'}
+		{#if req.status === 'available' && can('requestTv')}
 			<button class="btn-ghost px-4" onclick={() => (open = true)}><Icon name="plus" class="size-4" />Request more</button>
 		{:else}
 			<a href="/requests" class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium ring-1 {TONE[req.status] ?? 'bg-gray-800/70 text-gray-200 ring-gray-700/60'}">{TEXT[req.status]}{req.status === 'downloading' && req.progress ? ` ${req.progress}%` : ''}</a>
@@ -35,6 +36,8 @@
 	<a href="/requests" class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium ring-1 {TONE[req.status] ?? 'bg-gray-800/70 text-gray-200 ring-gray-700/60'}">
 		{#if req.status === 'available'}<Icon name="check" class="size-4" />{/if}{TEXT[req.status]}{req.status === 'downloading' && req.progress ? ` ${req.progress}%` : ''}
 	</a>
+{:else if !can(item.type === 'series' ? 'requestTv' : 'requestMovies')}
+	<span class="btn-ghost cursor-default px-4 text-gray-400">You can't request {item.type === 'series' ? 'series' : 'movies'}</span>
 {:else}
 	<button class="btn px-5" onclick={() => (open = true)}><Icon name="plus" class="size-4" />Request</button>
 {/if}

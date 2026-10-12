@@ -22,3 +22,6 @@ export async function signOut() {
 	await api('/auth/logout', { method: 'POST' });
 	session.me = null;
 }
+
+// can: does the signed-in user have a permission? Admins can do everything.
+export const can = (perm: string) => !!session.me && (session.me.perms.includes('admin') || session.me.perms.includes(perm));

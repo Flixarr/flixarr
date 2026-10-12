@@ -127,13 +127,15 @@ func (s *Store) SetSetting(key, value string) error {
 
 // User is a person who can sign in.
 type User struct {
-	ID        int64  `json:"id"`
-	PlexID    int64  `json:"plexId"`
-	Username  string `json:"username"`
-	Email     string `json:"email"`
-	Avatar    string `json:"avatar"`
-	Role      string `json:"role"`
-	CreatedAt string `json:"createdAt"`
+	ID        int64    `json:"id"`
+	PlexID    int64    `json:"plexId"`
+	Username  string   `json:"username"`
+	Email     string   `json:"email"`
+	Avatar    string   `json:"avatar"`
+	Role      string   `json:"role"`  // Admin, Trusted, User or Custom: a label worked out from Perms
+	Perms     []string `json:"perms"` // see perms.go
+	Owner     bool     `json:"owner"` // the first admin; can't be removed or lose admin
+	CreatedAt string   `json:"createdAt"`
 }
 
 // UserCount returns how many users exist (0 means first-run setup is needed).
@@ -143,16 +145,18 @@ func (s *Store) UserCount() (int, error) {
 	return n, err
 }
 
-const userCols = `id, plex_id, username, email, avatar, role, created_at`
+const userCols = `id, plex_id, username, email, avatar, role, perms, created_at, id = (SELECT MIN(id) FROM users)`
 
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	u := &User{}
-	if err := row.Scan(&u.ID, &u.PlexID, &u.Username, &u.Email, &u.Avatar, &u.Role, &u.CreatedAt); err != nil {
+	var perms string
+	if err := row.Scan(&u.ID, &u.PlexID, &u.Username, &u.Email, &u.Avatar, &u.Role, &perms, &u.CreatedAt, &u.Owner); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		return nil, err
 	}
+	u.Perms = splitPerms(perms)
 	return u, nil
 }
 
@@ -163,8 +167,12 @@ func (s *Store) UserByPlexID(plexID int64) (*User, error) {
 
 // CreateUser inserts a user and returns it.
 func (s *Store) CreateUser(u User) (*User, error) {
-	res, err := s.db.Exec(`INSERT INTO users (plex_id, username, email, avatar, role, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		u.PlexID, u.Username, u.Email, u.Avatar, u.Role, now())
+	if u.Perms == nil {
+		u.Perms = RolePerms[u.Role]
+	}
+	u.Perms = cleanPerms(u.Perms)
+	res, err := s.db.Exec(`INSERT INTO users (plex_id, username, email, avatar, role, perms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		u.PlexID, u.Username, u.Email, u.Avatar, RoleOf(u.Perms), strings.Join(u.Perms, ","), now())
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +207,7 @@ func (s *Store) CreateSession(userID int64) (string, error) {
 
 // SessionUser returns the user for a session token, if the session is still valid.
 func (s *Store) SessionUser(token string) (*User, error) {
-	row := s.db.QueryRow(`SELECT u.id, u.plex_id, u.username, u.email, u.avatar, u.role, u.created_at
+	row := s.db.QueryRow(`SELECT u.id, u.plex_id, u.username, u.email, u.avatar, u.role, u.perms, u.created_at, u.id = (SELECT MIN(id) FROM users)
 		FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ?`, hashToken(token), now())
 	return scanUser(row)
 }

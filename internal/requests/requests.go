@@ -26,6 +26,9 @@ type Service struct {
 // ErrAlready is returned when a title already has an open request.
 var ErrAlready = errors.New("already requested")
 
+// ErrNotAllowed is returned when the user may not request this type.
+var ErrNotAllowed = errors.New("not allowed")
+
 // ErrInPlex is returned when the title is already in Plex.
 var ErrInPlex = errors.New("already in Plex")
 
@@ -65,6 +68,12 @@ func (s *Service) Create(ctx context.Context, u *store.User, in New) (store.Requ
 	}
 	if in.TmdbID <= 0 || strings.TrimSpace(in.Title) == "" {
 		return store.Request{}, errors.New("missing title")
+	}
+	if (in.Type == "movie" && !u.Can("requestMovies")) || (in.Type == "series" && !u.Can("requestTv")) {
+		return store.Request{}, ErrNotAllowed
+	}
+	if !u.Can("advanced") {
+		in.ProfileID = 0 // only people allowed to choose get a quality other than the default
 	}
 	// A movie in Plex is done. A series can still be missing seasons, so it can be requested.
 	if in.Type == "movie" && inPlex(s.Store, in.Type, in.TmdbID) {
@@ -106,7 +115,7 @@ func (s *Service) Create(ctx context.Context, u *store.User, in New) (store.Requ
 		mode, seasons = "seasons", in.Seasons
 	}
 	status := "approved"
-	if s.ApprovalRequired() && u.Role != "Admin" {
+	if s.ApprovalRequired() && !u.Can("autoApprove") {
 		status = "pending"
 	}
 	r, err := s.Store.CreateRequest(store.Request{Type: in.Type, TmdbID: in.TmdbID, Title: in.Title, Year: in.Year, Poster: in.Poster, Backdrop: in.Backdrop,

@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The request window on movie and series pages: where it goes, the quality (admins), and for series
+	// The request window on movie and series pages: where it goes, the quality (for people allowed to choose), and for series
 	// the whole show or chosen seasons.
 	import { api } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';

@@ -116,3 +116,44 @@ func TestConnectScanLookup(t *testing.T) {
 		t.Fatal("still connected")
 	}
 }
+
+func TestFriendsAndAccess(t *testing.T) {
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	st, _ := store.Open(dir, box)
+	defer st.Close()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/users":
+			fmt.Fprint(w, `<?xml version="1.0"?><MediaContainer>
+<User id="11" title="Eryn" username="eryn" email="e@x" thumb="t"><Server machineIdentifier="abc" pending="0"/></User>
+<User id="12" title="Other" username="other"><Server machineIdentifier="zzz" pending="0"/></User>
+<User id="13" title="Invited" username="inv"><Server machineIdentifier="abc" pending="1"/></User>
+</MediaContainer>`)
+		case "/api/v2/resources":
+			if r.Header.Get("X-Plex-Token") == "friend" {
+				fmt.Fprint(w, `[{"clientIdentifier":"abc"}]`)
+			} else {
+				fmt.Fprint(w, `[{"clientIdentifier":"zzz"}]`)
+			}
+		}
+	}))
+	defer srv.Close()
+	l := &Library{Store: st, ClientID: "c", Log: slog.New(slog.NewTextHandler(io.Discard, nil)), TVBaseURL: srv.URL}
+	ctx := context.Background()
+	if _, err := l.Friends(ctx); err == nil {
+		t.Fatal("friends without a server should fail")
+	}
+	st.SetSetting(keyServerID, "abc")
+	st.SetSecretSetting(keyAdminToken, "admin")
+	fr, err := l.Friends(ctx)
+	if err != nil || len(fr) != 1 || fr[0].PlexID != 11 || fr[0].Username != "eryn" {
+		t.Fatalf("friends: %+v %v", fr, err)
+	}
+	if ok, _ := l.HasAccess(ctx, "friend"); !ok {
+		t.Fatal("friend should have access")
+	}
+	if ok, _ := l.HasAccess(ctx, "stranger"); ok {
+		t.Fatal("stranger shouldn't have access")
+	}
+}

@@ -254,3 +254,32 @@ func TestMoreSeasonsOfSeriesInSonarr(t *testing.T) {
 		t.Fatalf("search commands: %v", sonarr.cmds)
 	}
 }
+
+func TestPermissions(t *testing.T) {
+	s, st, radarr, _, _, user := setup(t)
+	ctx := context.Background()
+	st.SetSetting(KeyApproval, "true")
+	// No "request movies": refused.
+	u, _ := st.SetPerms(user.ID, []string{"requestTv"})
+	if _, err := s.Create(ctx, u, New{Type: "movie", TmdbID: 603, Title: "The Matrix"}); err != ErrNotAllowed {
+		t.Fatalf("without requestMovies: %v", err)
+	}
+	// Auto-approve skips approval even though approval is on; a chosen quality is ignored without "advanced".
+	u, _ = st.SetPerms(user.ID, []string{"requestMovies", "autoApprove"})
+	if u.Role != "Custom" {
+		t.Fatalf("role label: %s", u.Role)
+	}
+	r, err := s.Create(ctx, u, New{Type: "movie", TmdbID: 603, Title: "The Matrix", ProfileID: 99})
+	if err != nil || r.Status != "sent" || r.ProfileID != 27 || len(radarr.added) != 1 {
+		t.Fatalf("auto-approved: %+v %v", r, err)
+	}
+	if _, err := st.SetPerms(1, []string{"requestMovies"}); err != store.ErrOwner {
+		t.Fatalf("owner losing admin: %v", err)
+	}
+	if err := st.DeleteUser(1); err != store.ErrOwner {
+		t.Fatalf("owner removed: %v", err)
+	}
+	if u, _ = st.SetPerms(user.ID, store.RolePerms["Trusted"]); u.Role != "Trusted" {
+		t.Fatalf("preset label: %s", u.Role)
+	}
+}

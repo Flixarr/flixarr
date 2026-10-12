@@ -57,7 +57,7 @@ export interface Collection { id: number; name: string; overview: string; poster
 
 export interface SearchHit extends Omit<Partial<Card>, 'type'> { id: number; type: MediaType | 'person'; title: string; poster: string | null; dept?: string | null }
 
-export interface User { id: number; plexId: number; username: string; email: string; avatar: string; role: string; createdAt: string }
+export interface User { id: number; plexId: number; username: string; email: string; avatar: string; role: string; perms: string[]; owner: boolean; createdAt: string }
 
 export interface UpdateStatus {
 	enabled: boolean;

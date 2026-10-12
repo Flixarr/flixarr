@@ -71,9 +71,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/requests", s.auth(s.requestCreate))
 	mux.HandleFunc("GET /api/requests/status", s.auth(s.requestStatus))
 	mux.HandleFunc("GET /api/requests/options", s.auth(s.requestOptions))
-	mux.HandleFunc("POST /api/requests/{id}/approve", s.auth(s.admin(s.requestApprove)))
-	mux.HandleFunc("POST /api/requests/{id}/decline", s.auth(s.admin(s.requestDecline)))
-	mux.HandleFunc("POST /api/requests/{id}/retry", s.auth(s.admin(s.requestRetry)))
+	mux.HandleFunc("POST /api/requests/{id}/approve", s.auth(s.allow("manageRequests", s.requestApprove)))
+	mux.HandleFunc("POST /api/requests/{id}/decline", s.auth(s.allow("manageRequests", s.requestDecline)))
+	mux.HandleFunc("POST /api/requests/{id}/retry", s.auth(s.allow("manageRequests", s.requestRetry)))
 	mux.HandleFunc("DELETE /api/requests/{id}", s.auth(s.requestDelete))
 	mux.HandleFunc("GET /api/settings/requests", s.auth(s.admin(s.requestSettings)))
 	mux.HandleFunc("PUT /api/settings/requests", s.auth(s.admin(s.requestSettings)))
@@ -94,6 +94,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/plex", s.auth(s.admin(s.plexDisconnect)))
 	mux.HandleFunc("PUT /api/plex/libraries", s.auth(s.admin(s.plexLibraries)))
 	mux.HandleFunc("POST /api/plex/scan", s.auth(s.admin(s.plexScan)))
+	mux.HandleFunc("GET /api/users", s.auth(s.admin(s.userList)))
+	mux.HandleFunc("PUT /api/users/{id}", s.auth(s.admin(s.userUpdate)))
+	mux.HandleFunc("DELETE /api/users/{id}", s.auth(s.admin(s.userDelete)))
+	mux.HandleFunc("GET /api/users/plex", s.auth(s.admin(s.userPlexList)))
+	mux.HandleFunc("POST /api/users/plex", s.auth(s.admin(s.userPlexImport)))
+	mux.HandleFunc("GET /api/settings/users", s.auth(s.admin(s.userSettings)))
+	mux.HandleFunc("PUT /api/settings/users", s.auth(s.admin(s.userSettings)))
 	mux.HandleFunc("GET /api/jobs", s.auth(s.admin(s.jobList)))
 	mux.HandleFunc("PUT /api/jobs/{id}", s.auth(s.admin(s.jobSet)))
 	mux.HandleFunc("POST /api/jobs/{id}/run", s.auth(s.admin(s.jobRun)))
@@ -147,7 +154,7 @@ func (s *Server) auth(h func(http.ResponseWriter, *http.Request, *store.User)) h
 // admin wraps an authenticated handler so only admins reach it.
 func (s *Server) admin(h func(http.ResponseWriter, *http.Request, *store.User)) func(http.ResponseWriter, *http.Request, *store.User) {
 	return func(w http.ResponseWriter, r *http.Request, u *store.User) {
-		if u.Role != "Admin" {
+		if !u.Can("admin") {
 			writeErr(w, http.StatusForbidden, "Only admins can do that.")
 			return
 		}
@@ -251,15 +258,20 @@ func (s *Server) plexCheck(w http.ResponseWriter, r *http.Request) {
 	} else {
 		u, err = s.Store.UserByPlexID(acct.ID)
 		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusForbidden, "Your Plex account doesn't have access to this Flixarr yet. Ask the admin to add you.")
-			return
-		}
-		if err == nil {
+			// Someone new: let them in if the Plex server is shared with them (and that's switched on).
+			if ok, aerr := s.Library.HasAccess(r.Context(), pin.AuthToken); s.plexSignInOpen() && aerr == nil && ok {
+				u, err = s.Store.CreateUser(store.User{PlexID: acct.ID, Username: name, Email: acct.Email, Avatar: acct.Thumb, Role: "User"})
+				s.Log.Info("new user signed in", "user", name)
+			} else {
+				writeErr(w, http.StatusForbidden, "Your Plex account doesn't have access to this Flixarr yet. Ask the admin to add you.")
+				return
+			}
+		} else if err == nil {
 			err = s.Store.UpdatePlexProfile(u.ID, name, acct.Email, acct.Thumb)
 			u.Username, u.Email, u.Avatar = name, acct.Email, acct.Thumb
 		}
-		if err == nil && u.Role == "Admin" {
-			err = s.Store.SetSecretSetting("plex_admin_token", pin.AuthToken) // keeps the Plex server list working
+		if err == nil && u.Owner {
+			err = s.Store.SetSecretSetting("plex_admin_token", pin.AuthToken) // the owner's token reads the Plex server list and who it's shared with
 		}
 	}
 	if err != nil {
