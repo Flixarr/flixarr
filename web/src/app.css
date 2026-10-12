@@ -121,3 +121,8 @@ html.modal-open body { overflow: hidden; overscroll-behavior: none; }
 .alert-dot, .alert-pulse { animation: alert-pulse 1.8s ease-out infinite; }
 @keyframes alert-pulse { 0% { box-shadow: 0 0 0 0 rgb(239 68 68 / 0.7); } 70% { box-shadow: 0 0 0 6px rgb(239 68 68 / 0); } 100% { box-shadow: 0 0 0 0 rgb(239 68 68 / 0); } }
 @media (prefers-reduced-motion: reduce) { .alert-dot, .alert-pulse { animation: none; } }
+
+/* Toasts slide up a little as they arrive. */
+.toast-in { animation: toast-in 0.2s ease-out; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(6px); } }
+@media (prefers-reduced-motion: reduce) { .toast-in { animation: none; } }
