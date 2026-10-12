@@ -13,6 +13,7 @@
 	import ProfilesSettings from '#lib/components/settings/ProfilesSettings.svelte';
 	import GeneralSettings from '#lib/components/settings/GeneralSettings.svelte';
 	import PlexSettings from '#lib/components/settings/PlexSettings.svelte';
+	import DiscoverSettings from '#lib/components/settings/DiscoverSettings.svelte';
 	import { markAlertsSeen, servicesUnread } from '#lib/alerts.svelte.ts';
 
 	// Section key → label, icon, one-line description (side menu / phone list).
@@ -105,6 +106,8 @@
 					<ServicesSettings />
 				{:else if tab === 'profiles'}
 					<ProfilesSettings />
+				{:else if tab === 'discover'}
+					<DiscoverSettings />
 				{:else if tab === 'cache'}
 					<CacheSettings />
 				{:else if tab === 'jobs'}
