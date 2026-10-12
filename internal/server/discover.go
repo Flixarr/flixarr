@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"sync"
 
 	"github.com/Flixarr/flixarr/internal/store"
@@ -136,4 +137,25 @@ func (s *Server) myStats(w http.ResponseWriter, r *http.Request, u *store.User) 
 		out["openIssues"] = len(issues)
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// library is Movies / Series → In your library: what's in Plex, newest first or A to Z, 20 at a time.
+func (s *Server) library(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	typ := r.PathValue("type")
+	if typ != "movie" && typ != "series" {
+		writeErr(w, http.StatusNotFound, "Unknown type.")
+		return
+	}
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	page = max(page, 1)
+	items, total, err := s.Store.PlexItemsPage(typ, r.URL.Query().Get("sort"), page, 20)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "Database error.")
+		return
+	}
+	refs := []titleRef{}
+	for _, it := range items {
+		refs = append(refs, titleRef{Type: it.Type, ID: it.TmdbID, Fallback: card{ID: it.TmdbID, Type: it.Type, Title: it.Title, Genres: []int{}}})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"page": page, "totalPages": max((total+19)/20, 1), "results": s.cards(r, refs)})
 }

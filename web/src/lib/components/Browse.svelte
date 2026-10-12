@@ -10,7 +10,7 @@
 	import { tick } from 'svelte';
 	import { restoreScroll } from '#lib/scroll.ts';
 	import { snapshot } from '$app/navigation';
-	import { meta } from '#lib/api.ts';
+	import { api, meta } from '#lib/api.ts';
 	import { infinite } from '#lib/infinite.ts';
 	import type { Card, Page } from '#lib/types.ts';
 	import Poster from './Poster.svelte';
@@ -24,13 +24,14 @@
 	let genres = $state<{ id: number; name: string }[]>([]);
 	let genre = $state<string | number>(0);
 	let sort = $state('popular');
+	let where = $state<'all' | 'library'>('all'); // In your library = what's in Plex
 	let items = $state<Card[]>([]);
 	let pageN = $state(0);
 	let total = $state(1);
 	let busy = $state(false);
 	let loadedFor = ''; // the type|genre|sort that `items` belongs to
 	let gen = 0; // bumped on every reset/restore so a slower, older load can't overwrite newer state
-	const key = () => `${type}|${genre}|${sort}`;
+	const key = () => `${type}|${where}|${genre}|${sort}`;
 
 	$effect(() => {
 		const show = (g: { genres: { id: number; name: string }[] }) => (genres = g.genres);
@@ -44,7 +45,9 @@
 		busy = true;
 		try {
 			// No onFresh here: swapping pages while you scroll would jump the grid. The background check still refreshes the saved copy.
-			const d = await meta<Page<Card>>('discover/' + type, { genre: genre || undefined, sort, page: p });
+			const d = where === 'library'
+				? await api<Page<Card>>(`/library/${type}?sort=${sort === 'title' ? 'title' : 'added'}&page=${p}`)
+				: await meta<Page<Card>>('discover/' + type, { genre: genre || undefined, sort, page: p });
 			if (g !== gen) return false;
 			items = reset ? d.results : [...items, ...d.results.filter((x) => !items.some((y) => y.id === x.id))];
 			pageN = d.page;
@@ -62,11 +65,12 @@
 
 	snapshot({
 		id: 'browse',
-		capture: () => ({ type, genre, sort, items: $state.snapshot(items), pageN, total, y: scrollY }),
+		capture: () => ({ type, where, genre, sort, items: $state.snapshot(items), pageN, total, y: scrollY }),
 		restore: async (v) => {
 			if (v.type !== type) return;
 			gen++;
 			busy = false;
+			where = v.where ?? 'all';
 			genre = v.genre;
 			sort = v.sort;
 			items = v.items;
@@ -77,6 +81,12 @@
 			restoreScroll(v.y);
 		}
 	});
+
+	function setWhere(w: 'all' | 'library') {
+		where = w;
+		sort = w === 'library' ? 'added' : 'popular';
+	}
+	const sorts = $derived(where === 'library' ? [{ value: 'added', label: 'Recently added' }, { value: 'title', label: 'A to Z' }] : [{ value: 'popular', label: 'Popular' }, { value: 'rating', label: 'Top rated' }, { value: 'newest', label: 'Newest' }]);
 </script>
 
 <main class="mx-auto max-w-[1600px] space-y-6 pb-28 pt-20 laptop:px-10 laptop:pt-24">
@@ -90,9 +100,20 @@
 			</div>
 			<h1 class="text-2xl font-bold laptop:text-3xl">{label}</h1><p class="mt-1 text-sm text-gray-400">Tap anything to see details.</p>
 		</div>
-		<Select bind:value={sort} class="w-36 shrink-0" options={[{ value: 'popular', label: 'Popular' }, { value: 'rating', label: 'Top rated' }, { value: 'newest', label: 'Newest' }]} />
+		<div class="flex shrink-0 items-center gap-2">
+			<div class="inline-grid grid-cols-2 gap-1 rounded-xl border border-gray-700/60 p-1 text-sm" role="radiogroup" aria-label="Show">
+				{#each [['all', 'Everything'], ['library', 'In your library']] as [k, l] (k)}
+					<button class="rounded-lg px-3 py-1 {where === k ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'}" role="radio" aria-checked={where === k} onclick={() => setWhere(k as 'all' | 'library')}>{l}</button>
+				{/each}
+			</div>
+			<Select bind:value={sort} class="w-40" options={sorts} />
+		</div>
 	</div>
-	<Chips bind:value={genre} options={[{ key: 0, label: 'All genres' }, ...genres.map((g) => ({ key: g.id, label: g.name }))]} />
+	{#if where === 'all'}
+		<Chips bind:value={genre} options={[{ key: 0, label: 'All genres' }, ...genres.map((g) => ({ key: g.id, label: g.name }))]} />
+	{:else if !items.length && !busy}
+		<p class="px-4 text-sm text-gray-400 laptop:px-0">Nothing from your Plex libraries yet. An admin connects Plex in Settings → Plex.</p>
+	{/if}
 	<div class="grid grid-cols-3 gap-3 px-4 tablet:grid-cols-4 laptop:grid-cols-6 laptop:px-0 desktop:grid-cols-8">
 		{#each items as c (c.id)}<Poster item={c} class="w-full" />{/each}
 	</div>

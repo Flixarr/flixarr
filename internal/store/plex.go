@@ -93,3 +93,29 @@ func (s *Store) RecentPlexItems(limit int) ([]PlexItem, error) {
 	}
 	return out, rows.Err()
 }
+
+// PlexItemsPage lists one page of a type's titles in Plex: newest first, or by title.
+func (s *Store) PlexItemsPage(typ, sort string, page, size int) ([]PlexItem, int, error) {
+	var total int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM plex_items WHERE type = ?`, typ).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	order := "added_at DESC"
+	if sort == "title" {
+		order = "title COLLATE NOCASE"
+	}
+	rows, err := s.db.Query(`SELECT type, tmdb_id, rating_key, section, title, added_at, seen_at FROM plex_items WHERE type = ? ORDER BY `+order+` LIMIT ? OFFSET ?`, typ, size, (page-1)*size)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	out := []PlexItem{}
+	for rows.Next() {
+		var it PlexItem
+		if err := rows.Scan(&it.Type, &it.TmdbID, &it.RatingKey, &it.Section, &it.Title, &it.AddedAt, &it.SeenAt); err != nil {
+			return nil, 0, err
+		}
+		out = append(out, it)
+	}
+	return out, total, rows.Err()
+}
