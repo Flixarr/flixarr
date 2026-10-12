@@ -9,6 +9,7 @@ import (
 // ---------- alerts (the bell) ----------
 
 func (s *Server) alerts(w http.ResponseWriter, r *http.Request, u *store.User) {
+	s.Requests.SeenAlerts(u.ID) // a request alert already seen, with nothing still on its way, goes away
 	list, err := s.Store.ActiveAlerts(u.ID, u.Can("admin"))
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "Database error.")
@@ -18,7 +19,6 @@ func (s *Server) alerts(w http.ResponseWriter, r *http.Request, u *store.User) {
 }
 
 func (s *Server) alertsSeen(w http.ResponseWriter, r *http.Request, u *store.User) {
-	s.Requests.SeenAlerts(u.ID)
 	if err := s.Store.MarkAlertsSeen(u.ID); err != nil {
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return

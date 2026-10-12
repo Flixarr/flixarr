@@ -29,7 +29,10 @@
 		const m = { ...info!.tvModes, [k]: on };
 		if (!m.whole && !m.seasons && !m.episodes) {
 			notify('Keep at least one way to request series.', 'orange');
-			info = { ...info! }; // put the switch back
+			// The switch already flipped on screen: flip it back by re-drawing it.
+			const keep = info!;
+			info = null;
+			setTimeout(() => (info = keep));
 			return;
 		}
 		save({ tvModes: m }, on ? `${MODES.find(([x]) => x === k)?.[1]} is on.` : `${MODES.find(([x]) => x === k)?.[1]} is off.`);

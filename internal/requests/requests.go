@@ -31,6 +31,7 @@ type Service struct {
 	mu         sync.Mutex
 	lastRecent time.Time
 	rescanned  map[int64]time.Time
+	rescans    map[int64]int
 }
 
 func (s *Service) notify(event string, r store.Request) {
@@ -500,7 +501,8 @@ func (s *Service) refresh(ctx context.Context, reqs []store.Request) error {
 	}
 	// Something waiting for Plex: read Plex's newest additions first (cheap), so it's seen within seconds.
 	for _, r := range reqs {
-		if r.Status == "importing" && s.Plex != nil && s.Plex.Connected() && time.Since(s.lastRecent) > 10*time.Second {
+		// Only shortly after asking Plex to scan; a title Plex never matches doesn't keep this going.
+		if r.Status == "importing" && s.Plex != nil && s.Plex.Connected() && time.Since(s.lastRecent) > 10*time.Second && time.Since(s.rescanned[r.ID]) < 5*time.Minute {
 			s.lastRecent = time.Now()
 			s.Plex.RecentScan(ctx)
 			break
@@ -560,12 +562,19 @@ func (s *Service) filesDone(ctx context.Context, r *store.Request, sonarrHave ma
 		r.Status, r.Progress = "available", 100
 		return
 	}
-	if r.Status != "importing" || time.Since(s.rescanned[r.ID]) > 2*time.Minute {
-		// Plex didn't notice the new files on its own (yet): ask it to scan, at most every 2 minutes.
-		if s.rescanned == nil {
-			s.rescanned = map[int64]time.Time{}
-		}
+	// Plex didn't notice the new files on its own (yet): ask it to scan, backing off (right away, then after
+	// 2, 5, 15 and 60 minutes, then hourly) so a title Plex can't match doesn't mean scans forever.
+	if s.rescanned == nil {
+		s.rescanned, s.rescans = map[int64]time.Time{}, map[int64]int{}
+	}
+	gaps := []time.Duration{0, 2 * time.Minute, 5 * time.Minute, 15 * time.Minute, time.Hour}
+	gap := time.Hour
+	if n := s.rescans[r.ID]; n < len(gaps) {
+		gap = gaps[n]
+	}
+	if r.Status != "importing" || time.Since(s.rescanned[r.ID]) >= gap {
 		s.rescanned[r.ID] = time.Now()
+		s.rescans[r.ID]++
 		if err := s.Plex.Rescan(ctx, r.Type); err != nil {
 			s.Log.Warn("plex rescan", "err", err)
 		}
