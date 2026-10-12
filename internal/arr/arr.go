@@ -42,6 +42,7 @@ type Folder struct {
 type Info struct {
 	Version  string    `json:"version"`
 	Name     string    `json:"name"`
+	AppURL   string    `json:"applicationUrl,omitempty"` // Settings → General → Host → Application URL, when set
 	Profiles []Profile `json:"profiles"`
 	Folders  []Folder  `json:"folders"`
 }
@@ -131,6 +132,13 @@ func (c *Client) Test(ctx context.Context) (Info, error) {
 	}
 	if err := c.get(ctx, "rootfolder", &info.Folders); err != nil {
 		return Info{}, err
+	}
+	// The address people open it at, if the owner filled it in. Optional; a failure here doesn't fail the test.
+	var host struct {
+		ApplicationURL string `json:"applicationUrl"`
+	}
+	if c.get(ctx, "config/host", &host) == nil {
+		info.AppURL = strings.TrimRight(strings.TrimSpace(host.ApplicationURL), "/")
 	}
 	return info, nil
 }

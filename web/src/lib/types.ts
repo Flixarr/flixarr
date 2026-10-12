@@ -116,7 +116,7 @@ export interface ArrStatus {
 }
 
 export interface ArrInfo {
-	version: string; name: string;
+	version: string; name: string; applicationUrl?: string;
 	profiles: { id: number; name: string }[];
 	folders: { id: number; path: string; freeSpace: number; accessible: boolean }[];
 }

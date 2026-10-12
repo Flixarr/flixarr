@@ -19,6 +19,8 @@ func fake(app string) *httptest.Server {
 			w.Write([]byte(`{"appName":"` + app + `","instanceName":"` + app + `","version":"6.4.4.10685"}`))
 		case "/api/v3/qualityprofile":
 			w.Write([]byte(`[{"id":1,"name":"Default Quality","items":[]},{"id":26,"name":"Prefer 4K"}]`))
+		case "/api/v3/config/host":
+			w.Write([]byte(`{"applicationUrl":"https://radarr.example.com/"}`))
 		case "/api/v3/rootfolder":
 			w.Write([]byte(`[{"id":5,"path":"/mnt/media/movies","freeSpace":7202611499008,"accessible":true}]`))
 		default:
@@ -33,6 +35,9 @@ func TestTest(t *testing.T) {
 	info, err := (&Client{Kind: "radarr", URL: srv.URL, APIKey: "good"}).Test(context.Background())
 	if err != nil {
 		t.Fatal(err)
+	}
+	if info.AppURL != "https://radarr.example.com" {
+		t.Errorf("AppURL = %q", info.AppURL)
 	}
 	if info.Version != "6.4.4.10685" || len(info.Profiles) != 2 || info.Profiles[1].Name != "Prefer 4K" || info.Folders[0].Path != "/mnt/media/movies" {
 		t.Errorf("unexpected info: %+v", info)

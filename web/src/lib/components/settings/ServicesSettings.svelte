@@ -32,6 +32,7 @@
 	let finding = $state(false);
 	let found = $state<string[] | null>(null);
 	let confirmRemove = $state(false);
+	let webFromArr = $state(false); // the web address was filled in from the Application URL
 	let changing = $state(false); // editing: the connection form is open ("Change")
 	let initial = $state(''); // the form as it opened, so Save only lights up after a change
 	const dirty = $derived(JSON.stringify(form) !== initial);
@@ -158,10 +159,12 @@
 		changing = false;
 		initial = JSON.stringify(form);
 		open = true;
-		if (v) test(); // fills the folder and quality lists
+		webFromArr = false;
+		if (v) test(true); // fills the folder and quality lists
 	}
 
-	async function test() {
+	// auto = the quiet check when an existing connection is opened; it doesn't fill in anything.
+	async function test(auto = false) {
 		testing = true;
 		error = '';
 		try {
@@ -169,6 +172,11 @@
 			if (!info.folders.some((f) => f.path === form.rootFolder)) form.rootFolder = info.folders[0]?.path ?? '';
 			if (!info.profiles.some((p) => p.id === form.qualityProfileId)) form.qualityProfileId = info.profiles[0]?.id ?? 0;
 			changing = false;
+			// Use Radarr/Sonarr's own Application URL for Open, unless something is typed in already.
+			if (!auto && !form.webUrl.trim() && info.applicationUrl) {
+				form.webUrl = info.applicationUrl;
+				webFromArr = true;
+			}
 		} catch (e) {
 			info = null;
 			error = e instanceof Error ? e.message : 'Test failed.';
@@ -386,7 +394,7 @@
 							</div>
 						</div>
 						<div class="flex gap-2">
-							<button class="btn-ghost flex-1 py-2 text-sm" disabled={testing || !form.url} onclick={test}>{testing ? 'Testing…' : 'Test'}</button>
+							<button class="btn-ghost flex-1 py-2 text-sm" disabled={testing || !form.url} onclick={() => test()}>{testing ? 'Testing…' : 'Test'}</button>
 							{#if changing && info}<button class="btn-ghost px-4 py-2 text-sm" onclick={() => (changing = false)}>Cancel</button>{/if}
 						</div>
 						{#if error}<p class="flex items-center gap-2 text-xs text-red-400"><span class="size-2 shrink-0 rounded-full bg-red-500"></span>{error}</p>{/if}
@@ -421,8 +429,8 @@
 						</div>
 						<div>
 							<label for="svc-web" class="block text-sm">Web address <span class="text-gray-500">(optional)</span></label>
-							<input id="svc-web" bind:value={form.webUrl} placeholder={form.url || `https://${k.kind}.example.com`} autocomplete="off" spellcheck="false" class={input} />
-							<p class="mt-1 text-xs text-gray-500">Used by Open {k.name} when the address above only works from the server.</p>
+							<input id="svc-web" bind:value={form.webUrl} oninput={() => (webFromArr = false)} placeholder={form.url || `https://${k.kind}.example.com`} autocomplete="off" spellcheck="false" class={input} />
+							<p class="mt-1 text-xs text-gray-500">{webFromArr ? `From ${k.name}'s Application URL (Settings → General → Host). Change it if Flixarr should link somewhere else.` : `Used by Open ${k.name} when the address above only works from the server.`}</p>
 						</div>
 					</div>
 				{/if}
