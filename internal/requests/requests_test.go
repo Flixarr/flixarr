@@ -34,8 +34,14 @@ func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		id = 77
 	}
 	switch {
+	case p == "movie" && r.Method == http.MethodGet:
+		if f.inLib {
+			json.NewEncoder(w).Encode([]any{map[string]any{"id": 77, "tmdbId": 603, "hasFile": true}})
+		} else {
+			w.Write([]byte(`[]`))
+		}
 	case p == "movie/lookup/tmdb":
-		json.NewEncoder(w).Encode(map[string]any{"title": "The Matrix", "tmdbId": 603, "year": 1999, "id": id, "hasFile": f.inLib, "images": []any{}})
+		json.NewEncoder(w).Encode(map[string]any{"title": "The Matrix", "tmdbId": 603, "year": 1999, "images": []any{}}) // Radarr 6: no id here even when it's in the library
 	case p == "series/lookup":
 		if r.URL.Query().Get("term") != "tmdb:1396" {
 			w.Write([]byte(`[]`))

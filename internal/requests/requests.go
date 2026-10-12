@@ -143,17 +143,18 @@ func (s *Service) Send(ctx context.Context, r store.Request) store.Request {
 
 func (s *Service) sendMovie(ctx context.Context, v store.Server, r *store.Request) error {
 	c := client(v)
-	var movie map[string]any
-	if err := c.Get(ctx, fmt.Sprintf("movie/lookup/tmdb?tmdbId=%d", r.TmdbID), &movie); err != nil {
-		return fmt.Errorf("Radarr couldn't find it: %w", err)
-	}
-	if id := num(movie["id"]); id > 0 { // already in Radarr
-		r.ArrID = id
-		r.Status = "sent"
-		if b, _ := movie["hasFile"].(bool); b {
+	// Already in Radarr? (Radarr 6's lookup doesn't say, so ask the library directly.)
+	var have []map[string]any
+	if err := c.Get(ctx, fmt.Sprintf("movie?tmdbId=%d", r.TmdbID), &have); err == nil && len(have) > 0 {
+		r.ArrID, r.Status = num(have[0]["id"]), "sent"
+		if b, _ := have[0]["hasFile"].(bool); b {
 			r.Status = "available"
 		}
 		return nil
+	}
+	var movie map[string]any
+	if err := c.Get(ctx, fmt.Sprintf("movie/lookup/tmdb?tmdbId=%d", r.TmdbID), &movie); err != nil {
+		return fmt.Errorf("Radarr couldn't find it: %w", err)
 	}
 	movie["qualityProfileId"] = r.ProfileID
 	movie["rootFolderPath"] = v.RootFolder

@@ -1,5 +1,138 @@
 <script lang="ts">
-	import ComingSoon from '#lib/components/ComingSoon.svelte';
+	// Requests: newest first. Everyone sees their own; admins see everyone's and can approve, decline,
+	// retry and remove. Statuses update on their own while the page is open.
+	import { api, fmtDate } from '#lib/api.ts';
+	import { notify } from '#lib/toast.svelte.ts';
+	import { session } from '#lib/session.svelte.ts';
+	import type { Request } from '#lib/types.ts';
+	import Img from '#lib/components/Img.svelte';
+	import Modal from '#lib/components/Modal.svelte';
+
+	let list = $state<Request[] | null>(null);
+	let approval = $state(false);
+	let filter = $state<'all' | 'waiting' | 'active' | 'available' | 'problems'>('all');
+	let busy = $state(0);
+	let removing = $state<Request | null>(null);
+	let removeOpen = $state(false);
+	const admin = $derived(session.me?.role === 'Admin');
+
+	async function load() {
+		try {
+			const d = await api<{ requests: Request[]; approvalRequired: boolean }>('/requests');
+			list = d.requests;
+			approval = d.approvalRequired;
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Could not load requests.', 'orange');
+		}
+	}
+	$effect(() => {
+		document.title = 'Flixarr · Requests';
+		load();
+		const t = setInterval(load, 30000);
+		return () => clearInterval(t);
+	});
+
+	const GROUPS: Record<string, Request['status'][]> = { waiting: ['pending'], active: ['approved', 'sent', 'downloading'], available: ['available'], problems: ['failed', 'declined'] };
+	const shown = $derived(list ? (filter === 'all' ? list : list.filter((r) => GROUPS[filter].includes(r.status))) : []);
+	const count = (f: keyof typeof GROUPS) => list?.filter((r) => GROUPS[f].includes(r.status)).length ?? 0;
+
+	const STATUS: Record<Request['status'], [string, string]> = {
+		pending: ['Waiting for approval', 'text-yellow-300'], approved: ['Approved', 'text-gray-300'], sent: ['Requested', 'text-gray-300'],
+		downloading: ['Downloading', 'text-primary-light'], available: ['Available', 'text-green-400'], failed: ['Failed', 'text-red-400'], declined: ['Declined', 'text-gray-500']
+	};
+	// Requested → Approved → Downloading → Available, as a step bar.
+	const step = (s: Request['status']) => ({ pending: 0, approved: 1, sent: 1, downloading: 2, available: 3, failed: -1, declined: -1 })[s];
+
+	async function act(r: Request, what: 'approve' | 'decline' | 'retry') {
+		busy = r.id;
+		try {
+			const next = await api<Request>(`/requests/${r.id}/${what}`, { method: 'POST' });
+			list = list!.map((x) => (x.id === r.id ? next : x));
+			notify(next.status === 'failed' ? `Couldn't send it: ${next.error}` : what === 'decline' ? 'Declined.' : 'Sent.', next.status === 'failed' ? 'orange' : 'green');
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Could not do that.', 'orange');
+		} finally {
+			busy = 0;
+		}
+	}
+
+	async function remove() {
+		const r = removing!;
+		removeOpen = false;
+		try {
+			await api(`/requests/${r.id}`, { method: 'DELETE' });
+			list = list!.filter((x) => x.id !== r.id);
+			notify('Request removed.');
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Could not remove it.', 'orange');
+		}
+	}
+
+	const seasonsText = (r: Request) => (r.type !== 'series' ? '' : r.mode === 'all' ? 'Whole show' : r.seasons.length === 1 ? `Season ${r.seasons[0]}` : `Seasons ${r.seasons.join(', ')}`);
 </script>
 
-<ComingSoon title="Requests" what="Requesting movies and series, approvals and progress tracking come next, once Radarr and Sonarr are connected." />
+<main class="mx-auto max-w-[1200px] px-4 pb-28 pt-20 laptop:px-10 laptop:pt-24">
+	<h1 class="text-2xl font-bold laptop:text-3xl">Requests</h1>
+	<p class="text-sm text-gray-400">{admin ? "Everyone's requests." : 'Your requests.'} {approval ? 'New requests wait for an admin to approve them.' : 'Requests are sent straight to Radarr and Sonarr.'}</p>
+
+	<div class="mt-5 flex gap-2 overflow-x-auto pb-1 text-sm">
+		{#each [['all', 'All', list?.length ?? 0], ['waiting', 'Waiting', count('waiting')], ['active', 'In progress', count('active')], ['available', 'Available', count('available')], ['problems', 'Failed or declined', count('problems')]] as [k, l, n] (k)}
+			<button class="shrink-0 rounded-full border px-3 py-1 {filter === k ? 'border-primary bg-primary/15 text-white' : 'border-gray-700 text-gray-300 hover:text-white'}" onclick={() => (filter = k as typeof filter)}>{l} <span class="text-gray-500">{n}</span></button>
+		{/each}
+	</div>
+
+	{#if !list}
+		<p class="mt-8 text-sm text-gray-400">Loading…</p>
+	{:else if !shown.length}
+		<div class="card mt-6 p-8 text-center text-sm text-gray-400">{list.length ? 'Nothing here.' : 'No requests yet. Find a movie or series and hit Request.'}</div>
+	{:else}
+		<div class="mt-5 space-y-3">
+			{#each shown as r (r.id)}
+				{@const [label, tone] = STATUS[r.status]}
+				<div class="card relative overflow-hidden">
+					{#if r.backdrop}<Img path={r.backdrop} kind="backdrop" sizes="(min-width: 1024px) 1000px, 100vw" class="absolute inset-0 h-full w-full opacity-15" />{/if}
+					<div class="relative flex gap-4 p-4">
+						<a href="/{r.type}/{r.tmdbId}" class="w-16 shrink-0 overflow-hidden rounded-lg ring-1 ring-gray-700/50 tablet:w-20">{#if r.poster}<Img path={r.poster} kind="poster" sizes="80px" class="aspect-[2/3] w-full" />{/if}</a>
+						<div class="min-w-0 flex-1">
+							<div class="flex flex-wrap items-baseline gap-x-2">
+								<a href="/{r.type}/{r.tmdbId}" class="font-semibold hover:underline">{r.title}</a><span class="text-sm text-gray-400">{r.year}</span>
+								<span class="rounded bg-gray-800/80 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-gray-400">{r.type === 'movie' ? 'Movie' : 'Series'}</span>
+							</div>
+							<div class="mt-0.5 text-xs text-gray-400">
+								{r.userName || 'Someone'} · {fmtDate(r.createdAt, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}{seasonsText(r) ? ` · ${seasonsText(r)}` : ''}{r.profileName ? ` · ${r.profileName}` : ''}
+							</div>
+							<div class="mt-2 flex items-center gap-2 text-xs {tone}">{label}{r.status === 'downloading' && r.progress ? ` · ${r.progress}%` : ''}</div>
+							{#if step(r.status) >= 0}
+								<div class="mt-1.5 grid max-w-md grid-cols-4 gap-1">
+									{#each ['Requested', 'Approved', 'Downloading', 'Available'] as s, i (s)}
+										<div class="h-1 overflow-hidden rounded-full bg-gray-700/60"><div class="h-full rounded-full {r.status === 'available' ? 'bg-green-500' : 'bg-primary'}" style="width:{i < step(r.status) ? 100 : i === step(r.status) ? (r.status === 'downloading' ? r.progress : 100) : 0}%"></div></div>
+									{/each}
+								</div>
+							{/if}
+							{#if r.error}<p class="mt-2 text-xs text-red-300">{r.error}</p>{/if}
+						</div>
+						<div class="flex shrink-0 flex-col items-end gap-2">
+							{#if admin && r.status === 'pending'}
+								<button class="btn px-3 py-1 text-xs" disabled={busy === r.id} onclick={() => act(r, 'approve')}>Approve</button>
+								<button class="btn-ghost px-3 py-1 text-xs" disabled={busy === r.id} onclick={() => act(r, 'decline')}>Decline</button>
+							{:else if admin && r.status === 'failed'}
+								<button class="btn-ghost px-3 py-1 text-xs" disabled={busy === r.id} onclick={() => act(r, 'retry')}>{busy === r.id ? 'Trying…' : 'Try again'}</button>
+							{/if}
+							{#if admin || (r.status === 'pending' && r.userId === session.me?.id)}
+								<button class="px-2 text-xs text-gray-500 hover:text-red-300" onclick={() => { removing = r; removeOpen = true; }}>{r.status === 'pending' && !admin ? 'Cancel' : 'Remove'}</button>
+							{/if}
+						</div>
+					</div>
+				</div>
+			{/each}
+		</div>
+	{/if}
+</main>
+
+<Modal bind:open={removeOpen} title="Remove this request?" sub={removing?.title}>
+	<p class="p-5 text-sm text-gray-300">The request is removed from Flixarr. Anything already added to Radarr or Sonarr stays there.</p>
+	{#snippet footer()}
+		<button class="btn-ghost" onclick={() => (removeOpen = false)}>Keep it</button>
+		<button class="btn px-6" onclick={remove}>Remove</button>
+	{/snippet}
+</Modal>

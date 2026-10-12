@@ -11,6 +11,7 @@
 	import JobsSettings from '#lib/components/settings/JobsSettings.svelte';
 	import ServicesSettings from '#lib/components/settings/ServicesSettings.svelte';
 	import ProfilesSettings from '#lib/components/settings/ProfilesSettings.svelte';
+	import GeneralSettings from '#lib/components/settings/GeneralSettings.svelte';
 	import { markAlertsSeen, servicesUnread } from '#lib/alerts.svelte.ts';
 
 	// Section key → label, icon, one-line description (side menu / phone list).
@@ -95,7 +96,9 @@
 				<a href="/settings" class="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-white tablet:hidden"><span class="rotate-180"><Icon name="chevron" class="size-4" /></span>Settings</a>
 				<h2 class="text-lg font-semibold">{label}</h2>
 
-				{#if tab === 'services'}
+				{#if tab === 'general'}
+					<GeneralSettings />
+				{:else if tab === 'services'}
 					<ServicesSettings />
 				{:else if tab === 'profiles'}
 					<ProfilesSettings />

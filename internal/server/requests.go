@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Flixarr/flixarr/internal/arr"
+	"github.com/Flixarr/flixarr/internal/profiles"
 	"github.com/Flixarr/flixarr/internal/requests"
 	"github.com/Flixarr/flixarr/internal/store"
 )
@@ -150,4 +152,42 @@ func (s *Server) requestSettings(w http.ResponseWriter, r *http.Request, _ *stor
 		s.Store.SetSetting(requests.KeyApproval, strconv.FormatBool(in.ApprovalRequired))
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"approvalRequired": s.Requests.ApprovalRequired()})
+}
+
+// requestOptions is what the request window needs: where it goes, the qualities to pick from
+// (admins only; Flixarr profiles first) and whether it will wait for approval. ?type=movie|series
+func (s *Server) requestOptions(w http.ResponseWriter, r *http.Request, u *store.User) {
+	kind := "radarr"
+	if r.URL.Query().Get("type") == "series" {
+		kind = "sonarr"
+	}
+	out := map[string]any{"connected": false, "server": arr.Kinds[kind], "approval": s.Requests.ApprovalRequired() && u.Role != "Admin"}
+	v, ok, err := s.Store.FirstServer(kind)
+	if err != nil || !ok || !v.Enabled {
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	out["connected"], out["server"], out["defaultProfileId"], out["defaultProfileName"] = true, v.Name, v.QualityProfileID, v.QualityProfileName
+	type prof struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	}
+	list := []prof{}
+	if u.Role == "Admin" {
+		var all []prof
+		if err := (&arr.Client{Kind: v.Kind, URL: v.URL, APIKey: v.APIKey}).Get(r.Context(), "qualityprofile", &all); err == nil {
+			for _, p := range all {
+				if profiles.IsFlixarrName(p.Name) {
+					list = append(list, p)
+				}
+			}
+			for _, p := range all {
+				if !profiles.IsFlixarrName(p.Name) {
+					list = append(list, p)
+				}
+			}
+		}
+	}
+	out["profiles"] = list
+	writeJSON(w, http.StatusOK, out)
 }

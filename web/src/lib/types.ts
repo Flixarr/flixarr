@@ -125,3 +125,11 @@ export interface ArrInfo {
 	profiles: { id: number; name: string }[];
 	folders: { id: number; path: string; freeSpace: number; accessible: boolean }[];
 }
+
+export interface Request {
+	id: number; type: 'movie' | 'series'; tmdbId: number; title: string; year: string; poster: string; backdrop: string;
+	userId: number; userName: string; status: 'pending' | 'approved' | 'declined' | 'sent' | 'downloading' | 'available' | 'failed';
+	serverId: number; arrId: number; profileId: number; profileName: string; mode: 'all' | 'seasons'; seasons: number[]; progress: number; error: string; anime: boolean;
+	createdAt: string; updatedAt: string;
+}
+export type RequestBrief = { id: number; status: Request['status']; progress: number };

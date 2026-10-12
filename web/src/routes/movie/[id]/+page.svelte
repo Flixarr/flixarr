@@ -10,6 +10,7 @@
 	import Poster from '#lib/components/Poster.svelte';
 	import Trailer from '#lib/components/Trailer.svelte';
 	import Icon from '#lib/components/Icon.svelte';
+	import RequestButton from '#lib/components/RequestButton.svelte';
 	import Img from '#lib/components/Img.svelte';
 
 	let m = $state<Movie | null>(null);
@@ -34,7 +35,7 @@
 	<DetailHeader item={m}>
 		{#snippet chip()}<span class="rounded-md bg-gray-900/70 px-1.5 py-0.5 text-gray-300 ring-1 ring-gray-700/60">Not in your library</span>{/snippet}
 		{#snippet actions()}
-			<button class="btn px-5" onclick={() => notify('Requests arrive in the next Flixarr update.', 'orange')}><Icon name="plus" class="size-4" />Request</button>
+			{#if m}<RequestButton item={m} />{/if}
 			{#if m?.trailer}<button class="btn-ghost px-4" onclick={() => (trailer = true)}><Icon name="play" class="size-4" />Trailer</button>{/if}
 		{/snippet}
 	</DetailHeader>
