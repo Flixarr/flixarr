@@ -1,0 +1,182 @@
+package requests
+
+import (
+	"context"
+	"encoding/json"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
+
+	"github.com/Flixarr/flixarr/internal/secret"
+	"github.com/Flixarr/flixarr/internal/store"
+)
+
+// fakeArr answers the few Radarr/Sonarr calls requests make, and records what was added.
+type fakeArr struct {
+	mu      sync.Mutex
+	added   []map[string]any
+	hasFile bool
+	queue   string // JSON for queue/details
+	reject  bool   // answer adds with a validation error
+	inLib   bool   // the title is already in the library
+}
+
+func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+	id := 0
+	if f.inLib {
+		id = 77
+	}
+	switch {
+	case p == "movie/lookup/tmdb":
+		json.NewEncoder(w).Encode(map[string]any{"title": "The Matrix", "tmdbId": 603, "year": 1999, "id": id, "hasFile": f.inLib, "images": []any{}})
+	case p == "series/lookup":
+		if r.URL.Query().Get("term") != "tmdb:1396" {
+			w.Write([]byte(`[]`))
+			return
+		}
+		json.NewEncoder(w).Encode([]any{map[string]any{"title": "Breaking Bad", "tvdbId": 81189, "id": id,
+			"seasons": []any{map[string]any{"seasonNumber": 0, "monitored": true}, map[string]any{"seasonNumber": 1, "monitored": true}, map[string]any{"seasonNumber": 2, "monitored": true}, map[string]any{"seasonNumber": 3, "monitored": true}}}})
+	case (p == "movie" || p == "series") && r.Method == http.MethodPost:
+		if f.reject {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`[{"propertyName":"Path","errorMessage":"Path is already configured for an existing movie"}]`))
+			return
+		}
+		var body map[string]any
+		b, _ := io.ReadAll(r.Body)
+		json.Unmarshal(b, &body)
+		f.added = append(f.added, body)
+		body["id"] = 42
+		json.NewEncoder(w).Encode(body)
+	case p == "movie/42":
+		json.NewEncoder(w).Encode(map[string]any{"id": 42, "hasFile": f.hasFile})
+	case p == "series/42":
+		have := 0
+		if f.hasFile {
+			have = 8
+		}
+		json.NewEncoder(w).Encode(map[string]any{"id": 42, "seasons": []any{
+			map[string]any{"seasonNumber": 1, "statistics": map[string]any{"episodeFileCount": have, "episodeCount": 8}},
+			map[string]any{"seasonNumber": 2, "statistics": map[string]any{"episodeFileCount": have, "episodeCount": 8}},
+			map[string]any{"seasonNumber": 3, "statistics": map[string]any{"episodeFileCount": 0, "episodeCount": 8}}}})
+	case p == "queue/details":
+		q := f.queue
+		if q == "" {
+			q = "[]"
+		}
+		w.Write([]byte(q))
+	default:
+		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
+func setup(t *testing.T) (*Service, *store.Store, *fakeArr, *fakeArr, *store.User, *store.User) {
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	st, err := store.Open(dir, box)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	radarr, sonarr := &fakeArr{}, &fakeArr{}
+	rs, ss := httptest.NewServer(radarr), httptest.NewServer(sonarr)
+	t.Cleanup(rs.Close)
+	t.Cleanup(ss.Close)
+	st.SaveServer(store.Server{Kind: "radarr", Name: "Radarr", URL: rs.URL, APIKey: "k", RootFolder: "/movies", QualityProfileID: 27, QualityProfileName: "Flixarr · Standard", SearchOnAdd: true, Enabled: true})
+	st.SaveServer(store.Server{Kind: "sonarr", Name: "Sonarr", URL: ss.URL, APIKey: "k", RootFolder: "/tv", QualityProfileID: 8, QualityProfileName: "Flixarr · Standard", SeasonFolders: true, SearchOnAdd: false, Enabled: true})
+	admin, _ := st.CreateUser(store.User{PlexID: 1, Username: "admin", Role: "Admin"})
+	user, _ := st.CreateUser(store.User{PlexID: 2, Username: "eryn", Role: "User"})
+	return &Service{Store: st, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, st, radarr, sonarr, admin, user
+}
+
+func TestMovieRequestFlow(t *testing.T) {
+	s, st, radarr, _, admin, _ := setup(t)
+	ctx := context.Background()
+	r, err := s.Create(ctx, admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix", Year: "1999"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Status != "sent" || r.ArrID != 42 || len(radarr.added) != 1 {
+		t.Fatalf("after create: %+v added %d", r, len(radarr.added))
+	}
+	a := radarr.added[0]
+	if a["qualityProfileId"].(float64) != 27 || a["rootFolderPath"] != "/movies" || a["minimumAvailability"] != "released" || a["addOptions"].(map[string]any)["searchForMovie"] != true {
+		t.Fatalf("sent to Radarr: %v", a)
+	}
+	if _, err := s.Create(ctx, admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix"}); err != ErrAlready {
+		t.Fatalf("second request: %v", err)
+	}
+	// In the queue: downloading with progress. Then the file is there: available.
+	radarr.queue = `[{"size":1000,"sizeleft":250}]`
+	s.Refresh(ctx)
+	r, _ = st.Request(r.ID)
+	if r.Status != "downloading" || r.Progress != 75 {
+		t.Fatalf("downloading: %+v", r)
+	}
+	radarr.queue, radarr.hasFile = "", true
+	s.Refresh(ctx)
+	r, _ = st.Request(r.ID)
+	if r.Status != "available" {
+		t.Fatalf("available: %+v", r)
+	}
+}
+
+func TestSeriesSeasonsAndAnime(t *testing.T) {
+	s, st, _, sonarr, admin, _ := setup(t)
+	ctx := context.Background()
+	r, err := s.Create(ctx, admin, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad", Seasons: []int{1, 2}, Genres: []string{"Animation", "Drama"}, Language: "ja"})
+	if err != nil || r.Status != "sent" {
+		t.Fatalf("create: %+v %v", r, err)
+	}
+	a := sonarr.added[0]
+	mon := map[int]bool{}
+	for _, x := range a["seasons"].([]any) {
+		m := x.(map[string]any)
+		mon[int(m["seasonNumber"].(float64))] = m["monitored"].(bool)
+	}
+	if mon[0] || !mon[1] || !mon[2] || mon[3] || a["seriesType"] != "anime" || a["seasonFolder"] != true || a["addOptions"].(map[string]any)["searchForMissingEpisodes"] != false {
+		t.Fatalf("sent to Sonarr: seasons %v type %v %v", mon, a["seriesType"], a["addOptions"])
+	}
+	// Seasons 1 and 2 complete (3 wasn't requested): available.
+	sonarr.hasFile = true
+	s.Refresh(ctx)
+	if r, _ = st.Request(r.ID); r.Status != "available" {
+		t.Fatalf("series available: %+v", r)
+	}
+}
+
+func TestApprovalAlreadyThereAndFailure(t *testing.T) {
+	s, st, radarr, _, admin, user := setup(t)
+	ctx := context.Background()
+	st.SetSetting(KeyApproval, "true")
+	// A non-admin waits for approval; nothing is sent yet.
+	r, err := s.Create(ctx, user, New{Type: "movie", TmdbID: 603, Title: "The Matrix"})
+	if err != nil || r.Status != "pending" || len(radarr.added) != 0 {
+		t.Fatalf("pending: %+v %v", r, err)
+	}
+	// Already in Radarr with its file: linked and available, not added again.
+	radarr.inLib = true
+	r = s.Send(ctx, r)
+	if r.Status != "available" || r.ArrID != 77 || len(radarr.added) != 0 {
+		t.Fatalf("already there: %+v", r)
+	}
+	// Radarr refuses: failed, with its own message.
+	st.DeleteRequest(r.ID)
+	radarr.inLib, radarr.reject = false, true
+	r, _ = s.Create(ctx, admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix"})
+	if r.Status != "failed" || !strings.Contains(r.Error, "already configured") {
+		t.Fatalf("failed: %+v", r)
+	}
+	// A failed request can be made again.
+	radarr.reject = false
+	if r2, err := s.Create(ctx, admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix"}); err != nil || r2.Status != "sent" {
+		t.Fatalf("again after failure: %+v %v", r2, err)
+	}
+}

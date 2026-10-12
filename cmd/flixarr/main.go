@@ -21,6 +21,7 @@ import (
 	"github.com/Flixarr/flixarr/internal/meta"
 	"github.com/Flixarr/flixarr/internal/plex"
 	"github.com/Flixarr/flixarr/internal/profiles"
+	"github.com/Flixarr/flixarr/internal/requests"
 	"github.com/Flixarr/flixarr/internal/secret"
 	"github.com/Flixarr/flixarr/internal/server"
 	"github.com/Flixarr/flixarr/internal/store"
@@ -92,9 +93,16 @@ func main() {
 			return plural(int64(n), "image") + " removed", err
 		}})
 	arrMon := &arrstatus.Monitor{Store: st, Log: log}
+	reqs := &requests.Service{Store: st, Log: log}
 	runner.Add(&jobs.Job{ID: "arr-status", Name: "Radarr / Sonarr: refresh status", Default: "* * * * *",
-		About: "Reads each Radarr and Sonarr connection's queue, health, disk space, indexers and download clients for the Services cards.",
-		Run:   arrMon.Refresh})
+		About: "Reads each Radarr and Sonarr connection's queue, health, disk space, indexers and download clients for the Services cards, and moves requests along (downloading, available).",
+		Run: func(ctx context.Context) (string, error) {
+			res, err := arrMon.Refresh(ctx)
+			if rerr := reqs.Refresh(ctx); rerr != nil && err == nil {
+				err = rerr
+			}
+			return res, err
+		}})
 	// Flixarr's quality profiles: downloaded from the API, added to Radarr/Sonarr on request, kept up to date.
 	pm := &profiles.Manager{Store: st, API: api, UserAgent: "Flixarr/" + version.Full(), Log: log}
 	runner.Add(&jobs.Job{ID: "profiles-sync", Name: "Quality profiles: sync", Default: "30 4 * * *",
@@ -119,6 +127,7 @@ func main() {
 		Update:   checker,
 		Arr:      arrMon,
 		Profiles: pm,
+		Requests: reqs,
 		Web:      webui.FS(),
 		Log:      log,
 		BaseCtx:  runCtx,

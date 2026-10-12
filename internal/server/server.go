@@ -19,6 +19,7 @@ import (
 	"github.com/Flixarr/flixarr/internal/meta"
 	"github.com/Flixarr/flixarr/internal/plex"
 	"github.com/Flixarr/flixarr/internal/profiles"
+	"github.com/Flixarr/flixarr/internal/requests"
 	"github.com/Flixarr/flixarr/internal/store"
 	"github.com/Flixarr/flixarr/internal/update"
 	"github.com/Flixarr/flixarr/internal/version"
@@ -36,6 +37,7 @@ type Server struct {
 	Update   *update.Checker
 	Arr      *arrstatus.Monitor
 	Profiles *profiles.Manager
+	Requests *requests.Service
 	Web      fs.FS // built web app (index + assets)
 	Log      *slog.Logger
 	// BaseCtx outlives requests; jobs started with "Run now" use it.
@@ -63,6 +65,15 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/cache/settings", s.auth(s.admin(s.cacheSettings)))
 	mux.HandleFunc("DELETE /api/cache/{kind}", s.auth(s.admin(s.cacheFlush)))
 	mux.HandleFunc("GET /api/events", s.auth(s.admin(s.events)))
+	mux.HandleFunc("GET /api/requests", s.auth(s.requestList))
+	mux.HandleFunc("POST /api/requests", s.auth(s.requestCreate))
+	mux.HandleFunc("GET /api/requests/status", s.auth(s.requestStatus))
+	mux.HandleFunc("POST /api/requests/{id}/approve", s.auth(s.admin(s.requestApprove)))
+	mux.HandleFunc("POST /api/requests/{id}/decline", s.auth(s.admin(s.requestDecline)))
+	mux.HandleFunc("POST /api/requests/{id}/retry", s.auth(s.admin(s.requestRetry)))
+	mux.HandleFunc("DELETE /api/requests/{id}", s.auth(s.requestDelete))
+	mux.HandleFunc("GET /api/settings/requests", s.auth(s.admin(s.requestSettings)))
+	mux.HandleFunc("PUT /api/settings/requests", s.auth(s.admin(s.requestSettings)))
 	mux.HandleFunc("GET /api/alerts", s.auth(s.alerts))
 	mux.HandleFunc("POST /api/alerts/seen", s.auth(s.alertsSeen))
 	mux.HandleFunc("GET /api/services", s.auth(s.admin(s.services)))
