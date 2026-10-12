@@ -61,7 +61,7 @@
 	}
 	$effect(() => {
 		document.title = 'Flixarr · Users';
-		load();
+		if (can('admin')) load();
 	});
 
 	// The role a set of switches matches (same rule as the server).
