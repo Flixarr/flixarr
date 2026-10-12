@@ -87,6 +87,29 @@
 		};
 	});
 
+	// TESTING (remove later): a toast when the "Radarr / Sonarr: refresh status" job starts and finishes,
+	// pushed from the server as the job really runs (not tied to the countdown).
+	const JOB_TOASTS = true;
+	let startedAt = 0;
+	$effect(() => {
+		if (!JOB_TOASTS) return;
+		const es = new EventSource('/api/events');
+		es.addEventListener('job', (m) => {
+			const e = JSON.parse((m as MessageEvent).data) as { job: string; phase: string; result?: string; error?: string; seconds?: number };
+			if (e.job !== 'arr-status') return;
+			if (e.phase === 'start') {
+				startedAt = Date.now();
+				notify('Contacting Radarr and Sonarr…');
+				return;
+			}
+			// The job often takes a fraction of a second, so the "done" toast waits until the
+			// "contacting" one has been on screen for 1.5 seconds.
+			const show = () => (e.error ? notify(`Update failed: ${e.error}`, 'orange') : notify(`Update done: ${e.result} (${((e.seconds ?? 0) * 1000).toFixed(0)} ms)`, 'green'));
+			setTimeout(show, Math.max(0, 1500 - (Date.now() - startedAt)));
+		});
+		return () => es.close();
+	});
+
 	function ago(iso: string | null | undefined) {
 		if (!iso) return 'never';
 		const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));

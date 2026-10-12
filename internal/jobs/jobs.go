@@ -20,6 +20,43 @@ type Job struct {
 	Run     func(ctx context.Context) (string, error)
 }
 
+// Event is sent to subscribers when a job starts and when it finishes.
+type Event struct {
+	Job     string  `json:"job"`
+	Name    string  `json:"name"`
+	Phase   string  `json:"phase"` // "start" or "done"
+	Result  string  `json:"result,omitempty"`
+	Error   string  `json:"error,omitempty"`
+	Seconds float64 `json:"seconds,omitempty"`
+}
+
+// Subscribe returns a channel of job events and a function that stops them.
+func (r *Runner) Subscribe() (<-chan Event, func()) {
+	ch := make(chan Event, 16)
+	r.mu.Lock()
+	if r.subs == nil {
+		r.subs = map[chan Event]struct{}{}
+	}
+	r.subs[ch] = struct{}{}
+	r.mu.Unlock()
+	return ch, func() {
+		r.mu.Lock()
+		delete(r.subs, ch)
+		r.mu.Unlock()
+	}
+}
+
+func (r *Runner) publish(e Event) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for ch := range r.subs {
+		select {
+		case ch <- e:
+		default: // a slow listener misses events rather than holding up jobs
+		}
+	}
+}
+
 // Run is the outcome of a job's last run.
 type Run struct {
 	At      time.Time `json:"at"`
@@ -49,6 +86,7 @@ type Runner struct {
 	mu      sync.Mutex
 	jobs    []*Job
 	running map[string]bool
+	subs    map[chan Event]struct{}
 }
 
 // ErrUnknown is returned for a job id that doesn't exist.
@@ -140,8 +178,12 @@ func (r *Runner) exec(ctx context.Context, j *Job) {
 	}()
 
 	start := time.Now()
+	r.publish(Event{Job: j.ID, Name: j.Name, Phase: "start"})
 	result, err := j.Run(ctx)
 	last := Run{At: start.UTC(), Seconds: time.Since(start).Seconds(), Result: result}
+	defer func() {
+		r.publish(Event{Job: j.ID, Name: j.Name, Phase: "done", Result: result, Error: last.Error, Seconds: last.Seconds})
+	}()
 	if err != nil {
 		last.Error = err.Error()
 		r.Log.Warn("job failed", "job", j.ID, "err", err)

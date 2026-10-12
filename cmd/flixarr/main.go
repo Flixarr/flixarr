@@ -95,7 +95,7 @@ func main() {
 		About: "Reads each Radarr and Sonarr connection's queue, health, disk space, indexers and download clients for the Services cards.",
 		Run:   arrMon.Refresh})
 	runner.Start(runCtx)
-	go arrMon.Refresh(runCtx) // fill the cards right away instead of waiting for the first minute
+	runner.RunNow(runCtx, "arr-status") // fill the cards right away instead of waiting for the first minute
 
 	srv := &server.Server{
 		Store:   st,
