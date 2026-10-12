@@ -82,6 +82,6 @@ export const fmtDate = (d: string | null | undefined, opts: Intl.DateTimeFormatO
 export const runtime = (m: number) => (m ? `${Math.floor(m / 60) ? Math.floor(m / 60) + 'h ' : ''}${m % 60}m` : '');
 
 export const fmtBytes = (n: number) =>
-	n < 1024 ? `${n} B` : n < 1024 ** 2 ? `${(n / 1024).toFixed(0)} KB` : n < 1024 ** 3 ? `${(n / 1024 ** 2).toFixed(1)} MB` : `${(n / 1024 ** 3).toFixed(2)} GB`;
+	n < 1024 ? `${n} B` : n < 1024 ** 2 ? `${(n / 1024).toFixed(0)} KB` : n < 1024 ** 3 ? `${(n / 1024 ** 2).toFixed(1)} MB` : n < 1024 ** 4 ? `${(n / 1024 ** 3).toFixed(n < 100 * 1024 ** 3 ? 2 : 1)} GB` : `${(n / 1024 ** 4).toFixed(1)} TB`;
 
 export const fmtNum = (n: number) => n.toLocaleString('en-US');
