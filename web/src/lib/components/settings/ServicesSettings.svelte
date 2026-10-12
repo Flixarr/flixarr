@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { api, fmtBytes } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
-	import type { ArrInfo, QueueRow, ServiceKind, ServiceView } from '#lib/types.ts';
+	import type { ArrInfo, FlixarrProfile, QueueRow, ServiceKind, ServiceView } from '#lib/types.ts';
 	import Toggle from '#lib/components/Toggle.svelte';
 	import Modal from '#lib/components/Modal.svelte';
 	import Icon from '#lib/components/Icon.svelte';
@@ -16,7 +16,7 @@
 	];
 	const nameOf = (kind: ServiceKind) => KINDS.find((k) => k.kind === kind)!.name;
 
-	type Form = { name: string; url: string; webUrl: string; apiKey: string; rootFolder: string; qualityProfileId: number; seasonFolders: boolean; searchOnAdd: boolean; enabled: boolean };
+	type Form = { name: string; url: string; webUrl: string; apiKey: string; rootFolder: string; qualityProfileId: number; seasonFolders: boolean; searchOnAdd: boolean; enabled: boolean; addProfiles: string[]; defaultProfile: string };
 	let saved = $state<Record<ServiceKind, ServiceView | null> | null>(null);
 	let now = $state(Date.now());
 
@@ -32,6 +32,8 @@
 	let finding = $state(false);
 	let found = $state<string[] | null>(null);
 	let confirmRemove = $state(false);
+	let flixarrProfiles = $state<FlixarrProfile[]>([]);
+	let profileBusy = $state('');
 	let webFromArr = $state(false); // the web address was filled in from the Application URL
 	let changing = $state(false); // editing: the connection form is open ("Change")
 	let initial = $state(''); // the form as it opened, so Save only lights up after a change
@@ -76,7 +78,7 @@
 	}
 
 	function blank(k: ServiceKind): Form {
-		return { name: nameOf(k), url: '', webUrl: '', apiKey: '', rootFolder: '', qualityProfileId: 0, seasonFolders: true, searchOnAdd: true, enabled: true };
+		return { addProfiles: [], defaultProfile: '', name: nameOf(k), url: '', webUrl: '', apiKey: '', rootFolder: '', qualityProfileId: 0, seasonFolders: true, searchOnAdd: true, enabled: true };
 	}
 
 	// The cards show what the "Radarr / Sonarr: refresh status" job last read. They reload right after
@@ -151,7 +153,7 @@
 	function edit(k: ServiceKind) {
 		const v = saved![k];
 		kind = k;
-		form = v ? { name: v.name, url: v.url, webUrl: v.webUrl, apiKey: '', rootFolder: v.rootFolder, qualityProfileId: v.qualityProfileId, seasonFolders: v.seasonFolders, searchOnAdd: v.searchOnAdd, enabled: v.enabled } : blank(k);
+		form = v ? { addProfiles: [], defaultProfile: '', name: v.name, url: v.url, webUrl: v.webUrl, apiKey: '', rootFolder: v.rootFolder, qualityProfileId: v.qualityProfileId, seasonFolders: v.seasonFolders, searchOnAdd: v.searchOnAdd, enabled: v.enabled } : blank(k);
 		info = null;
 		error = '';
 		showKey = false;
@@ -160,6 +162,13 @@
 		initial = JSON.stringify(form);
 		open = true;
 		webFromArr = false;
+		// Flixarr's own profiles: offered (all ticked) when adding a server, and the default quality.
+		if (!v) api<{ profiles: FlixarrProfile[] }>('/profiles').then((d) => {
+			flixarrProfiles = d.profiles.filter((p) => p.apps.includes(k));
+			form.addProfiles = flixarrProfiles.map((p) => p.id);
+			form.defaultProfile = form.addProfiles.includes('standard') ? 'standard' : (form.addProfiles[0] ?? '');
+			initial = JSON.stringify(form);
+		}).catch(() => (flixarrProfiles = []));
 		if (v) test(true); // fills the folder and quality lists
 	}
 
@@ -209,13 +218,49 @@
 		error = '';
 	}
 
+	// Existing server: add one Flixarr profile, or take Flixarr's version of one edited in Radarr/Sonarr.
+	async function profileAction(key: string, action: 'add' | 'use-flixarr') {
+		profileBusy = key;
+		try {
+			const v = await api<ServiceView>(action === 'add' ? `/services/${kind}/profiles` : `/services/${kind}/profiles/${key}/use-flixarr`, { method: 'POST', body: JSON.stringify({ keys: [key] }) });
+			saved![kind] = v;
+			await test(true); // the new profile shows up in the default quality list
+			notify(action === 'add' ? 'Profile added.' : "Flixarr's version is back in place.");
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Could not do that.', 'orange');
+		} finally {
+			profileBusy = '';
+		}
+	}
+
+	// The default quality picker: Flixarr profiles first (ones about to be added count, marked so), then the server's own.
+	const qualityOptions = $derived.by(() => {
+		if (!info) return [];
+		const opts: { value: string; label: string; hint?: string }[] = [];
+		for (const p of flixarrProfiles) if (form.addProfiles.includes(p.id)) opts.push({ value: `f:${p.id}`, label: p.arrName, hint: 'added on save' });
+		const own = [...info.profiles].sort((a, b) => Number(b.name.startsWith('Flixarr · ')) - Number(a.name.startsWith('Flixarr · ')));
+		for (const p of own) if (!opts.some((o) => o.label === p.name)) opts.push({ value: `p:${p.id}`, label: p.name });
+		return opts;
+	});
+	const qualityValue = $derived(form.defaultProfile ? `f:${form.defaultProfile}` : `p:${form.qualityProfileId}`);
+	function pickQuality(v: string) {
+		if (v.startsWith('f:')) { form.defaultProfile = v.slice(2); form.qualityProfileId = 0; }
+		else { form.defaultProfile = ''; form.qualityProfileId = +v.slice(2); }
+	}
+	function toggleAdd(key: string, on: boolean) {
+		form.addProfiles = on ? [...form.addProfiles, key] : form.addProfiles.filter((k) => k !== key);
+		if (!on && form.defaultProfile === key) { form.defaultProfile = ''; form.qualityProfileId = info?.profiles[0]?.id ?? 0; }
+	}
+
 	async function save() {
 		saving = true;
+		const wasNew = !saved![kind];
 		try {
-			const v = await api<ServiceView>(`/services/${kind}`, { method: 'PUT', body: JSON.stringify(form) });
+			const v = await api<ServiceView>(`/services/${kind}`, { method: 'PUT', body: JSON.stringify({ ...form, addProfiles: wasNew ? form.addProfiles : [] }) });
 			saved![kind] = v;
 			open = false;
-			notify(`${v.name} saved.`);
+			if (v.warning) notify(v.warning, 'orange');
+			else notify(wasNew && form.addProfiles.length ? `${v.name} added, with Flixarr's quality profiles.` : `${v.name} saved.`);
 		} catch (e) {
 			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
 		} finally {
@@ -249,6 +294,41 @@
 		<span class="mt-1 block text-[11px] text-gray-500">{q.quality}{q.size ? ` · ${fmtBytes(q.size)}` : ''}</span>
 		{#if q.message}<span class="mt-1 block text-[11px] {STATE_TONE[q.state]}">⚠ {q.message}</span>{/if}
 	</span>
+{/snippet}
+
+{#snippet flixarrBox()}
+	{@const isNewServer = !saved?.[kind]}
+	{@const list = saved?.[kind]?.profiles ?? []}
+	{#if isNewServer ? flixarrProfiles.length : list.length}
+		<div class="rounded-xl border border-primary/40 bg-primary/10 p-4">
+			<div class="flex items-center gap-2 text-sm font-medium"><span class="text-primary-light">◆</span>Flixarr quality profiles</div>
+			<p class="mt-0.5 text-xs text-gray-300">Tuned profiles Flixarr adds to {KINDS.find((x) => x.kind === kind)?.name} and keeps up to date. Your own profiles aren't changed.</p>
+			<div class="mt-3 space-y-2">
+				{#if isNewServer}
+					{#each flixarrProfiles as p (p.id)}
+						<label class="flex cursor-pointer items-start gap-3 rounded-lg bg-gray-900/50 px-3 py-2 ring-1 ring-gray-700/50">
+							<input type="checkbox" class="mt-0.5 accent-[var(--color-primary)]" checked={form.addProfiles.includes(p.id)} onchange={(e) => toggleAdd(p.id, (e.currentTarget as HTMLInputElement).checked)} />
+							<span class="min-w-0"><span class="block text-sm">{p.label}</span><span class="block text-xs text-gray-400">{p.description}</span></span>
+						</label>
+					{/each}
+				{:else}
+					{#each list as p (p.key)}
+						<div class="flex items-center gap-3 rounded-lg bg-gray-900/50 px-3 py-2 ring-1 ring-gray-700/50">
+							<span class="min-w-0 flex-1"><span class="block text-sm">{p.label}</span>
+								<span class="block text-xs {p.state === 'ok' ? 'text-green-400' : p.state === 'customized' ? 'text-yellow-300' : 'text-gray-400'}">
+									{#if p.state === 'ok'}Added · up to date{:else if p.state === 'update'}Added · updating on the next sync{:else if p.state === 'customized'}Edited in {KINDS.find((x) => x.kind === kind)?.name}{p.updateAvailable ? ' · a newer Flixarr version is available' : ''}{:else if p.state === 'missing'}Deleted in {KINDS.find((x) => x.kind === kind)?.name}{:else}Not added{/if}
+								</span></span>
+							{#if !p.installed}
+								<button class="btn-ghost shrink-0 px-3 py-1 text-xs" disabled={profileBusy !== ''} onclick={() => profileAction(p.key, 'add')}>{profileBusy === p.key ? 'Adding…' : p.state === 'missing' ? 'Add again' : 'Add'}</button>
+							{:else if p.state === 'customized' && p.updateAvailable}
+								<button class="btn-ghost shrink-0 px-3 py-1 text-xs" disabled={profileBusy !== ''} onclick={() => profileAction(p.key, 'use-flixarr')}>{profileBusy === p.key ? 'Updating…' : "Use Flixarr's version"}</button>
+							{/if}
+						</div>
+					{/each}
+				{/if}
+			</div>
+		</div>
+	{/if}
 {/snippet}
 
 {#snippet chip(text: string, bad: boolean)}
@@ -313,6 +393,21 @@
 								</span>
 							{/if}
 
+							{@const fp = v.profiles.filter((p) => p.installed)}
+							{@const edited = fp.filter((p) => p.state === 'customized').length}
+							{#if v.profiles.length}
+								<span class="mt-3 flex items-center gap-2 text-[11px]">
+									<span class="text-primary-light">◆</span>
+									{#if !fp.length}
+										<span class="text-gray-400">Flixarr quality profiles not added</span>
+										<button class="text-primary-light hover:underline" onclick={() => edit(s.kind)}>Add them</button>
+									{:else if edited}
+										<span class="text-gray-300">{fp.length} Flixarr profile{fp.length === 1 ? '' : 's'}</span><span class="text-yellow-300">· {edited} edited in {s.name}</span>
+									{:else}
+										<span class="text-gray-300">{fp.length} Flixarr profile{fp.length === 1 ? '' : 's'}</span><span class="text-gray-500">· up to date</span>
+									{/if}
+								</span>
+							{/if}
 							{@const cut = st.folder.lastIndexOf('/')}
 							{@const used = st.totalSpace ? Math.round((1 - st.freeSpace / st.totalSpace) * 100) : 0}
 							<span class="mt-4 block">
@@ -414,10 +509,10 @@
 								options={info.folders.map((f) => ({ value: f.path, label: f.path, hint: f.accessible ? `${fmtBytes(f.freeSpace)} free` : 'not reachable' }))} />
 							{#if !info.folders.length}<p class="mt-1 text-xs text-yellow-400">Add a root folder in {k.name} first (Settings → Media Management).</p>{/if}
 						</div>
+						{@render flixarrBox()}
 						<div>
 							<label for="svc-quality" class="block text-sm">Default quality</label>
-							<Select id="svc-quality" bind:value={form.qualityProfileId} placeholder="Pick a quality" search={info.profiles.length > 8}
-								options={info.profiles.map((p) => ({ value: p.id, label: p.name }))} />
+							<Select id="svc-quality" value={qualityValue} placeholder="Pick a quality" search={qualityOptions.length > 8} options={qualityOptions} onchange={pickQuality} />
 						</div>
 						<Toggle checked={form.searchOnAdd} label="Search right away" about="Start looking for a download as soon as something is requested." onchange={(on) => (form.searchOnAdd = on)} />
 						{#if kind === 'sonarr'}
@@ -439,7 +534,7 @@
 		{#snippet footer()}
 			{#if !isNew}<button class="btn-ghost mr-auto text-red-300" onclick={() => { open = false; confirmRemove = true; }}>Remove</button>{/if}
 			<button class="btn-ghost" onclick={() => (open = false)}>Cancel</button>
-			<button class="btn px-6" disabled={!info || changing || saving || !form.rootFolder || !form.qualityProfileId || (!isNew && !dirty)} onclick={save}>{saving ? 'Saving…' : isNew ? 'Add server' : 'Save'}</button>
+			<button class="btn px-6" disabled={!info || changing || saving || !form.rootFolder || (!form.qualityProfileId && !form.defaultProfile) || (!isNew && !dirty)} onclick={save}>{saving ? 'Saving…' : isNew ? 'Add server' : 'Save'}</button>
 		{/snippet}
 	</Modal>
 
