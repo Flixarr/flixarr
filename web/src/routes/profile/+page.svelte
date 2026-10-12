@@ -6,6 +6,8 @@
 	import Row from '#lib/components/Row.svelte';
 	import Poster from '#lib/components/Poster.svelte';
 	import { api } from '#lib/api.ts';
+	import { notify } from '#lib/toast.svelte.ts';
+	import Toggle from '#lib/components/Toggle.svelte';
 	import type { Card, Page } from '#lib/types.ts';
 
 	const v = $derived(session.status?.version);
@@ -16,7 +18,19 @@
 		document.title = 'Flixarr · Profile';
 		api<Stats>('/me/stats').then((d) => (stats = d)).catch(() => {});
 		api<Page<Card>>('/discover/recent-requests?mine=1').then((p) => (mine = p.results)).catch(() => {});
+		api<Watch>('/me/watchlist').then((d) => (watch = d)).catch(() => {});
 	});
+
+	type Watch = { on: boolean; allowed: boolean; signedIn: boolean };
+	let watch = $state<Watch | null>(null);
+	async function setWatch(on: boolean) {
+		try {
+			watch = await api<Watch>('/me/watchlist', { method: 'PUT', body: JSON.stringify({ on }) });
+			notify(on ? 'Your Plex Watchlist is being requested now, and new additions within 15 minutes.' : 'Plex Watchlist requests are off.');
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+		}
+	}
 
 	async function out() {
 		await signOut();
@@ -24,7 +38,7 @@
 	}
 </script>
 
-<main class="mx-auto max-w-[1200px] space-y-6 px-4 pt-20 laptop:px-10 laptop:pt-24">
+<main class="mx-auto max-w-[1200px] space-y-6 px-4 pb-28 pt-20 laptop:px-10 laptop:pt-24">
 	{#if session.me}
 		<section class="flex flex-wrap items-center gap-4">
 			<Avatar user={session.me} class="size-16 text-2xl" />
@@ -46,6 +60,15 @@
 		{/if}
 		{#if mine.length}
 			<div class="-mx-4 laptop:mx-0"><Row title="My requests" items={mine} more="/requests">{#snippet item(c)}<Poster item={c} />{/snippet}</Row></div>
+		{/if}
+
+		{#if watch?.allowed}
+			<section>
+				<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Plex Watchlist</div>
+				<div class="card px-4 py-3">
+					<Toggle checked={watch.on} disabled={!watch.signedIn && !watch.on} label="Request from my Plex Watchlist" about={watch.signedIn ? 'Everything on your Plex Watchlist gets requested (titles already in the library are skipped), then new additions within 15 minutes. Request limits and approval still apply.' : 'Sign out and back in with Plex once so Flixarr can read your Watchlist.'} onchange={setWatch} />
+				</div>
+			</section>
 		{/if}
 
 		{#if can('admin')}

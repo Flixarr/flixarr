@@ -30,6 +30,7 @@ import (
 	"github.com/Flixarr/flixarr/internal/store"
 	"github.com/Flixarr/flixarr/internal/update"
 	"github.com/Flixarr/flixarr/internal/version"
+	"github.com/Flixarr/flixarr/internal/watchlist"
 	"github.com/Flixarr/flixarr/internal/webui"
 )
 
@@ -132,6 +133,10 @@ func main() {
 	runner.Add(&jobs.Job{ID: "plex-recent", Name: "Plex: recently added scan", Default: "*/5 * * * *",
 		About: "Reads the newest additions to the chosen Plex libraries, so new titles show as available within minutes.",
 		Run:   lib.RecentScan})
+	wl := &watchlist.Syncer{Store: st, Requests: reqs, Meta: mc, ClientID: clientID, Log: log}
+	runner.Add(&jobs.Job{ID: "watchlist", Name: "Plex Watchlist: sync", Default: "*/15 * * * *",
+		About: "Requests what people add to their Plex Watchlist, for those who switched it on in their Profile.",
+		Run:   wl.Run})
 	backups := &backup.Manager{Store: st, DataDir: dataDir}
 	runner.Add(&jobs.Job{ID: "backup", Name: "Backup", Default: "0 2 * * *",
 		About: "Saves a copy of Flixarr's database (settings, users, requests, issues) in the data folder's backups folder, keeping the newest few.",

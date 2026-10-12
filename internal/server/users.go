@@ -157,3 +157,26 @@ func (s *Server) userSettings(w http.ResponseWriter, r *http.Request, _ *store.U
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"plexSignIn": s.plexSignInOpen()})
 }
+
+// myWatchlist reads or changes the Profile's "Request from my Plex Watchlist" switch.
+func (s *Server) myWatchlist(w http.ResponseWriter, r *http.Request, u *store.User) {
+	if r.Method == http.MethodPut {
+		var in struct {
+			On bool `json:"on"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in); err != nil {
+			writeErr(w, http.StatusBadRequest, "Bad request.")
+			return
+		}
+		if in.On && !u.Can("watchlist") {
+			writeErr(w, http.StatusForbidden, "You don't have permission to request from your Plex Watchlist.")
+			return
+		}
+		s.Store.SetWatchlist(u.ID, in.On)
+		if in.On {
+			s.Jobs.RunNow(s.BaseCtx, "watchlist")
+		}
+	}
+	tokenOK := s.Store.PlexToken(u.ID) != "" || (u.Owner && s.Store.SecretSetting("plex_admin_token", "") != "")
+	writeJSON(w, http.StatusOK, map[string]bool{"on": s.Store.Watchlist(u.ID), "allowed": u.Can("watchlist"), "signedIn": tokenOK})
+}

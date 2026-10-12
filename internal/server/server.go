@@ -60,6 +60,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/status", s.status)
 	mux.HandleFunc("GET /api/me", s.auth(s.me))
 	mux.HandleFunc("GET /api/me/stats", s.auth(s.myStats))
+	mux.HandleFunc("GET /api/me/watchlist", s.auth(s.myWatchlist))
+	mux.HandleFunc("PUT /api/me/watchlist", s.auth(s.myWatchlist))
 	mux.HandleFunc("POST /api/auth/plex/pin", s.plexPin)
 	mux.HandleFunc("POST /api/auth/plex/check", s.plexCheck)
 	mux.HandleFunc("POST /api/auth/logout", s.logout)
@@ -301,6 +303,9 @@ func (s *Server) plexCheck(w http.ResponseWriter, r *http.Request) {
 		if err == nil && u.Owner {
 			err = s.Store.SetSecretSetting("plex_admin_token", pin.AuthToken) // the owner's token reads the Plex server list and who it's shared with
 		}
+	}
+	if err == nil {
+		err = s.Store.SetPlexToken(u.ID, pin.AuthToken) // for their Plex Watchlist requests
 	}
 	if err != nil {
 		s.Log.Error("sign-in", "err", err)
