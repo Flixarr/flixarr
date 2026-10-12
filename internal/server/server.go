@@ -429,7 +429,7 @@ func (s *Server) spa() http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		// no-transform: proxies like Cloudflare must not inject scripts (e.g. its analytics beacon) into the app.
+		// no-transform: proxies and CDNs must not inject scripts (analytics beacons and the like) into the app.
 		w.Header().Set("Cache-Control", "no-cache, no-transform")
 		w.Write(shell)
 	})

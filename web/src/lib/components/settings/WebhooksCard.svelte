@@ -53,7 +53,7 @@
 			<div class="py-3">
 				<label for="wh-base" class="block text-sm">Flixarr's address, as Radarr and Sonarr see it</label>
 				<input id="wh-base" class={input} bind:value={base} autocomplete="off" spellcheck="false" placeholder="http://192.168.1.10:7575" />
-				<p class="mt-1 text-xs text-gray-500">Usually the local IP and port. Not an address behind a login page (like Cloudflare Access); Radarr and Sonarr can't sign in.</p>
+				<p class="mt-1 text-xs text-gray-500">Usually the local IP and port. Not an address that asks for a sign-in first; Radarr and Sonarr can't sign in.</p>
 			</div>
 			{#each kinds as k (k.kind)}
 				<div class="flex items-center justify-between gap-3 py-3 text-sm">

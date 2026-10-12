@@ -10,7 +10,7 @@ import (
 )
 
 // events streams job start/finish events to admins (Server-Sent Events), so the app can show
-// exactly when a job is talking to Radarr or Sonarr. Proxies like Cloudflare cut long-held
+// exactly when a job is talking to Radarr or Sonarr. Some reverse proxies cut long-held
 // connections (over HTTP/3 that shows as a QUIC protocol error in the browser), so the stream ends
 // itself cleanly after a minute and tells the browser to reconnect half a second later.
 func (s *Server) events(w http.ResponseWriter, r *http.Request, _ *store.User) {
