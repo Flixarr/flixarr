@@ -16,6 +16,7 @@ import (
 	_ "time/tzdata" // so TZ (e.g. America/New_York) works in the slim image; job times follow it
 
 	"github.com/Flixarr/flixarr/internal/arrstatus"
+	"github.com/Flixarr/flixarr/internal/backup"
 	"github.com/Flixarr/flixarr/internal/images"
 	"github.com/Flixarr/flixarr/internal/jobs"
 	"github.com/Flixarr/flixarr/internal/meta"
@@ -53,6 +54,12 @@ func main() {
 	if err != nil {
 		log.Error("secret key", "err", err)
 		os.Exit(1)
+	}
+	if restored, err := backup.ApplyRestore(dataDir); err != nil {
+		log.Error("restore", "err", err)
+		os.Exit(1)
+	} else if restored {
+		log.Info("database restored from a backup")
 	}
 	st, err := store.Open(dataDir, box)
 	if err != nil {
@@ -125,6 +132,10 @@ func main() {
 	runner.Add(&jobs.Job{ID: "plex-recent", Name: "Plex: recently added scan", Default: "*/5 * * * *",
 		About: "Reads the newest additions to the chosen Plex libraries, so new titles show as available within minutes.",
 		Run:   lib.RecentScan})
+	backups := &backup.Manager{Store: st, DataDir: dataDir}
+	runner.Add(&jobs.Job{ID: "backup", Name: "Backup", Default: "0 2 * * *",
+		About: "Saves a copy of Flixarr's database (settings, users, requests, issues) in the data folder's backups folder, keeping the newest few.",
+		Run:   func(context.Context) (string, error) { return backups.Run() }})
 	runner.Start(runCtx)
 	runner.RunNow(runCtx, "profiles-sync")
 	runner.RunNow(runCtx, "arr-status") // fill the cards right away instead of waiting for the first minute
@@ -141,6 +152,7 @@ func main() {
 		Requests: reqs,
 		Library:  lib,
 		Notify:   notifier,
+		Backups:  backups,
 		Web:      webui.FS(),
 		Log:      log,
 		BaseCtx:  runCtx,

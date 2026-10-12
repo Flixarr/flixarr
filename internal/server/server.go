@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Flixarr/flixarr/internal/arrstatus"
+	"github.com/Flixarr/flixarr/internal/backup"
 	"github.com/Flixarr/flixarr/internal/images"
 	"github.com/Flixarr/flixarr/internal/jobs"
 	"github.com/Flixarr/flixarr/internal/meta"
@@ -42,6 +43,7 @@ type Server struct {
 	Requests *requests.Service
 	Library  *plexlib.Library
 	Notify   *notify.Notifier
+	Backups  *backup.Manager
 	Web      fs.FS // built web app (index + assets)
 	Log      *slog.Logger
 	// BaseCtx outlives requests; jobs started with "Run now" use it.
@@ -120,6 +122,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/notifications", s.auth(s.admin(s.notifyList)))
 	mux.HandleFunc("PUT /api/notifications/{channel}", s.auth(s.admin(s.notifySave)))
 	mux.HandleFunc("POST /api/notifications/{channel}/test", s.auth(s.admin(s.notifyTest)))
+	mux.HandleFunc("GET /api/backups", s.auth(s.admin(s.backupList)))
+	mux.HandleFunc("POST /api/backups", s.auth(s.admin(s.backupCreate)))
+	mux.HandleFunc("PUT /api/backups/settings", s.auth(s.admin(s.backupSettings)))
+	mux.HandleFunc("GET /api/backups/{name}", s.auth(s.admin(s.backupDownload)))
+	mux.HandleFunc("DELETE /api/backups/{name}", s.auth(s.admin(s.backupDelete)))
+	mux.HandleFunc("POST /api/backups/{name}/restore", s.auth(s.admin(s.backupRestore)))
 	mux.HandleFunc("GET /api/jobs", s.auth(s.admin(s.jobList)))
 	mux.HandleFunc("PUT /api/jobs/{id}", s.auth(s.admin(s.jobSet)))
 	mux.HandleFunc("POST /api/jobs/{id}/run", s.auth(s.admin(s.jobRun)))

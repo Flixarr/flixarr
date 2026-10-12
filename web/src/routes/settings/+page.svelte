@@ -15,6 +15,7 @@
 	import PlexSettings from '#lib/components/settings/PlexSettings.svelte';
 	import DiscoverSettings from '#lib/components/settings/DiscoverSettings.svelte';
 	import NotificationsSettings from '#lib/components/settings/NotificationsSettings.svelte';
+	import BackupsSettings from '#lib/components/settings/BackupsSettings.svelte';
 	import { markAlertsSeen, servicesUnread } from '#lib/alerts.svelte.ts';
 
 	// Section key → label, icon, one-line description (side menu / phone list).
@@ -27,6 +28,7 @@
 		['discover', 'Discover', 'discover', 'Discover page rows'],
 		['cache', 'Cache', 'refresh', 'Saved results, images'],
 		['jobs', 'Jobs', 'clock', 'Scheduled tasks'],
+		['backups', 'Backups', 'folder', 'Daily copies of your data'],
 		['about', 'About', 'info', 'Version, updates, credits']
 	];
 
@@ -113,6 +115,8 @@
 					<DiscoverSettings />
 				{:else if tab === 'cache'}
 					<CacheSettings />
+				{:else if tab === 'backups'}
+					<BackupsSettings />
 				{:else if tab === 'jobs'}
 					<JobsSettings />
 				{:else if tab === 'about'}

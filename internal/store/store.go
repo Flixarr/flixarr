@@ -247,3 +247,23 @@ func (s *Store) sealSecretSettings(keys ...string) error {
 	}
 	return nil
 }
+
+// ---------- backups ----------
+
+// BackupTo writes a consistent copy of the database to path (which must not exist), without the
+// Flixarr API cache: that's rebuilt on its own and would only make backups big.
+func (s *Store) BackupTo(path string) error {
+	if _, err := s.db.Exec(`VACUUM INTO ?`, path); err != nil {
+		return err
+	}
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	if _, err := db.Exec(`DELETE FROM cache`); err != nil {
+		return err
+	}
+	_, err = db.Exec(`VACUUM`)
+	return err
+}
