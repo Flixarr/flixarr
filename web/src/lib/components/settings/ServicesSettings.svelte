@@ -6,6 +6,7 @@
 	import Modal from '#lib/components/Modal.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import Select from '#lib/components/Select.svelte';
+	import Tooltip from '#lib/components/Tooltip.svelte';
 
 	// Each kind is a list of connection cards. Connections are stored as a list; for now each kind
 	// takes one, so "Add" shows only while a list is empty.
@@ -232,9 +233,9 @@
 					{@const web = v.webUrl || v.url}
 					<div class="card block w-full overflow-hidden text-left"><div class="p-4">
 						<span class="flex items-center gap-3">
-							<a href={web} target="_blank" rel="noopener" title="Open {v.name}" class="shrink-0 rounded-md transition hover:opacity-80"><img src="/logos/{s.kind}.svg" alt="" class="size-8" /></a>
+							<Tooltip text="Open {v.name}" align="left"><a href={web} target="_blank" rel="noopener" aria-label="Open {v.name}" class="shrink-0 rounded-md transition hover:opacity-80"><img src="/logos/{s.kind}.svg" alt="" class="size-8" /></a></Tooltip>
 							<span class="min-w-0 flex-1">
-								<a href={web} target="_blank" rel="noopener" title="Open {v.name}" class="group/n inline-flex items-center gap-1 font-semibold hover:underline hover:underline-offset-4">{v.name}<span class="text-gray-500 opacity-0 transition group-hover/n:opacity-100"><Icon name="external" class="size-3" /></span></a>
+								<a href={web} target="_blank" rel="noopener" class="group/n inline-flex items-center gap-1 font-semibold hover:underline hover:underline-offset-4">{v.name}<span class="text-gray-500 opacity-0 transition group-hover/n:opacity-100"><Icon name="external" class="size-3" /></span></a>
 								<span class="block truncate text-[11px] text-gray-500">{v.url}{st?.version ? ` · ${short(st.version)}` : ''}</span>
 							</span>
 							{#if !st}<span class="text-xs text-gray-500">Checking…</span>
@@ -292,7 +293,7 @@
 							<span class="mt-3 flex flex-wrap items-center gap-1.5">
 								{#each st.clients as c (c)}{@render chip(c, st.clientsDown)}{/each}
 								{@render chip(`${st.indexers} indexer${st.indexers === 1 ? '' : 's'}${st.indexersDown ? ` · ${st.indexersDown} down` : ''}`, st.indexersDown > 0)}
-								<span class="ml-auto text-[11px] tabular-nums {updateText(v).warn ? 'text-yellow-400' : 'text-gray-500'}" title={updateText(v).title}>{updateText(v).text}</span>
+								<span class="ml-auto"><Tooltip text={updateText(v).title} align="right"><span class="cursor-default text-[11px] tabular-nums outline-none {updateText(v).warn ? 'text-yellow-400' : 'text-gray-500'}">{updateText(v).text}</span></Tooltip></span>
 							</span>
 							{#if issues}
 								<span class="mt-3 block rounded-lg bg-yellow-500/10 px-2.5 py-1.5 text-[11px] text-yellow-300 ring-1 ring-yellow-500/30">
