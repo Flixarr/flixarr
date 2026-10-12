@@ -23,7 +23,7 @@ import (
 var Events = []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved"}
 
 // Channels Flixarr can send through.
-var Channels = []string{"discord", "webhook"}
+var Channels = []string{"discord", "webhook", "email"}
 
 // Config is one channel's settings. Secret fields (the Discord webhook URL, the webhook's address and
 // Authorization header) are stored encrypted and never sent back to the browser.
@@ -39,11 +39,21 @@ type Config struct {
 	URL    string `json:"url,omitempty"`
 	Method string `json:"method,omitempty"`
 	Auth   string `json:"auth,omitempty"`
+	// Email (SMTP): sent to the people involved, see recipients.
+	Host     string `json:"host,omitempty"`
+	Port     int    `json:"port,omitempty"`
+	Security string `json:"security,omitempty"` // starttls | tls | none
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
+	From     string `json:"from,omitempty"`
+	FromName string `json:"fromName,omitempty"`
+	TestTo   string `json:"testTo,omitempty"` // where Send test goes (not saved)
 }
 
 var defaults = map[string]Config{
 	"discord": {Events: []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved"}, BotName: "Flixarr", Poster: true},
 	"webhook": {Events: []string{"request_available", "request_failed"}, Method: "POST"},
+	"email":   {Events: []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved"}, Port: 587, Security: "starttls", FromName: "Flixarr"},
 }
 
 // Notifier loads the channel settings and sends.
@@ -79,6 +89,26 @@ func (n *Notifier) Save(ch string, c Config) error {
 	return n.Store.SetSecretSetting(key(ch), string(b))
 }
 
+// recipients: news about a request or issue goes to the person who made it; new requests go to people
+// who manage requests, new issues to people who manage issues. Only people with an email address.
+func (n *Notifier) recipients(m Message) []string {
+	perm := map[string]string{"request_submitted": "manageRequests", "issue_reported": "manageIssues"}[m.Event]
+	out := []string{}
+	if perm == "" {
+		if u, err := n.Store.UserByID(m.UserID); err == nil && u.Email != "" {
+			out = append(out, u.Email)
+		}
+		return out
+	}
+	users, _ := n.Store.Users()
+	for _, u := range users {
+		if u.Can(perm) && u.Email != "" && u.ID != m.UserID {
+			out = append(out, u.Email)
+		}
+	}
+	return out
+}
+
 func (c Config) validate(ch string) error {
 	check := func(raw, what string) error {
 		if raw == "" {
@@ -100,6 +130,16 @@ func (c Config) validate(ch string) error {
 		}
 		if c.WebhookURL != "" && !strings.Contains(c.WebhookURL, "/api/webhooks/") {
 			return errors.New("that isn't a Discord webhook URL; copy it from the channel's Integrations, Webhooks")
+		}
+	case "email":
+		if c.Security != "starttls" && c.Security != "tls" && c.Security != "none" {
+			return errors.New("pick how to connect: STARTTLS, SSL/TLS or none")
+		}
+		if c.On && (strings.TrimSpace(c.Host) == "" || c.Port <= 0 || c.Port > 65535) {
+			return errors.New("enter the SMTP server and port first")
+		}
+		if c.On && !strings.Contains(c.From, "@") {
+			return errors.New("enter the From address")
 		}
 	case "webhook":
 		if c.Method != "POST" && c.Method != "PUT" {
@@ -123,7 +163,8 @@ type Message struct {
 	Seasons string
 	Error   string
 	Link    string // into Flixarr, when an application URL is set
-	Request int64
+	Request int64  // the request (or issue) ID
+	UserID  int64  // who asked (or reported): emails about their request go to them
 }
 
 var eventText = map[string]struct {
@@ -152,7 +193,7 @@ func (n *Notifier) FromRequest(event string, r store.Request) Message {
 	if r.Year != "" {
 		title += " (" + r.Year + ")"
 	}
-	m := Message{Event: event, Title: title, User: user, Status: r.Status, Type: r.Type, TmdbID: r.TmdbID, Poster: r.Poster, Error: r.Error, Request: r.ID}
+	m := Message{Event: event, Title: title, User: user, Status: r.Status, Type: r.Type, TmdbID: r.TmdbID, Poster: r.Poster, Error: r.Error, Request: r.ID, UserID: r.UserID}
 	if r.Type == "series" {
 		if r.Mode == "all" || len(r.Seasons) == 0 {
 			m.Seasons = "Whole show"
@@ -202,7 +243,7 @@ func (n *Notifier) FromIssue(event string, i store.Issue) Message {
 			where += fmt.Sprintf(", episode %d", i.Episode)
 		}
 	}
-	m := Message{Event: event, Title: title, User: i.UserName, Status: i.Status, Type: i.Type, TmdbID: i.TmdbID, Poster: i.Poster, Seasons: where, Request: i.ID}
+	m := Message{Event: event, Title: title, User: i.UserName, Status: i.Status, Type: i.Type, TmdbID: i.TmdbID, Poster: i.Poster, Seasons: where, Request: i.ID, UserID: i.UserID}
 	if event == "issue_reported" {
 		m.Text = what + ". Reported by " + i.UserName
 		if i.Note != "" {
@@ -240,6 +281,9 @@ func (n *Notifier) Test(ctx context.Context, ch string, c Config) error {
 	if err := c.validate(ch); err != nil {
 		return err
 	}
+	if ch == "email" && !strings.Contains(c.TestTo, "@") {
+		return errors.New("there's no email address to send the test to")
+	}
 	m := Message{Event: "test", Title: "Flixarr is connected", Text: "Notifications from Flixarr will show up here.", Link: n.Store.Setting("app_url", "")}
 	return n.deliver(ctx, ch, c, m)
 }
@@ -250,6 +294,15 @@ func (n *Notifier) deliver(ctx context.Context, ch string, c Config, m Message) 
 		return n.post(ctx, http.MethodPost, c.WebhookURL, "", discordBody(c, m))
 	case "webhook":
 		return n.post(ctx, c.Method, c.URL, c.Auth, webhookBody(m))
+	case "email":
+		to := n.recipients(m)
+		if m.Event == "test" {
+			to = []string{c.TestTo}
+		}
+		if len(to) == 0 {
+			return nil
+		}
+		return sendMail(ctx, c, to, m)
 	}
 	return errors.New("unknown channel")
 }

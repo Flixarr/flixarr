@@ -16,6 +16,7 @@ type channelView struct {
 	WebhookURLHint string `json:"webhookUrlHint,omitempty"`
 	URLHint        string `json:"urlHint,omitempty"`
 	AuthSet        bool   `json:"authSet"`
+	PasswordSet    bool   `json:"passwordSet"`
 }
 
 func hint(s string) string {
@@ -30,7 +31,8 @@ func viewOf(c notify.Config) channelView {
 	if u, err := url.Parse(c.URL); err == nil && u.Host != "" {
 		v.URLHint = u.Scheme + "://" + u.Host + "/…" // the path can hold a token, so only the host is shown
 	}
-	v.WebhookURL, v.Auth = "", ""
+	v.PasswordSet = c.Password != ""
+	v.WebhookURL, v.Auth, v.Password = "", "", ""
 	return v
 }
 
@@ -68,6 +70,9 @@ func (s *Server) merged(w http.ResponseWriter, r *http.Request) (string, notify.
 	if c.Auth == "" && !in.ClearAuth {
 		c.Auth = old.Auth
 	}
+	if c.Password == "" && !in.ClearAuth {
+		c.Password = old.Password
+	}
 	if c.Events == nil {
 		c.Events = []string{}
 	}
@@ -79,6 +84,7 @@ func (s *Server) notifySave(w http.ResponseWriter, r *http.Request, _ *store.Use
 	if !ok {
 		return
 	}
+	c.TestTo = ""
 	if err := s.Notify.Save(ch, c); err != nil {
 		writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
 		return
@@ -86,11 +92,12 @@ func (s *Server) notifySave(w http.ResponseWriter, r *http.Request, _ *store.Use
 	writeJSON(w, http.StatusOK, viewOf(s.Notify.Load(ch)))
 }
 
-func (s *Server) notifyTest(w http.ResponseWriter, r *http.Request, _ *store.User) {
+func (s *Server) notifyTest(w http.ResponseWriter, r *http.Request, u *store.User) {
 	ch, c, ok := s.merged(w, r)
 	if !ok {
 		return
 	}
+	c.TestTo = u.Email // the email test goes to whoever pressed it
 	if err := s.Notify.Test(r.Context(), ch, c); err != nil {
 		writeErr(w, http.StatusBadGateway, "Test not sent: "+err.Error()+".")
 		return

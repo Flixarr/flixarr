@@ -9,12 +9,14 @@
 	type Channel = {
 		on: boolean; events: string[]; botName?: string; poster: boolean; mentionHere: boolean; method?: string;
 		webhookUrlHint?: string; urlHint?: string; authSet: boolean;
+		host?: string; port?: number; security?: string; username?: string; from?: string; fromName?: string; passwordSet?: boolean;
 	};
 	type Info = { channels: Record<string, Channel>; events: string[]; appUrl: string };
 
 	const CHANNELS: [string, string, string][] = [
 		['discord', 'Discord', 'Channel webhook'],
-		['webhook', 'Webhook', 'Any service (n8n, Home Assistant…)']
+		['webhook', 'Webhook', 'Any service (n8n, Home Assistant…)'],
+		['email', 'Email', 'SMTP, to the people involved']
 	];
 	const EVENTS: Record<string, [string, string]> = {
 		request_submitted: ['Request submitted', 'Someone requests something.'],
@@ -45,11 +47,12 @@
 		form = { ...info!.channels[k], secret: '', auth: '', clearAuth: false };
 	}
 	const saved = $derived(info?.channels[tab]);
-	const hasSecret = $derived(tab === 'discord' ? !!saved?.webhookUrlHint : !!saved?.urlHint);
+	const hasSecret = $derived(tab === 'discord' ? !!saved?.webhookUrlHint : tab === 'email' ? !!(form.host?.trim() && form.from?.trim()) : !!saved?.urlHint);
 
 	function body() {
 		const b: Record<string, unknown> = { on: form.on, events: form.events, poster: form.poster, mentionHere: form.mentionHere, botName: form.botName, method: form.method };
 		if (tab === 'discord') b.webhookUrl = form.secret.trim();
+		else if (tab === 'email') Object.assign(b, { host: form.host?.trim(), port: Number(form.port), security: form.security, username: form.username?.trim(), password: form.secret, from: form.from?.trim(), fromName: form.fromName, clearAuth: form.clearAuth });
 		else Object.assign(b, { url: form.secret.trim(), auth: form.auth.trim(), clearAuth: form.clearAuth });
 		return JSON.stringify(b);
 	}
@@ -119,6 +122,25 @@
 				</div>
 				<div class="py-3"><Toggle checked={form.poster} label="Include the poster" onchange={(on) => (form.poster = on)} /></div>
 				<div class="py-3"><Toggle checked={form.mentionHere} label="Mention @here for new requests" about="Pings everyone online in the channel when someone requests something." onchange={(on) => (form.mentionHere = on)} /></div>
+			{:else if tab === 'email'}
+				<div class="grid gap-4 py-3 tablet:grid-cols-[1fr_7rem_10rem]">
+					<div><label for="n-host" class="block text-sm">SMTP server</label><input id="n-host" class={input} bind:value={form.host} placeholder="smtp.example.com" autocomplete="off" spellcheck="false" /></div>
+					<div><label for="n-port" class="block text-sm">Port</label><input id="n-port" class={input} type="number" bind:value={form.port} /></div>
+					<div><label for="n-sec" class="block text-sm">Security</label><Select id="n-sec" bind:value={form.security as string} options={[{ value: 'starttls', label: 'STARTTLS' }, { value: 'tls', label: 'SSL/TLS' }, { value: 'none', label: 'None' }]} onchange={(v) => (form.port = v === 'tls' ? 465 : v === 'starttls' ? 587 : 25)} /></div>
+				</div>
+				<div class="grid gap-4 py-3 tablet:grid-cols-2">
+					<div><label for="n-user" class="block text-sm">Username</label><input id="n-user" class={input} bind:value={form.username} autocomplete="off" spellcheck="false" placeholder="Often the From address" /></div>
+					<div>
+						<label for="n-pass" class="block text-sm">Password</label>
+						<input id="n-pass" class={input} type="password" autocomplete="new-password" bind:value={form.secret} placeholder={form.passwordSet && !form.clearAuth ? 'Saved. Type a new one to replace it.' : ''} />
+						{#if form.passwordSet && !form.clearAuth}<button class="mt-1 text-xs text-gray-500 hover:text-red-300" onclick={() => (form.clearAuth = true)}>Remove it</button>{/if}
+					</div>
+				</div>
+				<div class="grid gap-4 py-3 tablet:grid-cols-2">
+					<div><label for="n-from" class="block text-sm">From address</label><input id="n-from" class={input} bind:value={form.from} placeholder="flixarr@example.com" autocomplete="off" spellcheck="false" /></div>
+					<div><label for="n-fromname" class="block text-sm">From name</label><input id="n-fromname" class={input} bind:value={form.fromName} placeholder="Flixarr" /></div>
+				</div>
+				<p class="py-3 text-xs text-gray-500">Emails go to the people involved: new requests and new issues to whoever manages them, everything else to the person who asked. Addresses come from their Plex accounts. Send test goes to you.</p>
 			{:else}
 				<div class="py-3">
 					<label for="n-hook" class="block text-sm">URL</label>
@@ -148,7 +170,7 @@
 				<div class="py-3"><Toggle checked={form.events.includes(k)} label={EVENTS[k]?.[0] ?? k} about={EVENTS[k]?.[1]} disabled={SOON.includes(k)} onchange={(on) => setEvent(k, on)} /></div>
 			{/each}
 		</div>
-		<p class="mt-2 text-xs text-gray-500">Which events send through {name}. Email and Web Push come later.</p>
+		<p class="mt-2 text-xs text-gray-500">Which events send through {name}. Web Push comes later.</p>
 	</div>
 
 	<div class="flex justify-end">
