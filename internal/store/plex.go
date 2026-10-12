@@ -75,3 +75,21 @@ func (s *Store) PlexItemsFor(keys []string) (map[string]PlexItem, error) {
 	}
 	return out, nil
 }
+
+// RecentPlexItems lists the newest titles in Plex.
+func (s *Store) RecentPlexItems(limit int) ([]PlexItem, error) {
+	rows, err := s.db.Query(`SELECT type, tmdb_id, rating_key, section, title, added_at, seen_at FROM plex_items ORDER BY added_at DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []PlexItem{}
+	for rows.Next() {
+		var it PlexItem
+		if err := rows.Scan(&it.Type, &it.TmdbID, &it.RatingKey, &it.Section, &it.Title, &it.AddedAt, &it.SeenAt); err != nil {
+			return nil, err
+		}
+		out = append(out, it)
+	}
+	return out, rows.Err()
+}

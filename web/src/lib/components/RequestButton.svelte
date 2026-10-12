@@ -6,6 +6,7 @@
 	import Icon from './Icon.svelte';
 	import PlexMark from './PlexMark.svelte';
 	import { can } from '#lib/session.svelte.ts';
+	import { remember } from '#lib/availability.svelte.ts';
 	import RequestModal from './RequestModal.svelte';
 
 	// req: undefined while loading, null when never requested and not in Plex. Bindable so the page can show "In your library".
@@ -41,4 +42,4 @@
 {:else}
 	<button class="btn px-5" onclick={() => (open = true)}><Icon name="plus" class="size-4" />Request</button>
 {/if}
-<RequestModal bind:open {item} onrequested={(r) => (req = { id: r.id, status: r.status, progress: r.progress, plex: req?.plex })} />
+<RequestModal bind:open {item} onrequested={(r) => { req = { id: r.id, status: r.status, progress: r.progress, plex: req?.plex }; remember(key, req); }} />

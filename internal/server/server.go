@@ -77,6 +77,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/requests/{id}", s.auth(s.requestDelete))
 	mux.HandleFunc("GET /api/settings/requests", s.auth(s.admin(s.requestSettings)))
 	mux.HandleFunc("PUT /api/settings/requests", s.auth(s.admin(s.requestSettings)))
+	mux.HandleFunc("GET /api/discover/recently-added", s.auth(s.recentlyAdded))
+	mux.HandleFunc("GET /api/discover/recent-requests", s.auth(s.recentRequests))
 	mux.HandleFunc("GET /api/alerts", s.auth(s.alerts))
 	mux.HandleFunc("POST /api/alerts/seen", s.auth(s.alertsSeen))
 	mux.HandleFunc("GET /api/services", s.auth(s.admin(s.services)))
