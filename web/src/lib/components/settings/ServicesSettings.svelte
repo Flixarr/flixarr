@@ -209,6 +209,16 @@
 							{:else if !st.connected}<span class="flex items-center gap-1.5 text-xs text-red-400"><span class="size-2 rounded-full bg-red-500"></span>Not connected</span>
 							{:else if issues}<span class="flex items-center gap-1.5 text-xs text-yellow-400"><span class="size-2 rounded-full bg-yellow-400"></span>{issues} issue{issues > 1 ? 's' : ''}</span>
 							{:else}<span class="flex items-center gap-1.5 text-xs text-green-400"><span class="size-2 rounded-full bg-green-500"></span>Healthy</span>{/if}
+							<span class="relative ml-1" data-svc-menu>
+								<button class="grid size-8 place-items-center rounded-lg border border-gray-700/60 bg-gray-800/60 text-gray-300 hover:border-gray-500 hover:text-white" aria-label="More for {v.name}" aria-expanded={more === s.kind} onclick={() => (more = more === s.kind ? null : s.kind)}><Icon name="dots" class="size-4" /></button>
+								{#if more === s.kind}
+									<span class="absolute right-0 top-full z-20 mt-1 block w-44 overflow-hidden rounded-lg border border-gray-700/60 bg-gray-900 py-1 shadow-[0_16px_40px_-4px_rgb(0_0_0/0.75),0_4px_12px_rgb(0_0_0/0.5)]">
+										<button class="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-300 hover:bg-white/5 hover:text-white disabled:opacity-50" disabled={refreshing === s.kind} onclick={() => refresh(s.kind)}><Icon name="refresh" class="size-3.5" />{refreshing === s.kind ? 'Refreshing…' : 'Refresh now'}</button>
+										<button class="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-300 hover:bg-white/5 hover:text-white" onclick={() => copy(web)}><Icon name="copy" class="size-3.5" />Copy address</button>
+										<button class="flex w-full items-center gap-2 px-3 py-2 text-left text-red-300 hover:bg-white/5" onclick={() => { more = null; kind = s.kind; confirmRemove = true; }}><Icon name="trash" class="size-3.5" />Remove</button>
+									</span>
+								{/if}
+							</span>
 						</span>
 
 						{#if st && !st.connected}
@@ -262,19 +272,9 @@
 							{/if}
 						{/if}
 					</div>
-						<div class="grid grid-cols-[1fr_1fr_auto] divide-x divide-gray-700/40 border-t border-gray-700/40 text-xs">
+						<div class="grid grid-cols-2 divide-x divide-gray-700/40 border-t border-gray-700/40 text-xs">
 							<button class="flex items-center justify-center gap-1.5 py-2.5 text-gray-300 hover:bg-white/5 hover:text-white" onclick={() => edit(s.kind)}><Icon name="settings" class="size-3.5" />Edit connection</button>
 							<a href={web} target="_blank" rel="noopener" class="flex items-center justify-center gap-1.5 py-2.5 text-gray-300 hover:bg-white/5 hover:text-white">Open {v.name}<Icon name="external" class="size-3.5" /></a>
-							<span class="relative" data-svc-menu>
-								<button class="grid h-full place-items-center px-3 text-gray-400 hover:bg-white/5 hover:text-white" aria-label="More for {v.name}" aria-expanded={more === s.kind} onclick={() => (more = more === s.kind ? null : s.kind)}><Icon name="dots" class="size-4" /></button>
-								{#if more === s.kind}
-									<span class="absolute bottom-full right-0 z-20 mb-1 block w-44 overflow-hidden rounded-lg border border-gray-700/60 bg-gray-900 py-1 shadow-[0_16px_40px_-4px_rgb(0_0_0/0.75),0_4px_12px_rgb(0_0_0/0.5)]">
-										<button class="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-300 hover:bg-white/5 hover:text-white disabled:opacity-50" disabled={refreshing === s.kind} onclick={() => refresh(s.kind)}><Icon name="refresh" class="size-3.5" />{refreshing === s.kind ? 'Refreshing…' : 'Refresh now'}</button>
-										<button class="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-300 hover:bg-white/5 hover:text-white" onclick={() => copy(web)}><Icon name="copy" class="size-3.5" />Copy address</button>
-										<button class="flex w-full items-center gap-2 px-3 py-2 text-left text-red-300 hover:bg-white/5" onclick={() => { more = null; kind = s.kind; confirmRemove = true; }}><Icon name="trash" class="size-3.5" />Remove</button>
-									</span>
-								{/if}
-							</span>
 						</div>
 					</div>
 				{:else}
