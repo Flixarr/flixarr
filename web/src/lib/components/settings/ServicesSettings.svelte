@@ -33,6 +33,12 @@
 	let confirmRemove = $state(false);
 	let more = $state<ServiceKind | null>(null); // which card's ⋯ menu is open
 	let refreshing = $state<ServiceKind | null>(null);
+	// Queue boxes start small (the top item); Show expands them. Remembered in this browser.
+	let expanded = $state<Record<string, boolean>>(JSON.parse(localStorage.getItem('flixarr.queueOpen') || '{}'));
+	function toggleQueue(k: ServiceKind) {
+		expanded[k] = !expanded[k];
+		localStorage.setItem('flixarr.queueOpen', JSON.stringify(expanded));
+	}
 
 	$effect(() => {
 		if (!more) return;
@@ -181,6 +187,17 @@
 	const k = $derived(KINDS.find((x) => x.kind === kind)!);
 </script>
 
+{#snippet queueRow(q: QueueRow, color: string)}
+	<span class="block py-2">
+		<span class="flex items-baseline justify-between gap-3 text-xs"><span class="min-w-0 truncate text-gray-200">{q.title}</span>
+			<span class="shrink-0 tabular-nums {STATE_TONE[q.state] ?? 'text-gray-400'}">{q.state === 'downloading' ? `${q.percent}%${q.timeLeft ? ` · ${q.timeLeft}` : ''}` : STATE_TEXT[q.state]}</span></span>
+		<span class="mt-1 block h-1 overflow-hidden rounded-full bg-gray-700/60"><span class="block h-full rounded-full {q.state === 'importing' ? 'arr-stripes' : ''}"
+			style="width:{q.state === 'queued' ? 0 : Math.max(q.percent, 2)}%; background:{q.state === 'error' ? '#ef4444' : q.state === 'warning' ? '#facc15' : q.state === 'paused' ? '#6b7280' : color}"></span></span>
+		<span class="mt-1 block text-[11px] text-gray-500">{q.quality}{q.size ? ` · ${fmtBytes(q.size)}` : ''}</span>
+		{#if q.message}<span class="mt-1 block text-[11px] {STATE_TONE[q.state]}">⚠ {q.message}</span>{/if}
+	</span>
+{/snippet}
+
 {#snippet chip(text: string, bad: boolean)}
 	<span class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] ring-1 {bad ? 'bg-yellow-500/10 text-yellow-300 ring-yellow-500/30' : 'bg-gray-900/60 text-gray-400 ring-gray-700/50'}"><span class="size-1.5 rounded-full {bad ? 'bg-yellow-400' : 'bg-green-500'}"></span>{text}</span>
 {/snippet}
@@ -228,21 +245,20 @@
 							{#if !st.queue.length}
 								<span class="mt-4 flex items-center justify-between rounded-lg bg-gray-900/50 px-3 py-2 text-xs ring-1 ring-gray-700/40"><span class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Queue</span><span class="text-gray-500">Nothing downloading</span></span>
 							{:else}
+								{@const big = expanded[s.kind]}
+								{@const stuck = st.queue.filter((q) => q.state === 'warning' || q.state === 'error').length}
 								<span class="mt-4 block rounded-lg bg-gray-900/50 px-3 pb-1 pt-2 ring-1 ring-gray-700/40">
-									<span class="flex items-center justify-between text-[11px]"><span class="font-semibold uppercase tracking-wide text-gray-500">Queue</span><span class="text-gray-400">{queueLabel(st.queue)}</span></span>
+									<span class="flex items-center justify-between gap-3 text-[11px]"><span class="font-semibold uppercase tracking-wide text-gray-500">Queue</span>
+										<span class="flex min-w-0 items-center gap-2">{#if big}<span class="truncate text-gray-400">{queueLabel(st.queue)}</span>{/if}
+											{#if st.queue.length > 1}<button class="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-gray-400 hover:bg-white/5 hover:text-white" aria-expanded={big} onclick={() => toggleQueue(s.kind)}>{big ? 'Hide' : 'Show'}<span class="transition {big ? '-rotate-90' : 'rotate-90'}"><Icon name="chevron" class="size-3.5" /></span></button>{/if}</span></span>
 									<span class="block divide-y divide-gray-700/30">
-										{#each st.queue.slice(0, 3) as q, i (i)}
-											<span class="block py-2">
-												<span class="flex items-baseline justify-between gap-3 text-xs"><span class="min-w-0 truncate text-gray-200">{q.title}</span>
-													<span class="shrink-0 tabular-nums {STATE_TONE[q.state] ?? 'text-gray-400'}">{q.state === 'downloading' ? `${q.percent}%${q.timeLeft ? ` · ${q.timeLeft}` : ''}` : STATE_TEXT[q.state]}</span></span>
-												<span class="mt-1 block h-1 overflow-hidden rounded-full bg-gray-700/60"><span class="block h-full rounded-full {q.state === 'importing' ? 'arr-stripes' : ''}"
-													style="width:{q.state === 'queued' ? 0 : Math.max(q.percent, 2)}%; background:{q.state === 'error' ? '#ef4444' : q.state === 'warning' ? '#facc15' : q.state === 'paused' ? '#6b7280' : s.color}"></span></span>
-												<span class="mt-1 block text-[11px] text-gray-500">{q.quality}{q.size ? ` · ${fmtBytes(q.size)}` : ''}</span>
-												{#if q.message}<span class="mt-1 block text-[11px] {STATE_TONE[q.state]}">⚠ {q.message}</span>{/if}
-											</span>
-										{/each}
+										{#each st.queue.slice(0, big ? 3 : 1) as q, i (i)}{@render queueRow(q, s.color)}{/each}
 									</span>
-									{#if st.queue.length > 3}<span class="block border-t border-gray-700/30 py-2 text-[11px] text-gray-500">+ {st.queue.length - 3} more in the queue</span>{/if}
+									{#if !big && st.queue.length > 1}
+										<span class="block pb-2 text-[11px] text-gray-500">+ {st.queue.length - 1} more{#if stuck && st.queue[0].state !== 'warning' && st.queue[0].state !== 'error'} · <span class="text-yellow-400">{stuck} need{stuck === 1 ? 's' : ''} attention</span>{/if}</span>
+									{:else if big && st.queue.length > 3}
+										<span class="block border-t border-gray-700/30 py-2 text-[11px] text-gray-500">+ {st.queue.length - 3} more in the queue</span>
+									{/if}
 								</span>
 							{/if}
 
