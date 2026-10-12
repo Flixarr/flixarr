@@ -80,7 +80,7 @@
 		const load = () => api<Record<ServiceKind, ServiceView | null>>('/services').then((d) => (saved = d));
 		load();
 		const t = setInterval(load, 10000);
-		const tick = setInterval(() => (now = Date.now()), 1000);
+		const tick = setInterval(() => (now = Date.now()), 5000);
 		return () => {
 			clearInterval(t);
 			clearInterval(tick);
