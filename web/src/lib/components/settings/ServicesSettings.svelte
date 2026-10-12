@@ -75,14 +75,27 @@
 		return { name: nameOf(k), url: '', webUrl: '', apiKey: '', rootFolder: '', qualityProfileId: 0, seasonFolders: true, searchOnAdd: true, enabled: true };
 	}
 
-	// The cards show what the "Radarr / Sonarr: refresh status" job last read; reload while the page is open.
+	// The cards show what the "Radarr / Sonarr: refresh status" job last read. They reload right after
+	// each run of the job (its "done" event), with a slow backup check in case the event stream drops.
+	let load = () => {};
 	$effect(() => {
-		const load = () => api<Record<ServiceKind, ServiceView | null>>('/services').then((d) => (saved = d));
+		// TESTING ONLY (not committed): a toast each time the browser asks Flixarr for the cards.
+		// Backup check: only fires when no fresh data has come in for 90 seconds (the events stream
+		// broke). Every load restarts it, so while events work there's one call per job run.
+		let backup: ReturnType<typeof setTimeout>;
+		load = () => api<Record<ServiceKind, ServiceView | null>>('/services').then((d) => {
+			clearTimeout(backup);
+			backup = setTimeout(load, 90000);
+			saved = d;
+		}).catch(() => {
+			// Couldn't reach Flixarr: try again on the backup schedule.
+			clearTimeout(backup);
+			backup = setTimeout(load, 90000);
+		});
 		load();
-		const t = setInterval(load, 10000);
 		const tick = setInterval(() => (now = Date.now()), 5000);
 		return () => {
-			clearInterval(t);
+			clearTimeout(backup);
 			clearInterval(tick);
 		};
 	});
@@ -92,11 +105,12 @@
 	const JOB_TOASTS = true;
 	let startedAt = 0;
 	$effect(() => {
-		if (!JOB_TOASTS) return;
 		const es = new EventSource('/api/events');
 		es.addEventListener('job', (m) => {
 			const e = JSON.parse((m as MessageEvent).data) as { job: string; phase: string; result?: string; error?: string; seconds?: number };
 			if (e.job !== 'arr-status') return;
+			if (e.phase === 'done') load();
+			if (!JOB_TOASTS) return;
 			if (e.phase === 'start') {
 				startedAt = Date.now();
 				notify('Contacting Radarr and Sonarr…');
