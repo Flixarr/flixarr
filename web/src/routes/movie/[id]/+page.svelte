@@ -44,8 +44,8 @@
 		{/snippet}
 		{#snippet actions()}
 			{#if m}<RequestButton item={m} bind:req={brief} />{/if}
-			{#if m && (brief?.plex || brief?.status === 'available') && can('reportIssues')}<button class="btn-ghost px-4" onclick={() => (issueOpen = true)}><Icon name="issues" class="size-4" />Report issue</button>{/if}
-			{#if m?.trailer}<button class="btn-ghost px-4" onclick={() => (trailer = true)}><Icon name="play" class="size-4" />Trailer</button>{/if}
+			{#if m && (brief?.plex || brief?.status === 'available') && can('reportIssues')}<button class="btn-ghost act" onclick={() => (issueOpen = true)}><Icon name="issues" class="size-4" />Report issue</button>{/if}
+			{#if m?.trailer}<button class="btn-ghost act" onclick={() => (trailer = true)}><Icon name="play" class="size-4" />Trailer</button>{/if}
 		{/snippet}
 	</DetailHeader>
 	<IssueModal bind:open={issueOpen} item={m} />

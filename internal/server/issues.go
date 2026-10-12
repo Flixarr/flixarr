@@ -77,7 +77,18 @@ func (s *Server) issueCreate(w http.ResponseWriter, r *http.Request, u *store.Us
 		return
 	}
 	if in.Type == "movie" {
+		in.Season, in.Episode, in.Parts = 0, 0, nil
+	} else {
+		if len(in.Parts) == 0 && in.Season > 0 {
+			in.Parts = [][2]int{{in.Season, in.Episode}} // older clients sent one season/episode
+		}
+		if len(in.Parts) > 200 {
+			in.Parts = in.Parts[:200]
+		}
 		in.Season, in.Episode = 0, 0
+		if len(in.Parts) > 0 {
+			in.Season, in.Episode = in.Parts[0][0], in.Parts[0][1]
+		}
 	}
 	in.UserID = u.ID
 	is, err := s.Store.CreateIssue(in)

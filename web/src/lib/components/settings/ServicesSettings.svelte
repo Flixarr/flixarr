@@ -7,6 +7,7 @@
 	import Icon from '#lib/components/Icon.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import Tooltip from '#lib/components/Tooltip.svelte';
+	import WebhooksCard from './WebhooksCard.svelte';
 
 	// Each kind is a list of connection cards. Connections are stored as a list; for now each kind
 	// takes one, so "Add" shows only while a list is empty.
@@ -447,6 +448,7 @@
 			</div>
 		</div>
 	{/each}
+	<WebhooksCard kinds={KINDS.filter((k) => saved?.[k.kind])} />
 
 	{@const isNew = !saved[kind]}
 	{@const connected = !!info && !changing}

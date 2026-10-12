@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Flixarr/flixarr/internal/secret"
 	"github.com/Flixarr/flixarr/internal/store"
@@ -26,6 +27,8 @@ type fakeArr struct {
 	inLib   bool   // the title is already in the library
 	put     map[string]any
 	cmds    []map[string]any
+	monitor map[string]any
+	epFile  bool
 }
 
 func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -82,6 +85,15 @@ func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		json.Unmarshal(b, &f.put)
 		w.Write(b)
+	case p == "episode" && r.Method == http.MethodGet:
+		json.NewEncoder(w).Encode([]any{
+			map[string]any{"id": 501, "seasonNumber": 1, "episodeNumber": 1, "hasFile": f.epFile},
+			map[string]any{"id": 502, "seasonNumber": 1, "episodeNumber": 2, "hasFile": false},
+			map[string]any{"id": 503, "seasonNumber": 2, "episodeNumber": 1, "hasFile": f.epFile}})
+	case p == "episode/monitor":
+		b, _ := io.ReadAll(r.Body)
+		json.Unmarshal(b, &f.monitor)
+		w.Write([]byte(`[]`))
 	case p == "command":
 		var body map[string]any
 		b, _ := io.ReadAll(r.Body)
@@ -318,5 +330,104 @@ func TestBlocked(t *testing.T) {
 	st.Unblock("movie", 603)
 	if _, err := s.Create(context.Background(), admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix"}); err != nil {
 		t.Fatalf("unblocked: %v", err)
+	}
+}
+
+type fakePlex struct {
+	rescans int
+	has     bool
+	st      *store.Store
+}
+
+func (f *fakePlex) Connected() bool                                   { return true }
+func (f *fakePlex) Seasons(context.Context, int) (map[int]int, error) { return map[int]int{}, nil }
+func (f *fakePlex) Rescan(context.Context, string) error              { f.rescans++; return nil }
+func (f *fakePlex) RecentScan(context.Context) (string, error) {
+	if f.has {
+		f.st.SavePlexItem(store.PlexItem{Type: "movie", TmdbID: 603, RatingKey: "9", Section: "1", SeenAt: "x"})
+	}
+	return "", nil
+}
+
+func TestStatesGrabbedImportingPlex(t *testing.T) {
+	s, st, radarr, _, admin, _ := setup(t)
+	px := &fakePlex{st: st}
+	s.Plex = px
+	ctx := context.Background()
+	r, _ := s.Create(ctx, admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix"})
+	step := func(want string) {
+		t.Helper()
+		s.Refresh(ctx)
+		if r, _ = st.Request(r.ID); r.Status != want {
+			t.Fatalf("want %s, got %+v", want, r)
+		}
+	}
+	radarr.queue = `[{"size":1000,"sizeleft":1000,"status":"queued","trackedDownloadState":"downloading"}]`
+	step("grabbed")
+	radarr.queue = `[{"size":1000,"sizeleft":400,"status":"downloading","trackedDownloadState":"downloading"}]`
+	step("downloading")
+	radarr.queue = `[{"size":1000,"sizeleft":0,"status":"completed","trackedDownloadState":"importPending"}]`
+	step("importing")
+	// Radarr has the file but Plex doesn't yet: still importing, and Plex is asked to scan.
+	radarr.queue, radarr.hasFile = "", true
+	step("importing")
+	if px.rescans != 1 {
+		t.Fatalf("rescans: %d", px.rescans)
+	}
+	px.has = true
+	s.lastRecent = time.Time{}
+	step("available")
+}
+
+func TestRequestAlerts(t *testing.T) {
+	s, st, _, _, admin, user := setup(t)
+	ctx := context.Background()
+	st.SetSetting(KeyApproval, "true")
+	r, _ := s.Create(ctx, user, New{Type: "movie", TmdbID: 603, Title: "The Matrix"})
+	if a, _ := st.ActiveAlerts(admin.ID, true); len(a) != 1 || a[0].Title != "1 request waiting" {
+		t.Fatalf("admin alerts: %+v", a)
+	}
+	r.Status = "available"
+	st.UpdateRequest(r)
+	s.Alert(r)
+	got, _ := st.ActiveAlerts(user.ID, false)
+	if len(got) != 1 || got[0].Detail != "The Matrix is ready to watch" || !got[0].Unread {
+		t.Fatalf("user alerts: %+v", got)
+	}
+	if a, _ := st.ActiveAlerts(admin.ID, true); len(a) != 0 {
+		t.Fatalf("admin should see nothing now: %+v", a)
+	}
+	// First look marks it seen; the next look clears it.
+	s.SeenAlerts(user.ID)
+	st.MarkAlertsSeen(user.ID)
+	s.SeenAlerts(user.ID)
+	if got, _ = st.ActiveAlerts(user.ID, false); len(got) != 0 {
+		t.Fatalf("not cleared: %+v", got)
+	}
+}
+
+func TestEpisodeRequests(t *testing.T) {
+	s, st, _, sonarr, admin, _ := setup(t)
+	ctx := context.Background()
+	r, err := s.Create(ctx, admin, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad", Episodes: [][2]int{{1, 1}, {2, 1}}})
+	if err != nil || r.Status != "sent" || r.Mode != "episodes" {
+		t.Fatalf("create: %+v %v", r, err)
+	}
+	if opts := sonarr.added[0]["addOptions"].(map[string]any); opts["monitor"] != "none" {
+		t.Fatalf("add options: %v", opts)
+	}
+	ids := sonarr.monitor["episodeIds"].([]any)
+	if len(ids) != 2 || ids[0].(float64) != 501 || ids[1].(float64) != 503 {
+		t.Fatalf("monitored: %v", sonarr.monitor)
+	}
+	sonarr.epFile = true
+	s.Refresh(ctx)
+	if r, _ = st.Request(r.ID); r.Status != "available" {
+		t.Fatalf("episodes with files: %+v", r)
+	}
+	// Turned off in Settings: refused.
+	s.SetModes(TVModes{Whole: true})
+	if _, err := s.Create(ctx, admin, New{Type: "series", TmdbID: 1399, Title: "Other", Episodes: [][2]int{{1, 1}}}); err == nil {
+		t.Fatal("episode request allowed while turned off")
 	}
 }

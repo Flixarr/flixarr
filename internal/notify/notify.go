@@ -208,7 +208,12 @@ func (n *Notifier) FromRequest(event string, r store.Request) Message {
 	}
 	m := Message{Event: event, Title: title, User: user, Status: r.Status, Type: r.Type, TmdbID: r.TmdbID, Poster: r.Poster, Error: r.Error, Request: r.ID, UserID: r.UserID}
 	if r.Type == "series" {
-		if r.Mode == "all" || len(r.Seasons) == 0 {
+		if r.Mode == "episodes" {
+			m.Seasons = fmt.Sprintf("%d episodes", len(r.Episodes))
+			if len(r.Episodes) == 1 {
+				m.Seasons = fmt.Sprintf("Season %d, episode %d", r.Episodes[0][0], r.Episodes[0][1])
+			}
+		} else if r.Mode == "all" || len(r.Seasons) == 0 {
 			m.Seasons = "Whole show"
 		} else {
 			parts := []string{}
@@ -252,13 +257,7 @@ func (n *Notifier) FromIssue(event string, i store.Issue) Message {
 	if i.Sub != "" {
 		what += ": " + i.Sub
 	}
-	where := ""
-	if i.Type == "series" && i.Season > 0 {
-		where = fmt.Sprintf("Season %d", i.Season)
-		if i.Episode > 0 {
-			where += fmt.Sprintf(", episode %d", i.Episode)
-		}
-	}
+	where := PartsText(i.Parts)
 	m := Message{Event: event, Title: title, User: i.UserName, Status: i.Status, Type: i.Type, TmdbID: i.TmdbID, Poster: i.Poster, Seasons: where, Request: i.ID, UserID: i.UserID}
 	if event == "issue_reported" {
 		m.Text = what + ". Reported by " + i.UserName
@@ -410,4 +409,20 @@ func (n *Notifier) post(ctx context.Context, method, to, auth string, body any) 
 		return fmt.Errorf("it answered %s %s", res.Status, strings.TrimSpace(string(msg)))
 	}
 	return nil
+}
+
+// PartsText reads [season, episode] pairs as "S2E3, S2E4, Season 3" (episode 0 = the whole season).
+func PartsText(parts [][2]int) string {
+	out := []string{}
+	for _, p := range parts {
+		if p[1] == 0 {
+			out = append(out, fmt.Sprintf("Season %d", p[0]))
+		} else {
+			out = append(out, fmt.Sprintf("S%dE%d", p[0], p[1]))
+		}
+	}
+	if len(out) > 6 {
+		out = append(out[:6], fmt.Sprintf("%d more", len(out)-6))
+	}
+	return strings.Join(out, ", ")
 }

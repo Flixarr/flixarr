@@ -1,11 +1,11 @@
 <script lang="ts">
-	// Report an issue on a title in the library: what's wrong (and the detail), for series which season and
-	// episode, and an optional note.
+	// Report an issue on a title in the library: what's wrong (and the detail), for series which seasons
+	// and episodes (any mix; nothing picked = the whole show), and an optional note.
 	import { api } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import type { Movie, Series } from '#lib/types.ts';
 	import Modal from './Modal.svelte';
-	import Select from './Select.svelte';
+	import EpisodePicker from './EpisodePicker.svelte';
 
 	let { open = $bindable(false), item }: { open?: boolean; item: Movie | Series } = $props();
 
@@ -17,21 +17,17 @@
 	};
 	let kind = $state('Video');
 	let sub = $state('Bad quality');
-	let season = $state(0);
-	let episode = $state(0);
+	let parts = $state<[number, number][]>([]);
 	let note = $state('');
 	let sending = $state(false);
 
 	const series = $derived(item.type === 'series' ? (item as Series) : null);
-	const seasonOpts = $derived([{ value: 0, label: 'All seasons' }, ...(series?.seasons ?? []).filter((s) => s.n > 0).map((s) => ({ value: s.n, label: s.name }))]);
-	const eps = $derived(series?.seasons.find((s) => s.n === season)?.episodes ?? 0);
-	const epOpts = $derived([{ value: 0, label: 'All episodes' }, ...Array.from({ length: eps }, (_, i) => ({ value: i + 1, label: `Episode ${i + 1}` }))]);
 
 	$effect(() => {
 		if (open) {
 			kind = 'Video';
 			sub = 'Bad quality';
-			season = episode = 0;
+			parts = [];
 			note = '';
 		}
 	});
@@ -43,7 +39,7 @@
 	async function send() {
 		sending = true;
 		try {
-			await api('/issues', { method: 'POST', body: JSON.stringify({ type: item.type, tmdbId: item.id, title: item.title, year: item.year, poster: item.poster ?? '', kind, sub, season, episode: season ? episode : 0, note }) });
+			await api('/issues', { method: 'POST', body: JSON.stringify({ type: item.type, tmdbId: item.id, title: item.title, year: item.year, poster: item.poster ?? '', kind, sub, parts, note }) });
 			open = false;
 			notify('Issue reported. Thanks, someone will look at it.');
 		} catch (e) {
@@ -72,15 +68,9 @@
 			{/if}
 		</div>
 		{#if series}
-			<div class="grid grid-cols-2 gap-3">
-				<div>
-					<label for="is-season" class="block text-sm font-medium">Season</label>
-					<Select id="is-season" bind:value={season} options={seasonOpts} onchange={() => (episode = 0)} />
-				</div>
-				<div>
-					<label for="is-ep" class="block text-sm font-medium">Episode</label>
-					<Select id="is-ep" bind:value={episode} options={epOpts} disabled={!season} />
-				</div>
+			<div>
+				<div class="mb-1.5 text-sm font-medium">Where? <span class="font-normal text-gray-500">{parts.length ? `${parts.length} picked` : 'Nothing picked: the whole show'}</span></div>
+				<EpisodePicker {series} bind:picked={parts} wholeSeason />
 			</div>
 		{/if}
 		<div>

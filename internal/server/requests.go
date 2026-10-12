@@ -134,6 +134,7 @@ func (s *Server) requestApprove(w http.ResponseWriter, r *http.Request, u *store
 	if req.Status != "failed" {
 		s.Notify.Send(s.Notify.FromRequest("request_approved", req))
 	}
+	s.Requests.Alert(req)
 	writeJSON(w, http.StatusOK, req)
 }
 
@@ -160,6 +161,7 @@ func (s *Server) requestDecline(w http.ResponseWriter, r *http.Request, u *store
 		s.Store.UpdateRequest(req)
 	}
 	s.Notify.Send(s.Notify.FromRequest("request_declined", req))
+	s.Requests.Alert(req)
 	writeJSON(w, http.StatusOK, req)
 }
 
@@ -190,22 +192,31 @@ func (s *Server) requestDelete(w http.ResponseWriter, r *http.Request, u *store.
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return
 	}
+	s.Requests.Forgotten()
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// requestSettings reads or changes whether requests need approval (Settings → General).
+// requestSettings reads or changes Settings → Requests: whether requests need approval, and how series
+// can be requested.
 func (s *Server) requestSettings(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	if r.Method == http.MethodPut {
 		var in struct {
-			ApprovalRequired bool `json:"approvalRequired"`
+			ApprovalRequired bool              `json:"approvalRequired"`
+			TVModes          *requests.TVModes `json:"tvModes"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in); err != nil {
 			writeErr(w, http.StatusBadRequest, "Bad request.")
 			return
 		}
 		s.Store.SetSetting(requests.KeyApproval, strconv.FormatBool(in.ApprovalRequired))
+		if in.TVModes != nil {
+			if _, err := s.Requests.SetModes(*in.TVModes); err != nil {
+				writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
+				return
+			}
+		}
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"approvalRequired": s.Requests.ApprovalRequired()})
+	writeJSON(w, http.StatusOK, map[string]any{"approvalRequired": s.Requests.ApprovalRequired(), "tvModes": s.Requests.Modes()})
 }
 
 // requestOptions is what the request window needs: where it goes, the qualities to pick from
@@ -217,7 +228,8 @@ func (s *Server) requestOptions(w http.ResponseWriter, r *http.Request, u *store
 	}
 	out := map[string]any{"connected": false, "server": arr.Kinds[kind], "approval": s.Requests.ApprovalRequired() && !u.Can("autoApprove"),
 		"allowed": u.Can(map[string]string{"radarr": "requestMovies", "sonarr": "requestTv"}[kind]),
-		"usage":   s.Requests.UsageFor(u, map[string]string{"radarr": "movie", "sonarr": "series"}[kind])}
+		"usage":   s.Requests.UsageFor(u, map[string]string{"radarr": "movie", "sonarr": "series"}[kind]),
+		"tvModes": s.Requests.Modes()}
 	v, ok, err := s.Store.FirstServer(kind)
 	if err != nil || !ok || !v.Enabled {
 		writeJSON(w, http.StatusOK, out)

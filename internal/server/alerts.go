@@ -18,6 +18,7 @@ func (s *Server) alerts(w http.ResponseWriter, r *http.Request, u *store.User) {
 }
 
 func (s *Server) alertsSeen(w http.ResponseWriter, r *http.Request, u *store.User) {
+	s.Requests.SeenAlerts(u.ID)
 	if err := s.Store.MarkAlertsSeen(u.ID); err != nil {
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return

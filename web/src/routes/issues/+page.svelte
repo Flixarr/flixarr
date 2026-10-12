@@ -12,7 +12,7 @@
 
 	type Issue = {
 		id: number; type: 'movie' | 'series'; tmdbId: number; title: string; year: string; poster: string; kind: string; sub: string;
-		season: number; episode: number; note: string; userId: number; userName: string; userAvatar: string; status: 'open' | 'resolved';
+		season: number; episode: number; parts: [number, number][]; note: string; userId: number; userName: string; userAvatar: string; status: 'open' | 'resolved';
 		comments: number; createdAt: string; updatedAt: string;
 	};
 	type Comment = { id: number; userId: number; userName: string; userAvatar: string; body: string; createdAt: string };
@@ -42,7 +42,12 @@
 	const shown = $derived(list ? (filter === 'all' ? list : list.filter((i) => i.status === filter)) : []);
 	const count = (f: 'open' | 'resolved') => list?.filter((i) => i.status === f).length ?? 0;
 	const TONE: Record<string, string> = { Video: 'text-blue-400', Audio: 'text-primary-light', Subtitles: 'text-yellow-400', Other: 'text-gray-300' };
-	const where = (i: Issue) => (i.type === 'series' && i.season ? `Season ${i.season}${i.episode ? `, episode ${i.episode}` : ''}` : '');
+	const where = (i: Issue) => {
+		if (i.type !== 'series') return '';
+		const p = i.parts?.length ? i.parts : i.season ? [[i.season, i.episode] as [number, number]] : [];
+		const t = p.map(([se, e]) => (e ? `S${se}E${e}` : `Season ${se}`));
+		return t.length > 4 ? `${t.slice(0, 4).join(', ')} +${t.length - 4} more` : t.join(', ');
+	};
 	const when = (t: string) => fmtDate(t, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 	// Avatar wants a User; comments and issues carry just the name and picture.
 	const person = (name: string, avatar: string) => ({ username: name, avatar }) as User;

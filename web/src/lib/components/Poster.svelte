@@ -14,7 +14,7 @@
 	const dot = $derived(
 		!st ? null
 		: st.plex || st.status === 'available' ? (['bg-green-500', '<path d="m5 12 5 5L20 7"/>', 'Available'] as const)
-		: st.status === 'downloading' ? (['bg-blue-500', '<path d="M12 4v12m-5-5 5 5 5-5M5 20h14"/>', 'Downloading'] as const)
+		: st.status === 'downloading' || st.status === 'grabbed' || st.status === 'importing' ? (['bg-blue-500', '<path d="M12 4v12m-5-5 5 5 5-5M5 20h14"/>', 'Downloading'] as const)
 		: st.status === 'pending' || st.status === 'approved' || st.status === 'sent' ? (['bg-yellow-500', '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l2 2"/>', 'Requested'] as const)
 		: null
 	);

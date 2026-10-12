@@ -58,6 +58,8 @@ func (s *Server) Handler() http.Handler {
 	s.pins = map[int64]time.Time{}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/status", s.status)
+	mux.HandleFunc("POST /api/webhook/{token}", s.webhook)
+	mux.HandleFunc("GET /api/webhook", s.auth(s.admin(s.webhookInfo)))
 	mux.HandleFunc("GET /api/me", s.auth(s.me))
 	mux.HandleFunc("GET /api/me/stats", s.auth(s.myStats))
 	mux.HandleFunc("GET /api/me/watchlist", s.auth(s.myWatchlist))
@@ -101,6 +103,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/services", s.auth(s.admin(s.services)))
 	mux.HandleFunc("POST /api/services/{kind}/test", s.auth(s.admin(s.serviceTest)))
 	mux.HandleFunc("POST /api/services/{kind}/discover", s.auth(s.admin(s.serviceDiscover)))
+	mux.HandleFunc("GET /api/services/{kind}/webhook", s.auth(s.admin(s.webhookStatus)))
+	mux.HandleFunc("POST /api/services/{kind}/webhook", s.auth(s.admin(s.webhookAdd)))
 	mux.HandleFunc("POST /api/services/{kind}/refresh", s.auth(s.admin(s.serviceRefresh)))
 	mux.HandleFunc("POST /api/services/{kind}/profiles", s.auth(s.admin(s.serviceProfilesAdd)))
 	mux.HandleFunc("POST /api/services/{kind}/profiles/{key}/use-flixarr", s.auth(s.admin(s.serviceProfileUseFlixarr)))
@@ -297,7 +301,7 @@ func (s *Server) plexCheck(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, store.ErrNotFound) {
 			// Someone new: let them in if the Plex server is shared with them (and that's switched on).
 			if ok, aerr := s.Library.HasAccess(r.Context(), pin.AuthToken); s.plexSignInOpen() && aerr == nil && ok {
-				u, err = s.Store.CreateUser(store.User{PlexID: acct.ID, Username: name, Email: acct.Email, Avatar: acct.Thumb, Role: "User"})
+				u, err = s.Store.CreateUser(store.User{PlexID: acct.ID, Username: name, Email: acct.Email, Avatar: acct.Thumb, Role: s.defaultRole()})
 				s.Log.Info("new user signed in", "user", name)
 			} else {
 				writeErr(w, http.StatusForbidden, "Your Plex account doesn't have access to this Flixarr yet. Ask the admin to add you.")

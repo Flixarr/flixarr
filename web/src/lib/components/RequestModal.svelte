@@ -1,20 +1,24 @@
 <script lang="ts">
 	// The request window on movie and series pages: where it goes, the quality (for people allowed to choose), and for series
-	// the whole show or chosen seasons.
+	// the whole show, chosen seasons or chosen episodes (whichever Settings → Requests allows).
 	import { api } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import type { Movie, Series, Request } from '#lib/types.ts';
 	import Modal from './Modal.svelte';
 	import Select from './Select.svelte';
 	import Img from './Img.svelte';
+	import EpisodePicker from './EpisodePicker.svelte';
 
 	let { open = $bindable(false), item, onrequested }: { open?: boolean; item: Movie | Series; onrequested?: (r: Request) => void } = $props();
 
-	type Options = { connected: boolean; server: string; approval: boolean; usage: { limit: number; used: number }; defaultProfileId?: number; defaultProfileName?: string; profiles: { id: number; name: string }[] };
+	type Options = { connected: boolean; server: string; approval: boolean; usage: { limit: number; used: number }; defaultProfileId?: number; defaultProfileName?: string; profiles: { id: number; name: string }[];
+		tvModes: { whole: boolean; seasons: boolean; episodes: boolean; default: Mode } };
+	type Mode = 'whole' | 'seasons' | 'episodes';
 	let opts = $state<Options | null>(null);
 	let profileId = $state(0);
-	let whole = $state(true);
+	let mode = $state<Mode>('whole');
 	let seasons = $state<number[]>([]);
+	let episodes = $state<[number, number][]>([]);
 	let sending = $state(false);
 	let inPlex = $state<Record<number, number>>({}); // episodes in Plex per season
 
@@ -26,13 +30,15 @@
 	$effect(() => {
 		if (!open) return;
 		opts = null;
-		whole = true;
+		mode = 'whole';
 		seasons = [];
+		episodes = [];
 		inPlex = {};
 		if (item.type === 'series') api<Record<number, number>>(`/plex/seasons/${item.id}`).then((d) => (inPlex = d)).catch(() => {});
 		api<Options>(`/requests/options?type=${item.type}`).then((o) => {
 			opts = o;
 			profileId = o.defaultProfileId ?? 0;
+			mode = o.tvModes?.[o.tvModes.default] ? o.tvModes.default : (['whole', 'seasons', 'episodes'] as Mode[]).find((m) => o.tvModes?.[m]) ?? 'whole';
 		}).catch((e) => notify(e instanceof Error ? e.message : 'Could not load.', 'orange'));
 	});
 
@@ -46,7 +52,7 @@
 			const r = await api<Request>('/requests', {
 				method: 'POST',
 				body: JSON.stringify({ type: item.type, tmdbId: item.id, title: item.title, year: item.year, poster: item.poster ?? '', backdrop: item.backdrop ?? '',
-					seasons: series && !whole ? seasons : [], profileId, genres: item.genres, language: series ? series.language : '', seasonCount: list.length })
+					seasons: series && mode === 'seasons' ? seasons : [], episodes: series && mode === 'episodes' ? episodes : [], profileId, genres: item.genres, language: series ? series.language : '', seasonCount: list.length })
 			});
 			open = false;
 			onrequested?.(r);
@@ -61,7 +67,13 @@
 		}
 	}
 
-	const label = $derived(!series || whole ? 'Request' : seasons.length ? `Request ${seasons.length} season${seasons.length === 1 ? '' : 's'}` : 'Pick seasons');
+	const label = $derived(
+		!series || mode === 'whole' ? 'Request'
+		: mode === 'seasons' ? (seasons.length ? `Request ${seasons.length} season${seasons.length === 1 ? '' : 's'}` : 'Pick seasons')
+		: episodes.length ? `Request ${episodes.length} episode${episodes.length === 1 ? '' : 's'}` : 'Pick episodes'
+	);
+	const ready = $derived(!series || mode === 'whole' || (mode === 'seasons' ? seasons.length > 0 : episodes.length > 0));
+	const MODES: [Mode, string][] = [['whole', 'Whole show'], ['seasons', 'Seasons'], ['episodes', 'Episodes']];
 </script>
 
 <Modal bind:open title="Request {item.title}">
@@ -88,13 +100,16 @@
 			{/if}
 			{#if series}
 				<div>
-					<div class="mb-2 flex gap-1 rounded-lg border border-gray-700/60 bg-gray-800/70 p-0.5 text-sm" role="radiogroup" aria-label="What to request">
-						<button class="flex-1 rounded-md px-3 py-1.5 {whole ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'}" role="radio" aria-checked={whole} onclick={() => (whole = true)}>Whole show</button>
-						<button class="flex-1 rounded-md px-3 py-1.5 {!whole ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'}" role="radio" aria-checked={!whole} onclick={() => (whole = false)}>Pick seasons</button>
-					</div>
-					{#if whole}
+					{#if MODES.filter(([m]) => opts!.tvModes?.[m]).length > 1}
+						<div class="mb-2 flex gap-1 rounded-lg border border-gray-700/60 bg-gray-800/70 p-0.5 text-sm" role="radiogroup" aria-label="What to request">
+							{#each MODES.filter(([m]) => opts!.tvModes?.[m]) as [m, l] (m)}
+								<button class="flex-1 rounded-md px-3 py-1.5 {mode === m ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'}" role="radio" aria-checked={mode === m} onclick={() => (mode = m)}>{l}</button>
+							{/each}
+						</div>
+					{/if}
+					{#if mode === 'whole'}
 						<p class="text-xs text-gray-500">Every season, including new ones as they air.{anyInPlex ? ' Episodes you already have are skipped.' : ''}</p>
-					{:else}
+					{:else if mode === 'seasons'}
 						<div class="max-h-64 divide-y divide-gray-700/40 overflow-y-auto rounded-lg border border-gray-700/50 bg-gray-900/40">
 							{#each list as s (s.n)}
 								{@const done = complete(s.n, s.episodes)}
@@ -107,6 +122,9 @@
 								</label>
 							{/each}
 						</div>
+					{:else}
+						<EpisodePicker {series} bind:picked={episodes} done={inPlex} />
+						<p class="mt-2 text-xs text-gray-500">Open a season to pick its episodes, or tick the season for all of them.</p>
 					{/if}
 				</div>
 			{/if}
@@ -114,6 +132,6 @@
 	</div>
 	{#snippet footer()}
 		<button class="btn-ghost" onclick={() => (open = false)}>Cancel</button>
-		<button class="btn px-6" disabled={!opts?.connected || sending || (!!series && !whole && !seasons.length)} onclick={send}>{sending ? 'Sending…' : label}</button>
+		<button class="btn px-6" disabled={!opts?.connected || sending || !ready} onclick={send}>{sending ? 'Sending…' : label}</button>
 	{/snippet}
 </Modal>

@@ -6,6 +6,7 @@
 	import TopNav from '#lib/components/TopNav.svelte';
 	import TabBar from '#lib/components/TabBar.svelte';
 	import Toast from '#lib/components/Toast.svelte';
+	import PullRefresh from '#lib/components/PullRefresh.svelte';
 	import { session, loadSession } from '#lib/session.svelte.ts';
 
 	let { children } = $props();
@@ -36,6 +37,7 @@
 		<TopNav {transparent} />
 		<div class="pb-24 tablet:pb-12">{@render children()}</div>
 		<TabBar />
+		<PullRefresh />
 	{/if}
 {/if}
 <Toast />

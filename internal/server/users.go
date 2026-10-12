@@ -15,6 +15,16 @@ const KeyPlexSignIn = "users_plex_signin"
 
 func (s *Server) plexSignInOpen() bool { return s.Store.Setting(KeyPlexSignIn, "true") == "true" }
 
+// KeyDefaultRole is the role new people get (signing in, or imported): User or Trusted.
+const KeyDefaultRole = "users_default_role"
+
+func (s *Server) defaultRole() string {
+	if r := s.Store.Setting(KeyDefaultRole, "User"); r == "Trusted" {
+		return r
+	}
+	return "User"
+}
+
 // allow wraps an authenticated handler so only people with a permission reach it.
 func (s *Server) allow(perm string, h func(http.ResponseWriter, *http.Request, *store.User)) func(http.ResponseWriter, *http.Request, *store.User) {
 	return func(w http.ResponseWriter, r *http.Request, u *store.User) {
@@ -136,7 +146,7 @@ func (s *Server) userPlexImport(w http.ResponseWriter, r *http.Request, _ *store
 		if _, err := s.Store.UserByPlexID(f.PlexID); err == nil {
 			continue
 		}
-		if _, err := s.Store.CreateUser(store.User{PlexID: f.PlexID, Username: f.Username, Email: f.Email, Avatar: f.Thumb, Role: "User"}); err == nil {
+		if _, err := s.Store.CreateUser(store.User{PlexID: f.PlexID, Username: f.Username, Email: f.Email, Avatar: f.Thumb, Role: s.defaultRole()}); err == nil {
 			added++
 		}
 	}
@@ -147,15 +157,19 @@ func (s *Server) userPlexImport(w http.ResponseWriter, r *http.Request, _ *store
 func (s *Server) userSettings(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	if r.Method == http.MethodPut {
 		var in struct {
-			PlexSignIn bool `json:"plexSignIn"`
+			PlexSignIn  bool   `json:"plexSignIn"`
+			DefaultRole string `json:"defaultRole"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in); err != nil {
 			writeErr(w, http.StatusBadRequest, "Bad request.")
 			return
 		}
 		s.Store.SetSetting(KeyPlexSignIn, strconv.FormatBool(in.PlexSignIn))
+		if in.DefaultRole == "User" || in.DefaultRole == "Trusted" {
+			s.Store.SetSetting(KeyDefaultRole, in.DefaultRole)
+		}
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"plexSignIn": s.plexSignInOpen()})
+	writeJSON(w, http.StatusOK, map[string]any{"plexSignIn": s.plexSignInOpen(), "defaultRole": s.defaultRole()})
 }
 
 // myWatchlist reads or changes the Profile's "Request from my Plex Watchlist" switch.

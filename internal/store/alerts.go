@@ -11,8 +11,8 @@ import (
 type Alert struct {
 	ID        int64  `json:"id"`
 	Key       string `json:"key"`
-	Audience  string `json:"-"`
-	Severity  string `json:"severity"` // warning or error
+	Audience  string `json:"-"`        // everyone, admins, or user:<id>
+	Severity  string `json:"severity"` // info, warning or error
 	Title     string `json:"title"`
 	Detail    string `json:"detail"`
 	Link      string `json:"link"`
@@ -58,8 +58,8 @@ func (s *Store) ActiveAlerts(userID int64, admin bool) ([]Alert, error) {
 	rows, err := s.db.Query(`SELECT a.id, a.key, a.severity, a.title, a.detail, a.link, a.started_at, a.changed_at,
 			(s.seen_at IS NULL OR s.seen_at < a.changed_at)
 		FROM alerts a LEFT JOIN alert_seen s ON s.alert_id = a.id AND s.user_id = ?
-		WHERE a.resolved_at IS NULL AND (a.audience = 'everyone' OR (a.audience = 'admins' AND ?))
-		ORDER BY a.changed_at DESC`, userID, admin)
+		WHERE a.resolved_at IS NULL AND (a.audience = 'everyone' OR (a.audience = 'admins' AND ?) OR a.audience = 'user:' || ?)
+		ORDER BY a.changed_at DESC`, userID, admin, userID)
 	if err != nil {
 		return nil, err
 	}

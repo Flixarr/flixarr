@@ -94,6 +94,8 @@
 	.btn { @apply inline-flex items-center justify-center gap-2 rounded-lg bg-linear-to-b from-primary-light to-primary-dark px-4 py-2 font-medium text-white shadow-lg ring-1 ring-primary/60 transition hover:brightness-110 disabled:pointer-events-none disabled:opacity-50; }
 	.btn-ghost { @apply inline-flex items-center justify-center gap-2 rounded-lg border border-gray-700/60 bg-gray-800/50 px-4 py-2 font-medium text-gray-200 transition hover:bg-gray-700/60; }
 	.btn-plex { @apply inline-flex items-center justify-center gap-2 rounded-lg bg-plex px-5 py-2 font-semibold text-gray-950 shadow-lg shadow-plex/20 transition hover:bg-[#f2b630]; }
+	/* Action buttons on movie/series pages: one size for all of them, smaller on phones. Comes after .btn* so it wins. */
+	.act { @apply h-9 gap-1.5 px-3.5 py-0 text-sm laptop:h-10 laptop:gap-2 laptop:px-4 laptop:text-[15px]; }
 	.plex-badge { @apply grid shrink-0 place-items-center rounded-xl bg-[#1f2326] ring-1 ring-white/10; }
 	.text-link { @apply text-white underline decoration-primary underline-offset-2 hover:text-primary-light; }
 	.no-scrollbar { scrollbar-width: none; }
@@ -134,3 +136,13 @@ html.modal-open body { overflow: hidden; overscroll-behavior: none; }
 .swap-in { animation: swap-in 0.25s ease-out; }
 @keyframes swap-in { from { opacity: 0; transform: translateY(-4px); } }
 @media (prefers-reduced-motion: reduce) { .reveal { transition: none; } .swap-in { animation: none; } }
+
+/* Home-screen app: no rubber-band bounce. On iOS it drags the whole app, top bar and tab bar included, past
+   the screen edge. (Pull to refresh is Flixarr's own there, so nothing is lost.) */
+@media (display-mode: standalone) {
+	html, body { overscroll-behavior: none; }
+}
+/* Home-screen app on a phone: the status bar overlays the page, so pages start below it. */
+@media (display-mode: standalone) and (max-width: 1023px) {
+	.pt-20 { padding-top: calc(5rem + max(0px, env(safe-area-inset-top) - 0.75rem)); } /* the header's own top padding overlaps the inset */
+}

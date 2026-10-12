@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -67,7 +68,10 @@ func (l *Library) get(ctx context.Context, base, path, token string, out any) er
 	if res.StatusCode >= 300 {
 		return fmt.Errorf("Plex answered %s", res.Status)
 	}
-	return json.NewDecoder(res.Body).Decode(out)
+	if err := json.NewDecoder(res.Body).Decode(out); err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	return nil // some answers (a scan request) have no body
 }
 
 // ---------- servers on the admin's account ----------
@@ -437,4 +441,33 @@ func (l *Library) Seasons(ctx context.Context, tmdbID int) (map[int]int, error) 
 		out[s.Index] = s.LeafCount
 	}
 	return out, nil
+}
+
+// Connected reports whether a Plex server is set up.
+func (l *Library) Connected() bool {
+	_, _, ok := l.conn()
+	return ok
+}
+
+// Rescan asks Plex to scan its chosen movie (or TV) libraries for new files, the same thing Radarr and
+// Sonarr's own Plex connection does after an import.
+func (l *Library) Rescan(ctx context.Context, typ string) error {
+	base, tok, ok := l.conn()
+	if !ok {
+		return nil
+	}
+	secs, err := l.Sections(ctx)
+	if err != nil {
+		return err
+	}
+	want := map[string]string{"movie": "movie", "series": "show"}[typ]
+	for _, sec := range secs {
+		if sec.Enabled && sec.Type == want {
+			var out any
+			if err := l.get(ctx, base, "/library/sections/"+url.PathEscape(sec.Key)+"/refresh", tok, &out); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

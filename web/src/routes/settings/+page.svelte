@@ -12,6 +12,8 @@
 	import ServicesSettings from '#lib/components/settings/ServicesSettings.svelte';
 	import ProfilesSettings from '#lib/components/settings/ProfilesSettings.svelte';
 	import GeneralSettings from '#lib/components/settings/GeneralSettings.svelte';
+	import RequestsSettings from '#lib/components/settings/RequestsSettings.svelte';
+	import UsersSettings from '#lib/components/settings/UsersSettings.svelte';
 	import PlexSettings from '#lib/components/settings/PlexSettings.svelte';
 	import DiscoverSettings from '#lib/components/settings/DiscoverSettings.svelte';
 	import NotificationsSettings from '#lib/components/settings/NotificationsSettings.svelte';
@@ -21,7 +23,9 @@
 
 	// Section key → label, icon, one-line description (side menu / phone list).
 	const SECTIONS: [string, string, string, string][] = [
-		['general', 'General', 'settings', 'Requests, approvals, region'],
+		['general', 'General', 'settings', 'Address, region, language'],
+		['requests', 'Requests', 'requests', 'Approval, how series are requested'],
+		['users', 'Users', 'users', 'Sign-in, new people'],
 		['plex', 'Plex', 'play', 'Server, libraries, scans'],
 		['services', 'Services', 'plus', 'Radarr, Sonarr'],
 		['profiles', 'Quality profiles', 'flag', "Flixarr's profiles for Radarr and Sonarr"],
@@ -47,6 +51,11 @@
 
 	$effect(() => {
 		if (session.me && !isAdmin) goto('/', { replaceState: true });
+	});
+	// Picking a section (or going back to the list) starts at the top, not wherever the list was scrolled.
+	$effect(() => {
+		void hash;
+		scrollTo(0, 0);
 	});
 	// Reaching Services is the end of the red-dot trail.
 	$effect(() => {
@@ -105,6 +114,10 @@
 
 				{#if tab === 'general'}
 					<GeneralSettings />
+				{:else if tab === 'requests'}
+					<RequestsSettings />
+				{:else if tab === 'users'}
+					<UsersSettings />
 				{:else if tab === 'plex'}
 					<PlexSettings />
 				{:else if tab === 'services'}

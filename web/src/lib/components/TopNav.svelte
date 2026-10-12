@@ -61,7 +61,7 @@
 	}
 </script>
 
-<header class="fixed inset-x-0 top-0 z-30 border-b transition-[background-color,border-color,backdrop-filter] duration-500 ease-out {solid ? 'border-gray-700/40 bg-gray-950/85 backdrop-blur-xl' : 'border-transparent bg-transparent backdrop-blur-[0px]'}">
+<header class="fixed inset-x-0 top-0 z-30 border-b pt-[max(0px,calc(env(safe-area-inset-top)-0.75rem))] transition-[background-color,border-color,backdrop-filter] duration-500 ease-out {solid ? 'border-gray-700/40 bg-gray-950/85 backdrop-blur-xl' : 'border-transparent bg-transparent backdrop-blur-[0px]'}">
 	<div class="mx-auto flex max-w-[1600px] items-center gap-6 px-4 py-3 laptop:px-10">
 		<a href="/" class="text-logo text-3xl laptop:text-4xl">Flixarr</a>
 		<nav class="hidden items-center gap-1 text-[15px] tablet:flex">
@@ -84,7 +84,7 @@
 					{/if}
 				</button>
 				{#if menu === 'notif'}
-					<div class="fixed inset-x-3 top-16 tablet:absolute tablet:inset-x-auto tablet:right-0 tablet:top-11 tablet:w-96">
+					<div class="fixed inset-x-3 top-[calc(4rem+max(0px,calc(env(safe-area-inset-top)-0.75rem)))] tablet:absolute tablet:inset-x-auto tablet:right-0 tablet:top-11 tablet:w-96">
 						<div class="overflow-hidden rounded-xl border border-gray-700/60 bg-gray-900 shadow-2xl">
 							<div class="border-b border-gray-700/40 px-4 py-3 font-semibold">Alerts</div>
 							{#if alerts.list.length}
@@ -93,8 +93,8 @@
 										<a href={a.link} class="flex items-start gap-3 px-4 py-3 hover:bg-white/5">
 											{#if a.key.startsWith('arr:')}<img src="/logos/{a.key.split(':')[1]}.svg" alt="" class="mt-0.5 size-6 shrink-0" />{/if}
 											<span class="min-w-0 flex-1">
-												<span class="flex items-center gap-2 text-sm font-medium">{a.title}<span class="size-1.5 rounded-full {a.severity === 'error' ? 'bg-red-500' : 'bg-yellow-400'}"></span></span>
-												<span class="block text-xs {a.severity === 'error' ? 'text-red-300' : 'text-yellow-300'}">{a.detail}</span>
+												<span class="flex items-center gap-2 text-sm font-medium">{a.title}<span class="size-1.5 rounded-full {a.severity === 'error' ? 'bg-red-500' : a.severity === 'info' ? 'bg-green-400' : 'bg-yellow-400'}"></span></span>
+												<span class="block text-xs {a.severity === 'error' ? 'text-red-300' : a.severity === 'info' ? 'text-gray-300' : 'text-yellow-300'}">{a.detail}</span>
 												<span class="mt-0.5 block text-[11px] text-gray-500">Since {since(a.startedAt)}</span>
 											</span>
 										</a>
@@ -111,7 +111,7 @@
 				<div class="relative" data-menu>
 					<button class="relative rounded-full p-1 hover:bg-white/10" aria-label="Account menu" onclick={() => (menu = menu === 'user' ? '' : 'user')}><Avatar user={session.me} />{#if admin && servicesUnread()}<span class="alert-dot absolute right-0.5 top-0.5"></span>{/if}</button>
 					{#if menu === 'user'}
-						<div class="fixed inset-x-3 top-16 tablet:absolute tablet:inset-x-auto tablet:right-0 tablet:top-11 tablet:w-60">
+						<div class="fixed right-3 top-[calc(4rem+max(0px,calc(env(safe-area-inset-top)-0.75rem)))] w-60 tablet:absolute tablet:right-0 tablet:top-11">
 							<div class="overflow-hidden rounded-xl border border-gray-700/60 bg-gray-900 py-1.5 shadow-2xl">
 								<div class="flex items-center gap-3 px-4 py-2"><Avatar user={session.me} class="size-9 text-sm" /><div><div class="text-sm font-medium">{session.me.username}</div><div class="text-xs text-gray-400">{session.me.role}</div></div></div>
 								<div class="my-1 border-t border-gray-700/40"></div>

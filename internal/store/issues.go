@@ -2,29 +2,31 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 )
 
 // Issue is a problem reported on a title in the library.
 type Issue struct {
-	ID         int64  `json:"id"`
-	Type       string `json:"type"`
-	TmdbID     int    `json:"tmdbId"`
-	Title      string `json:"title"`
-	Year       string `json:"year"`
-	Poster     string `json:"poster"`
-	Kind       string `json:"kind"`
-	Sub        string `json:"sub"`
-	Season     int    `json:"season"`
-	Episode    int    `json:"episode"`
-	Note       string `json:"note"`
-	UserID     int64  `json:"userId"`
-	UserName   string `json:"userName"`
-	UserAvatar string `json:"userAvatar"`
-	Status     string `json:"status"`
-	Comments   int    `json:"comments"`
-	CreatedAt  string `json:"createdAt"`
-	UpdatedAt  string `json:"updatedAt"`
+	ID         int64    `json:"id"`
+	Type       string   `json:"type"`
+	TmdbID     int      `json:"tmdbId"`
+	Title      string   `json:"title"`
+	Year       string   `json:"year"`
+	Poster     string   `json:"poster"`
+	Kind       string   `json:"kind"`
+	Sub        string   `json:"sub"`
+	Season     int      `json:"season"`
+	Episode    int      `json:"episode"`
+	Parts      [][2]int `json:"parts"` // series: [season, episode] pairs; episode 0 = the whole season
+	Note       string   `json:"note"`
+	UserID     int64    `json:"userId"`
+	UserName   string   `json:"userName"`
+	UserAvatar string   `json:"userAvatar"`
+	Status     string   `json:"status"`
+	Comments   int      `json:"comments"`
+	CreatedAt  string   `json:"createdAt"`
+	UpdatedAt  string   `json:"updatedAt"`
 }
 
 // Comment is one message on an issue.
@@ -38,12 +40,15 @@ type Comment struct {
 }
 
 const issueCols = `i.id, i.type, i.tmdb_id, i.title, i.year, i.poster, i.kind, i.sub, i.season, i.episode, i.note, i.user_id,
-	COALESCE(u.username, ''), COALESCE(u.avatar, ''), i.status, (SELECT COUNT(*) FROM issue_comments c WHERE c.issue_id = i.id), i.created_at, i.updated_at`
+	COALESCE(u.username, ''), COALESCE(u.avatar, ''), i.status, (SELECT COUNT(*) FROM issue_comments c WHERE c.issue_id = i.id), i.created_at, i.updated_at, i.parts`
 
 func scanIssue(row interface{ Scan(...any) error }) (Issue, error) {
 	var i Issue
+	var parts string
 	err := row.Scan(&i.ID, &i.Type, &i.TmdbID, &i.Title, &i.Year, &i.Poster, &i.Kind, &i.Sub, &i.Season, &i.Episode, &i.Note, &i.UserID,
-		&i.UserName, &i.UserAvatar, &i.Status, &i.Comments, &i.CreatedAt, &i.UpdatedAt)
+		&i.UserName, &i.UserAvatar, &i.Status, &i.Comments, &i.CreatedAt, &i.UpdatedAt, &parts)
+	i.Parts = [][2]int{}
+	json.Unmarshal([]byte(parts), &i.Parts)
 	if errors.Is(err, sql.ErrNoRows) {
 		return i, ErrNotFound
 	}
@@ -53,8 +58,12 @@ func scanIssue(row interface{ Scan(...any) error }) (Issue, error) {
 // CreateIssue saves a new issue.
 func (s *Store) CreateIssue(i Issue) (Issue, error) {
 	t := now()
-	res, err := s.db.Exec(`INSERT INTO issues (type, tmdb_id, title, year, poster, kind, sub, season, episode, note, user_id, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`, i.Type, i.TmdbID, i.Title, i.Year, i.Poster, i.Kind, i.Sub, i.Season, i.Episode, i.Note, i.UserID, t, t)
+	if i.Parts == nil {
+		i.Parts = [][2]int{}
+	}
+	parts, _ := json.Marshal(i.Parts)
+	res, err := s.db.Exec(`INSERT INTO issues (type, tmdb_id, title, year, poster, kind, sub, season, episode, note, user_id, status, created_at, updated_at, parts)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)`, i.Type, i.TmdbID, i.Title, i.Year, i.Poster, i.Kind, i.Sub, i.Season, i.Episode, i.Note, i.UserID, t, t, string(parts))
 	if err != nil {
 		return Issue{}, err
 	}

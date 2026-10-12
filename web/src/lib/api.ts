@@ -23,7 +23,9 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 		}
 		throw new ApiError(res.status, msg);
 	}
-	return res.json() as Promise<T>;
+	// 202/204 and other empty answers have no JSON to read.
+	const text = await res.text();
+	return (text ? JSON.parse(text) : undefined) as T;
 }
 
 // Recent lookups kept in memory while the app is open (stale-while-revalidate, like Seerr's web app):

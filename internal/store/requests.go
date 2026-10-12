@@ -8,42 +8,44 @@ import (
 
 // Request is a movie or series someone asked for.
 type Request struct {
-	ID          int64  `json:"id"`
-	Type        string `json:"type"` // movie | series
-	TmdbID      int    `json:"tmdbId"`
-	Title       string `json:"title"`
-	Year        string `json:"year"`
-	Poster      string `json:"poster"`
-	Backdrop    string `json:"backdrop"`
-	UserID      int64  `json:"userId"`
-	UserName    string `json:"userName"`
-	Status      string `json:"status"`
-	ServerID    int64  `json:"serverId"`
-	ArrID       int    `json:"arrId"`
-	ProfileID   int    `json:"profileId"`
-	ProfileName string `json:"profileName"`
-	Mode        string `json:"mode"`
-	Seasons     []int  `json:"seasons"`
-	Progress    int    `json:"progress"`
-	Error       string `json:"error"`
-	Anime       bool   `json:"anime"`
-	SeasonCount int    `json:"seasonCount"` // seasons asked for (series), for request limits
-	CreatedAt   string `json:"createdAt"`
-	UpdatedAt   string `json:"updatedAt"`
+	ID          int64    `json:"id"`
+	Type        string   `json:"type"` // movie | series
+	TmdbID      int      `json:"tmdbId"`
+	Title       string   `json:"title"`
+	Year        string   `json:"year"`
+	Poster      string   `json:"poster"`
+	Backdrop    string   `json:"backdrop"`
+	UserID      int64    `json:"userId"`
+	UserName    string   `json:"userName"`
+	Status      string   `json:"status"`
+	ServerID    int64    `json:"serverId"`
+	ArrID       int      `json:"arrId"`
+	ProfileID   int      `json:"profileId"`
+	ProfileName string   `json:"profileName"`
+	Mode        string   `json:"mode"`
+	Seasons     []int    `json:"seasons"`
+	Episodes    [][2]int `json:"episodes"` // mode episodes: [season, episode] pairs
+	Progress    int      `json:"progress"`
+	Error       string   `json:"error"`
+	Anime       bool     `json:"anime"`
+	SeasonCount int      `json:"seasonCount"` // seasons asked for (series), for request limits
+	CreatedAt   string   `json:"createdAt"`
+	UpdatedAt   string   `json:"updatedAt"`
 }
 
 // OpenStatuses are the statuses of a request still in play (one per title at a time).
-var OpenStatuses = []string{"pending", "approved", "sent", "downloading", "available"}
+var OpenStatuses = []string{"pending", "approved", "sent", "grabbed", "downloading", "importing", "available"}
 
-const requestCols = `r.id, r.type, r.tmdb_id, r.title, r.year, r.poster, r.backdrop, r.user_id, COALESCE(u.username, ''), r.status, COALESCE(r.server_id, 0), r.arr_id, r.profile_id, r.profile_name, r.mode, r.seasons, r.progress, r.error, r.anime, r.created_at, r.updated_at`
+const requestCols = `r.id, r.type, r.tmdb_id, r.title, r.year, r.poster, r.backdrop, r.user_id, COALESCE(u.username, ''), r.status, COALESCE(r.server_id, 0), r.arr_id, r.profile_id, r.profile_name, r.mode, r.seasons, r.progress, r.error, r.anime, r.created_at, r.updated_at, r.episodes`
 
 func scanRequest(row interface{ Scan(...any) error }) (Request, error) {
 	var r Request
-	var seasons string
-	err := row.Scan(&r.ID, &r.Type, &r.TmdbID, &r.Title, &r.Year, &r.Poster, &r.Backdrop, &r.UserID, &r.UserName, &r.Status, &r.ServerID, &r.ArrID, &r.ProfileID, &r.ProfileName, &r.Mode, &seasons, &r.Progress, &r.Error, &r.Anime, &r.CreatedAt, &r.UpdatedAt)
+	var seasons, episodes string
+	err := row.Scan(&r.ID, &r.Type, &r.TmdbID, &r.Title, &r.Year, &r.Poster, &r.Backdrop, &r.UserID, &r.UserName, &r.Status, &r.ServerID, &r.ArrID, &r.ProfileID, &r.ProfileName, &r.Mode, &seasons, &r.Progress, &r.Error, &r.Anime, &r.CreatedAt, &r.UpdatedAt, &episodes)
 	if err == nil {
-		r.Seasons = []int{}
+		r.Seasons, r.Episodes = []int{}, [][2]int{}
 		json.Unmarshal([]byte(seasons), &r.Seasons)
+		json.Unmarshal([]byte(episodes), &r.Episodes)
 	}
 	return r, err
 }
@@ -55,13 +57,17 @@ func (s *Store) CreateRequest(r Request) (Request, error) {
 		r.Seasons = []int{}
 	}
 	seasons, _ := json.Marshal(r.Seasons)
+	if r.Episodes == nil {
+		r.Episodes = [][2]int{}
+	}
+	episodes, _ := json.Marshal(r.Episodes)
 	var server any
 	if r.ServerID != 0 {
 		server = r.ServerID
 	}
-	res, err := s.db.Exec(`INSERT INTO requests (type, tmdb_id, title, year, poster, backdrop, user_id, status, server_id, profile_id, profile_name, mode, seasons, anime, season_count, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.Type, r.TmdbID, r.Title, r.Year, r.Poster, r.Backdrop, r.UserID, r.Status, server, r.ProfileID, r.ProfileName, r.Mode, string(seasons), r.Anime, r.SeasonCount, t, t)
+	res, err := s.db.Exec(`INSERT INTO requests (type, tmdb_id, title, year, poster, backdrop, user_id, status, server_id, profile_id, profile_name, mode, seasons, anime, season_count, episodes, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.Type, r.TmdbID, r.Title, r.Year, r.Poster, r.Backdrop, r.UserID, r.Status, server, r.ProfileID, r.ProfileName, r.Mode, string(seasons), r.Anime, r.SeasonCount, string(episodes), t, t)
 	if err != nil {
 		return Request{}, err
 	}
@@ -101,9 +107,9 @@ func (s *Store) OpenRequest(typ string, tmdbID int) (Request, bool, error) {
 	return r, err == nil, err
 }
 
-// ActiveRequests lists requests that went to a Radarr/Sonarr and aren't available yet (the status job follows them).
+// ActiveRequests lists requests that went to a Radarr/Sonarr and aren't available yet (the request follow loop watches them).
 func (s *Store) ActiveRequests() ([]Request, error) {
-	return s.queryRequests(`SELECT ` + requestCols + ` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.status IN ('sent', 'downloading') AND r.arr_id != 0`)
+	return s.queryRequests(`SELECT ` + requestCols + ` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.status IN ('sent', 'grabbed', 'downloading', 'importing') AND r.arr_id != 0`)
 }
 
 func (s *Store) queryRequests(q string, args ...any) ([]Request, error) {
@@ -177,4 +183,9 @@ func (s *Store) DecideRequest(id, userID int64, status string) error {
 func (s *Store) DeleteRequest(id int64) error {
 	_, err := s.db.Exec(`DELETE FROM requests WHERE id = ?`, id)
 	return err
+}
+
+// ActiveRequestsFor lists the active requests for one Radarr/Sonarr item (a webhook names it by its own ID).
+func (s *Store) ActiveRequestsFor(typ string, arrID int) ([]Request, error) {
+	return s.queryRequests(`SELECT `+requestCols+` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.type = ? AND r.arr_id = ? AND r.status IN ('sent', 'grabbed', 'downloading', 'importing')`, typ, arrID)
 }

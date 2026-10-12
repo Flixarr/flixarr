@@ -106,14 +106,8 @@ func main() {
 	notifier := &notify.Notifier{Store: st, Log: log}
 	reqs := &requests.Service{Store: st, Log: log, Notify: func(ev string, r store.Request) { notifier.Send(notifier.FromRequest(ev, r)) }}
 	runner.Add(&jobs.Job{ID: "arr-status", Name: "Radarr / Sonarr: refresh status", Default: "* * * * *",
-		About: "Reads each Radarr and Sonarr connection's queue, health, disk space, indexers and download clients for the Services cards, and moves requests along (downloading, available).",
-		Run: func(ctx context.Context) (string, error) {
-			res, err := arrMon.Refresh(ctx)
-			if rerr := reqs.Refresh(ctx); rerr != nil && err == nil {
-				err = rerr
-			}
-			return res, err
-		}})
+		About: "Reads each Radarr and Sonarr connection's queue, health, disk space, indexers and download clients for the Services cards. (Requests are followed separately, every few seconds.)",
+		Run:   arrMon.Refresh})
 	// Flixarr's quality profiles: downloaded from the API, added to Radarr/Sonarr on request, kept up to date.
 	pm := &profiles.Manager{Store: st, API: api, UserAgent: "Flixarr/" + version.Full(), Log: log}
 	runner.Add(&jobs.Job{ID: "profiles-sync", Name: "Quality profiles: sync", Default: "30 4 * * *",
@@ -127,6 +121,25 @@ func main() {
 	}
 	// Plex: what's in the server's libraries, so titles show as available whoever added them.
 	lib := &plexlib.Library{Store: st, ClientID: clientID, Version: version.Full(), Log: log}
+	reqs.Plex = lib
+	// Follow active requests every few seconds (grabbed, downloading %, importing, in Plex); webhooks from
+	// Radarr/Sonarr nudge it at once. Idle when nothing is active: one small database read.
+	go func() {
+		t := time.NewTicker(5 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-runCtx.Done():
+				return
+			case <-t.C:
+				ctx, cancel := context.WithTimeout(runCtx, 30*time.Second)
+				if err := reqs.Refresh(ctx); err != nil {
+					log.Warn("request follow", "err", err)
+				}
+				cancel()
+			}
+		}
+	}()
 	runner.Add(&jobs.Job{ID: "plex-full", Name: "Plex: full library scan", Default: "0 3 * * *",
 		About: "Reads every title in the chosen Plex libraries, and notices ones that were removed.",
 		Run:   lib.FullScan})

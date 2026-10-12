@@ -8,6 +8,7 @@
 	import { can } from '#lib/session.svelte.ts';
 	import { page } from '$app/state';
 	import { remember } from '#lib/availability.svelte.ts';
+	import { TONE, NEUTRAL, text, isActive } from '#lib/requeststatus.ts';
 	import RequestModal from './RequestModal.svelte';
 	import Modal from './Modal.svelte';
 	import { notify } from '#lib/toast.svelte.ts';
@@ -28,7 +29,29 @@
 	$effect(() => {
 		const k = key;
 		req = undefined;
-		api<Record<string, RequestBrief>>(`/requests/status?keys=${k}`).then((d) => (req = d[k] ?? null)).catch(() => (req = null));
+		let alive = true;
+		let t: ReturnType<typeof setTimeout>;
+		// Live: every 4 seconds while it's on its way, so the button moves from Requested to Available by itself.
+		const load = () =>
+			api<Record<string, RequestBrief>>(`/requests/status?keys=${k}`)
+				.then((d) => alive && (req = d[k] ?? null))
+				.catch(() => alive && req === undefined && (req = null))
+				.finally(() => alive && (t = setTimeout(load, isActive(req?.status) ? 4000 : 60000)));
+		load();
+		return () => { alive = false; clearTimeout(t); };
+	});
+
+	// Series in Plex: offer Request more only while some season that has aired isn't fully there.
+	let plexSeasons = $state<Record<number, number> | null>(null);
+	const hasPlex = $derived(!!req?.plex);
+	$effect(() => {
+		plexSeasons = null;
+		if (item.type === 'series' && hasPlex) api<Record<number, number>>(`/plex/seasons/${item.id}`).then((d) => (plexSeasons = d)).catch(() => {});
+	});
+	const missingSeasons = $derived.by(() => {
+		if (item.type !== 'series' || !plexSeasons) return false;
+		const today = new Date().toISOString().slice(0, 10);
+		return (item as Series).seasons.some((s) => s.n > 0 && s.episodes > 0 && (!s.air || s.air <= today) && (plexSeasons![s.n] ?? 0) < s.episodes);
 	});
 
 	let blockOpen = $state(false);
@@ -54,31 +77,34 @@
 		}
 	}
 
-	const TEXT: Record<string, string> = { pending: 'Requested · waiting for approval', approved: 'Requested', sent: 'Requested', downloading: 'Downloading', available: 'Available', failed: 'Request failed', declined: 'Declined' };
-	const TONE: Record<string, string> = { available: 'bg-green-500/15 text-green-300 ring-green-500/40', downloading: 'bg-primary/15 text-primary-light ring-primary/40', failed: 'bg-red-500/15 text-red-300 ring-red-500/40' };
+
 </script>
 
+{#snippet pill(r: RequestBrief)}
+	<a href="/requests" class="act inline-flex items-center rounded-lg font-medium ring-1 {TONE[r.status] ?? NEUTRAL}">
+		{#if r.status === 'available'}<Icon name="check" class="size-4" />{/if}{r.status === 'pending' ? 'Requested · waiting' : text(r.status, r.progress)}
+	</a>
+{/snippet}
+
 {#if req?.plex}
-	<a href={req.plex} target="_blank" rel="noopener" class="btn-plex"><PlexMark class="size-4" color="#111827" />Play on Plex</a>
+	<a href={req.plex} target="_blank" rel="noopener" class="btn-plex act"><PlexMark class="size-4" color="#111827" />Play on Plex</a>
 	{#if item.type === 'series'}
-		{#if req.status === 'available' && can('requestTv')}
-			<button class="btn-ghost px-4" onclick={() => (open = true)}><Icon name="plus" class="size-4" />Request more</button>
-		{:else}
-			<a href="/requests" class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium ring-1 {TONE[req.status] ?? 'bg-gray-800/70 text-gray-200 ring-gray-700/60'}">{TEXT[req.status]}{req.status === 'downloading' && req.progress ? ` ${req.progress}%` : ''}</a>
+		{#if req.status !== 'available'}
+			{@render pill(req)}
+		{:else if missingSeasons && can('requestTv')}
+			<button class="btn-ghost act" onclick={() => (open = true)}><Icon name="plus" class="size-4" />Request more</button>
 		{/if}
 	{/if}
 {:else if req?.blocked}
-	<span class="btn-ghost cursor-default px-4 text-gray-400">Can't be requested</span>
-	{#if can('admin')}<button class="btn-ghost px-4 text-sm" onclick={unblock}>Unblock</button>{/if}
+	<span class="btn-ghost act cursor-default text-gray-400">Can't be requested</span>
+	{#if can('admin')}<button class="btn-ghost act" onclick={unblock}>Unblock</button>{/if}
 {:else if req && req.status !== 'declined' && req.status !== 'failed'}
-	<a href="/requests" class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium ring-1 {TONE[req.status] ?? 'bg-gray-800/70 text-gray-200 ring-gray-700/60'}">
-		{#if req.status === 'available'}<Icon name="check" class="size-4" />{/if}{TEXT[req.status]}{req.status === 'downloading' && req.progress ? ` ${req.progress}%` : ''}
-	</a>
-{:else if !can(item.type === 'series' ? 'requestTv' : 'requestMovies')}
-	<span class="btn-ghost cursor-default px-4 text-gray-400">You can't request {item.type === 'series' ? 'series' : 'movies'}</span>
-{:else}
-	<button class="btn px-5" onclick={() => (open = true)}><Icon name="plus" class="size-4" />Request</button>
-	{#if can('admin') && req === null}<button class="btn-ghost px-3 text-sm text-gray-400" onclick={() => (blockOpen = true)}>Block</button>{/if}
+	{@render pill(req)}
+{:else if req !== undefined && !can(item.type === 'series' ? 'requestTv' : 'requestMovies')}
+	<span class="btn-ghost act cursor-default text-gray-400">You can't request {item.type === 'series' ? 'series' : 'movies'}</span>
+{:else if req !== undefined}
+	<button class="btn act" onclick={() => (open = true)}><Icon name="plus" class="size-4" />Request</button>
+	{#if can('admin') && req === null}<button class="btn-ghost act" onclick={() => (blockOpen = true)}>Block</button>{/if}
 {/if}
 <Modal bind:open={blockOpen} title="Block {item.title}?">
 	<p class="p-5 text-sm text-gray-300">Nobody can request it until it's unblocked (Settings → Blocklist).</p>

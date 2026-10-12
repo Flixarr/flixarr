@@ -14,7 +14,8 @@
 	};
 </script>
 
-<nav class="fixed inset-x-0 bottom-0 z-30 border-t border-gray-700/40 bg-gray-950/85 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl tablet:hidden">
+<!-- Bottom: the home indicator area, less 16px; iOS keeps that space even while the indicator is hidden. -->
+<nav class="fixed inset-x-0 bottom-0 z-30 border-t border-gray-700/40 bg-gray-950/85 pb-[max(4px,calc(env(safe-area-inset-bottom)-16px))] backdrop-blur-xl tablet:hidden">
 	<div class="grid grid-cols-4">
 		{#each TABS as [label, h, icon] (label)}
 			<a href={h} class="flex flex-col items-center gap-1 py-2.5 text-[11px] {on(h) ? 'text-primary-light' : 'text-gray-400'}"><Icon name={icon} class="size-6" />{label}</a>

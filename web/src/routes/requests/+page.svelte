@@ -9,6 +9,7 @@
 	import Modal from '#lib/components/Modal.svelte';
 	import PlexMark from '#lib/components/PlexMark.svelte';
 	import { statusOf } from '#lib/availability.svelte.ts';
+	import { STEPS, step, text, isActive } from '#lib/requeststatus.ts';
 
 	let list = $state<Request[] | null>(null);
 	let approval = $state(false);
@@ -31,20 +32,21 @@
 	$effect(() => {
 		document.title = 'Flixarr · Requests';
 		load();
-		const t = setInterval(load, 30000);
-		return () => clearInterval(t);
+		// Every 4 seconds while something is on its way (so downloads move live), otherwise every 30.
+		let t: ReturnType<typeof setTimeout>;
+		const tick = async () => {
+			await load();
+			t = setTimeout(tick, list?.some((r) => isActive(r.status)) ? 4000 : 30000);
+		};
+		t = setTimeout(tick, 4000);
+		return () => clearTimeout(t);
 	});
 
-	const GROUPS: Record<string, Request['status'][]> = { waiting: ['pending'], active: ['approved', 'sent', 'downloading'], available: ['available'], problems: ['failed', 'declined'] };
+	const GROUPS: Record<string, Request['status'][]> = { waiting: ['pending'], active: ['approved', 'sent', 'grabbed', 'downloading', 'importing'], available: ['available'], problems: ['failed', 'declined'] };
 	const shown = $derived(list ? (filter === 'all' ? list : list.filter((r) => GROUPS[filter].includes(r.status))) : []);
 	const count = (f: keyof typeof GROUPS) => list?.filter((r) => GROUPS[f].includes(r.status)).length ?? 0;
 
-	const STATUS: Record<Request['status'], [string, string]> = {
-		pending: ['Waiting for approval', 'text-yellow-300'], approved: ['Approved', 'text-gray-300'], sent: ['Requested', 'text-gray-300'],
-		downloading: ['Downloading', 'text-primary-light'], available: ['Available', 'text-green-400'], failed: ['Failed', 'text-red-400'], declined: ['Declined', 'text-gray-500']
-	};
-	// Requested → Approved → Downloading → Available, as a step bar.
-	const step = (s: Request['status']) => ({ pending: 0, approved: 1, sent: 1, downloading: 2, available: 3, failed: -1, declined: -1 })[s];
+	const TEXT_TONE: Record<string, string> = { pending: 'text-yellow-300', grabbed: 'text-blue-300', downloading: 'text-blue-300', importing: 'text-purple-300', available: 'text-green-400', failed: 'text-red-400', declined: 'text-gray-500' };
 
 	let declining = $state<Request | null>(null);
 	let declineOpen = $state(false);
@@ -75,7 +77,11 @@
 		}
 	}
 
-	const seasonsText = (r: Request) => (r.type !== 'series' ? '' : r.mode === 'all' ? 'Whole show' : r.seasons.length === 1 ? `Season ${r.seasons[0]}` : `Seasons ${r.seasons.join(', ')}`);
+	const seasonsText = (r: Request) =>
+		r.type !== 'series' ? ''
+		: r.mode === 'all' ? 'Whole show'
+		: r.mode === 'episodes' ? r.episodes.map(([se, e]) => `S${se}E${e}`).slice(0, 4).join(', ') + (r.episodes.length > 4 ? ` +${r.episodes.length - 4} more` : '')
+		: r.seasons.length === 1 ? `Season ${r.seasons[0]}` : `Seasons ${r.seasons.join(', ')}`;
 </script>
 
 <main class="mx-auto max-w-[1200px] px-4 pb-28 pt-20 laptop:px-10 laptop:pt-24">
@@ -95,7 +101,6 @@
 	{:else}
 		<div class="mt-5 space-y-3">
 			{#each shown as r (r.id)}
-				{@const [label, tone] = STATUS[r.status]}
 				<div class="card relative overflow-hidden">
 					{#if r.backdrop}<Img path={r.backdrop} kind="backdrop" sizes="(min-width: 1024px) 1000px, 100vw" class="absolute inset-0 h-full w-full opacity-15" />{/if}
 					<div class="relative flex gap-4 p-4">
@@ -108,10 +113,10 @@
 							<div class="mt-0.5 text-xs text-gray-400">
 								{r.userName || 'Someone'} · {fmtDate(r.createdAt, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}{seasonsText(r) ? ` · ${seasonsText(r)}` : ''}{r.profileName ? ` · ${r.profileName}` : ''}
 							</div>
-							<div class="mt-2 flex items-center gap-2 text-xs {tone}">{label}{r.status === 'downloading' && r.progress ? ` · ${r.progress}%` : ''}</div>
+							<div class="mt-2 flex items-center gap-2 text-xs {TEXT_TONE[r.status] ?? 'text-gray-300'}">{text(r.status, r.progress)}</div>
 							{#if step(r.status) >= 0}
-								<div class="mt-1.5 grid max-w-md grid-cols-4 gap-1">
-									{#each ['Requested', 'Approved', 'Downloading', 'Available'] as s, i (s)}
+								<div class="mt-1.5 grid max-w-md grid-cols-5 gap-1">
+									{#each STEPS as s, i (s)}
 										<div class="h-1 overflow-hidden rounded-full bg-gray-700/60"><div class="h-full rounded-full {r.status === 'available' ? 'bg-green-500' : 'bg-primary'}" style="width:{i < step(r.status) ? 100 : i === step(r.status) ? (r.status === 'downloading' ? r.progress : 100) : 0}%"></div></div>
 									{/each}
 								</div>

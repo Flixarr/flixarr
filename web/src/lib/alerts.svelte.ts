@@ -1,7 +1,7 @@
 // Alerts: what the bell shows (inside Flixarr only; notifications are what gets sent out).
 import { api } from './api';
 
-export interface Alert { id: number; key: string; severity: 'warning' | 'error'; title: string; detail: string; link: string; startedAt: string; changedAt: string; unread: boolean }
+export interface Alert { id: number; key: string; severity: 'info' | 'warning' | 'error'; title: string; detail: string; link: string; startedAt: string; changedAt: string; unread: boolean }
 
 export const alerts = $state<{ list: Alert[] }>({ list: [] });
 
@@ -22,9 +22,9 @@ export async function markAlertsSeen() {
 	alerts.list = (await api<{ alerts: Alert[] }>('/alerts/seen', { method: 'POST' })).alerts;
 }
 
-// Poll while signed in; returns a stop function.
+// Poll while signed in (every 15 seconds, so request news shows up quickly); returns a stop function.
 export function watchAlerts() {
 	loadAlerts();
-	const t = setInterval(loadAlerts, 60000);
+	const t = setInterval(loadAlerts, 15000);
 	return () => clearInterval(t);
 }
