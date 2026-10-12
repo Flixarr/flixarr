@@ -101,7 +101,7 @@
 		if (q.length && q.every((r) => r.state === 'paused')) return `${q.length} paused`;
 		const n = (f: (r: QueueRow) => boolean) => q.filter(f).length;
 		return ([[n((r) => r.state === 'downloading'), 'downloading'], [n((r) => r.state === 'importing'), 'importing'], [n((r) => r.state === 'queued'), 'waiting'],
-			[n((r) => r.state === 'warning' || r.state === 'error'), 'need attention'], [n((r) => r.state === 'paused'), 'paused']] as [number, string][])
+			[n((r) => r.state === 'paused'), 'paused']] as [number, string][])
 			.filter(([c]) => c).map(([c, w]) => `${c} ${w}`).join(' · ');
 	}
 
@@ -246,16 +246,16 @@
 								<span class="mt-4 flex items-center justify-between rounded-lg bg-gray-900/50 px-3 py-2 text-xs ring-1 ring-gray-700/40"><span class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Queue</span><span class="text-gray-500">Nothing downloading</span></span>
 							{:else}
 								{@const big = expanded[s.kind]}
-								{@const stuck = st.queue.slice(1).filter((q) => q.state === 'warning' || q.state === 'error').length}
+								{@const stuck = st.queue.filter((q) => q.state === 'warning' || q.state === 'error').length}
 								<span class="mt-4 block rounded-lg bg-gray-900/50 px-3 pb-1 pt-2 ring-1 ring-gray-700/40">
-									<span class="flex items-center justify-between gap-3 text-[11px]"><span class="font-semibold uppercase tracking-wide text-gray-500">Queue</span>
+									<span class="flex items-center justify-between gap-3 text-[11px]"><span class="flex items-center gap-2"><span class="font-semibold uppercase tracking-wide text-gray-500">Queue</span>{#if stuck}<span class="text-yellow-400">· {stuck} need{stuck === 1 ? 's' : ''} attention</span>{/if}</span>
 										<span class="flex min-w-0 items-center gap-2">{#if big}<span class="truncate text-gray-400">{queueLabel(st.queue)}</span>{/if}
 											{#if st.queue.length > 1}<button class="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-gray-400 hover:bg-white/5 hover:text-white" aria-expanded={big} onclick={() => toggleQueue(s.kind)}>{big ? 'Hide' : 'Show'}<span class="transition {big ? '-rotate-90' : 'rotate-90'}"><Icon name="chevron" class="size-3.5" /></span></button>{/if}</span></span>
 									<span class="block divide-y divide-gray-700/30">
 										{#each st.queue.slice(0, big ? 3 : 1) as q, i (i)}{@render queueRow(q, s.color)}{/each}
 									</span>
 									{#if !big && st.queue.length > 1}
-										<span class="block pb-2 text-[11px] text-gray-500">+ {st.queue.length - 1} more{#if stuck} · <span class="text-yellow-400">{stuck} need{stuck === 1 ? 's' : ''} attention</span>{/if}</span>
+										<span class="block pb-2 text-[11px] text-gray-500">+ {st.queue.length - 1} more</span>
 									{:else if big && st.queue.length > 3}
 										<span class="block border-t border-gray-700/30 py-2 text-[11px] text-gray-500">+ {st.queue.length - 3} more in the queue</span>
 									{/if}
