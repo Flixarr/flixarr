@@ -10,7 +10,7 @@
 
 	let { open = $bindable(false), item, onrequested }: { open?: boolean; item: Movie | Series; onrequested?: (r: Request) => void } = $props();
 
-	type Options = { connected: boolean; server: string; approval: boolean; defaultProfileId?: number; defaultProfileName?: string; profiles: { id: number; name: string }[] };
+	type Options = { connected: boolean; server: string; approval: boolean; usage: { limit: number; used: number }; defaultProfileId?: number; defaultProfileName?: string; profiles: { id: number; name: string }[] };
 	let opts = $state<Options | null>(null);
 	let profileId = $state(0);
 	let whole = $state(true);
@@ -46,7 +46,7 @@
 			const r = await api<Request>('/requests', {
 				method: 'POST',
 				body: JSON.stringify({ type: item.type, tmdbId: item.id, title: item.title, year: item.year, poster: item.poster ?? '', backdrop: item.backdrop ?? '',
-					seasons: series && !whole ? seasons : [], profileId, genres: item.genres, language: series ? series.language : '' })
+					seasons: series && !whole ? seasons : [], profileId, genres: item.genres, language: series ? series.language : '', seasonCount: list.length })
 			});
 			open = false;
 			onrequested?.(r);
@@ -79,7 +79,7 @@
 		{:else if !opts.connected}
 			<p class="rounded-lg bg-yellow-500/10 px-3 py-2 text-sm text-yellow-300 ring-1 ring-yellow-500/30">{opts.server} isn't connected yet, so this can't be requested. An admin can connect it in Settings → Services.</p>
 		{:else}
-			<p class="text-xs text-gray-400">Goes to <span class="text-gray-200">{opts.server}</span>{opts.approval ? ' after an admin approves it' : ''}.</p>
+			<p class="text-xs text-gray-400">Goes to <span class="text-gray-200">{opts.server}</span>{opts.approval ? ' after an admin approves it' : ''}.{#if opts.usage?.limit}{@const left = Math.max(0, opts.usage.limit - opts.usage.used)} You have {left} {series ? 'season' : 'movie'}{left === 1 ? '' : 's'} left this week (of {opts.usage.limit}).{/if}</p>
 			{#if opts.profiles.length}
 				<div>
 					<label for="req-quality" class="block text-sm">Quality</label>

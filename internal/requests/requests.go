@@ -56,6 +56,31 @@ type New struct {
 	ProfileID int      `json:"profileId"` // 0 = the server's default quality
 	Genres    []string `json:"genres"`    // for anime detection
 	Language  string   `json:"language"`  // original language, e.g. "ja"
+	// SeasonCount is how many seasons the show has (series, whole-show requests), for request limits.
+	SeasonCount int `json:"seasonCount"`
+}
+
+// LimitError is returned when a request would go over the user's weekly limit.
+type LimitError struct{ Msg string }
+
+func (e LimitError) Error() string { return e.Msg }
+
+// Usage says how much of a weekly limit is used (Limit 0 = unlimited).
+type Usage struct {
+	Limit int `json:"limit"`
+	Used  int `json:"used"`
+}
+
+// UsageFor is the user's weekly movie or season usage (admins have no limits).
+func (s *Service) UsageFor(u *store.User, typ string) Usage {
+	if u.Can("admin") {
+		return Usage{}
+	}
+	movies, seasons, _ := s.Store.RecentUsage(u.ID)
+	if typ == "movie" {
+		return Usage{Limit: u.MovieLimit, Used: movies}
+	}
+	return Usage{Limit: u.SeasonLimit, Used: seasons}
 }
 
 // ApprovalRequired reports whether requests from non-admins wait for an admin.
@@ -121,12 +146,30 @@ func (s *Service) Create(ctx context.Context, u *store.User, in New) (store.Requ
 	if in.Type == "series" && len(in.Seasons) > 0 {
 		mode, seasons = "seasons", in.Seasons
 	}
+	count := 0
+	if in.Type == "series" {
+		count = max(in.SeasonCount, 1)
+		if mode == "seasons" {
+			count = len(seasons)
+		}
+	}
+	if use := s.UsageFor(u, in.Type); use.Limit > 0 {
+		want := 1
+		what := "movie"
+		if in.Type == "series" {
+			want, what = count, "season"
+		}
+		if use.Used+want > use.Limit {
+			left := max(use.Limit-use.Used, 0)
+			return store.Request{}, LimitError{fmt.Sprintf("that's over your limit of %d %ss a week (%d left)", use.Limit, what, left)}
+		}
+	}
 	status := "approved"
 	if s.ApprovalRequired() && !u.Can("autoApprove") {
 		status = "pending"
 	}
 	r, err := s.Store.CreateRequest(store.Request{Type: in.Type, TmdbID: in.TmdbID, Title: in.Title, Year: in.Year, Poster: in.Poster, Backdrop: in.Backdrop,
-		UserID: u.ID, Status: status, ServerID: v.ID, ProfileID: profileID, ProfileName: profileName, Mode: mode, Seasons: seasons, Anime: in.Type == "series" && isAnime(in.Genres, in.Language)})
+		UserID: u.ID, Status: status, ServerID: v.ID, ProfileID: profileID, ProfileName: profileName, Mode: mode, Seasons: seasons, Anime: in.Type == "series" && isAnime(in.Genres, in.Language), SeasonCount: count})
 	if err != nil {
 		return store.Request{}, err
 	}

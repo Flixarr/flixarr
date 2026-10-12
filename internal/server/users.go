@@ -40,7 +40,9 @@ func (s *Server) userList(w http.ResponseWriter, r *http.Request, _ *store.User)
 func (s *Server) userUpdate(w http.ResponseWriter, r *http.Request, me *store.User) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	var in struct {
-		Perms []string `json:"perms"`
+		Perms       []string `json:"perms"`
+		MovieLimit  int      `json:"movieLimit"`
+		SeasonLimit int      `json:"seasonLimit"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil || in.Perms == nil {
 		writeErr(w, http.StatusBadRequest, "Bad request.")
@@ -50,7 +52,15 @@ func (s *Server) userUpdate(w http.ResponseWriter, r *http.Request, me *store.Us
 		writeErr(w, http.StatusConflict, "You can't take admin away from yourself.")
 		return
 	}
+	if in.MovieLimit < 0 || in.SeasonLimit < 0 || in.MovieLimit > 1000 || in.SeasonLimit > 1000 {
+		writeErr(w, http.StatusBadRequest, "Limits go from 0 (unlimited) to 1000.")
+		return
+	}
 	u, err := s.Store.SetPerms(id, in.Perms)
+	if err == nil {
+		s.Store.SetLimits(id, in.MovieLimit, in.SeasonLimit)
+		u, err = s.Store.UserByID(id)
+	}
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		writeErr(w, http.StatusNotFound, "That user doesn't exist.")

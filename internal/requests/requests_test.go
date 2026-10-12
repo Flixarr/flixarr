@@ -3,6 +3,7 @@ package requests
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -281,5 +282,29 @@ func TestPermissions(t *testing.T) {
 	}
 	if u, _ = st.SetPerms(user.ID, store.RolePerms["Trusted"]); u.Role != "Trusted" {
 		t.Fatalf("preset label: %s", u.Role)
+	}
+}
+
+func TestLimits(t *testing.T) {
+	s, st, _, _, _, user := setup(t)
+	ctx := context.Background()
+	st.SetLimits(user.ID, 1, 3)
+	u, _ := st.UserByID(user.ID)
+	if _, err := s.Create(ctx, u, New{Type: "movie", TmdbID: 603, Title: "The Matrix"}); err != nil {
+		t.Fatal(err)
+	}
+	var le LimitError
+	if _, err := s.Create(ctx, u, New{Type: "movie", TmdbID: 604, Title: "Reloaded"}); !errors.As(err, &le) {
+		t.Fatalf("second movie: %v", err)
+	}
+	// Whole show of 4 seasons is over 3; two seasons fit.
+	if _, err := s.Create(ctx, u, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad", SeasonCount: 4}); !errors.As(err, &le) {
+		t.Fatalf("whole show over the limit: %v", err)
+	}
+	if _, err := s.Create(ctx, u, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad", Seasons: []int{1, 2}}); err != nil {
+		t.Fatalf("two seasons: %v", err)
+	}
+	if got := s.UsageFor(u, "series"); got.Used != 2 || got.Limit != 3 {
+		t.Fatalf("usage: %+v", got)
 	}
 }

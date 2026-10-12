@@ -35,6 +35,11 @@ func (s *Server) requestCreate(w http.ResponseWriter, r *http.Request, u *store.
 		return
 	}
 	req, err := s.Requests.Create(r.Context(), u, in)
+	var limit requests.LimitError
+	if errors.As(err, &limit) {
+		writeErr(w, http.StatusConflict, capitalize(limit.Msg)+".")
+		return
+	}
 	if errors.Is(err, requests.ErrNotAllowed) {
 		writeErr(w, http.StatusForbidden, "You can't request "+map[string]string{"movie": "movies", "series": "series"}[in.Type]+".")
 		return
@@ -188,7 +193,8 @@ func (s *Server) requestOptions(w http.ResponseWriter, r *http.Request, u *store
 		kind = "sonarr"
 	}
 	out := map[string]any{"connected": false, "server": arr.Kinds[kind], "approval": s.Requests.ApprovalRequired() && !u.Can("autoApprove"),
-		"allowed": u.Can(map[string]string{"radarr": "requestMovies", "sonarr": "requestTv"}[kind])}
+		"allowed": u.Can(map[string]string{"radarr": "requestMovies", "sonarr": "requestTv"}[kind]),
+		"usage":   s.Requests.UsageFor(u, map[string]string{"radarr": "movie", "sonarr": "series"}[kind])}
 	v, ok, err := s.Store.FirstServer(kind)
 	if err != nil || !ok || !v.Enabled {
 		writeJSON(w, http.StatusOK, out)

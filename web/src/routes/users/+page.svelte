@@ -10,6 +10,7 @@
 	import Icon from '#lib/components/Icon.svelte';
 	import Modal from '#lib/components/Modal.svelte';
 	import Toggle from '#lib/components/Toggle.svelte';
+	import Select from '#lib/components/Select.svelte';
 
 	type Row = User & { requests: number };
 	type Friend = { plexId: number; username: string; email: string; avatar: string; added: boolean };
@@ -36,6 +37,8 @@
 	let presets = $state<Record<string, string[]>>({});
 	let editing = $state<Row | null>(null);
 	let perms = $state<string[]>([]);
+	let movieLimit = $state(0);
+	let seasonLimit = $state(0);
 	let editOpen = $state(false);
 	let removeOpen = $state(false);
 	let saving = $state(false);
@@ -74,6 +77,8 @@
 	function edit(u: Row) {
 		editing = u;
 		perms = [...u.perms];
+		movieLimit = u.movieLimit;
+		seasonLimit = u.seasonLimit;
 		editOpen = true;
 	}
 	function setPerm(k: string, on: boolean) {
@@ -82,7 +87,7 @@
 	async function save() {
 		saving = true;
 		try {
-			const u = await api<User>(`/users/${editing!.id}`, { method: 'PUT', body: JSON.stringify({ perms: isAdmin ? presets.Admin : perms }) });
+			const u = await api<User>(`/users/${editing!.id}`, { method: 'PUT', body: JSON.stringify({ perms: isAdmin ? presets.Admin : perms, movieLimit, seasonLimit }) });
 			users = users!.map((x) => (x.id === u.id ? { ...x, ...u } : x));
 			editOpen = false;
 			notify(`Saved ${u.username}.`);
@@ -173,12 +178,26 @@
 				</div>
 				<p class="text-xs text-gray-500">{editing.owner ? 'The owner always stays an admin.' : 'A role is a preset. Change any switch below and the role becomes Custom.'}</p>
 			</div>
+			{#snippet limitPicker(id: string, label: string, unit: string, steps: number[], value: number, set: (n: number) => void)}
+				<div>
+					<label for={id} class="block text-xs text-gray-400">{label}</label>
+					<Select {id} {value} disabled={isAdmin} options={[{ value: 0, label: 'Unlimited' }, ...steps.map((n) => ({ value: n, label: `${n} ${unit}${n === 1 ? '' : 's'} a week` }))]} onchange={set} />
+				</div>
+			{/snippet}
 			<div class="divide-y divide-gray-700/40 rounded-xl border border-gray-700/50 bg-gray-800/30 px-4">
 				{#each PERMS as [k, label, about] (k)}
 					<div class="py-3">
 						<Toggle checked={isAdmin || perms.includes(k)} {label} {about} disabled={(k === 'admin' && editing.owner) || (k !== 'admin' && isAdmin)} onchange={(on) => setPerm(k, on)} />
 					</div>
 				{/each}
+			</div>
+			<div class="space-y-2">
+				<div class="text-sm font-medium">Request limits</div>
+				<div class="grid grid-cols-2 gap-3">
+					{@render limitPicker('lim-movies', 'Movies', 'movie', [1, 3, 5, 10, 20], movieLimit, (n) => (movieLimit = n))}
+					{@render limitPicker('lim-seasons', 'Series seasons', 'season', [1, 3, 5, 10, 20], seasonLimit, (n) => (seasonLimit = n))}
+				</div>
+				<p class="text-xs text-gray-500">{isAdmin ? 'Admins have no limits.' : 'Counted over the last 7 days. Declined and failed requests are not counted.'}</p>
 			</div>
 		</div>
 	{/if}

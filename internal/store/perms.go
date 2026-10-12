@@ -4,6 +4,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"time"
 )
 
 // Permission switches. Roles are presets that set them; changing any switch makes the role Custom.
@@ -79,7 +80,7 @@ func (s *Store) Users() ([]UserRow, error) {
 		var row UserRow
 		var perms string
 		u := &row.User
-		if err := rows.Scan(&u.ID, &u.PlexID, &u.Username, &u.Email, &u.Avatar, &u.Role, &perms, &u.CreatedAt, &u.Owner, &row.Requests); err != nil {
+		if err := rows.Scan(&u.ID, &u.PlexID, &u.Username, &u.Email, &u.Avatar, &u.Role, &perms, &u.CreatedAt, &u.Owner, &u.MovieLimit, &u.SeasonLimit, &row.Requests); err != nil {
 			return nil, err
 		}
 		u.Perms = splitPerms(perms)
@@ -126,4 +127,18 @@ func (s *Store) DeleteUser(id int64) error {
 	}
 	_, err = s.db.Exec(`DELETE FROM users WHERE id = ?`, id)
 	return err
+}
+
+// SetLimits changes a user's request limits (per 7 days, 0 = unlimited).
+func (s *Store) SetLimits(id int64, movies, seasons int) error {
+	_, err := s.db.Exec(`UPDATE users SET movie_limit = ?, season_limit = ? WHERE id = ?`, max(movies, 0), max(seasons, 0), id)
+	return err
+}
+
+// RecentUsage is what a user requested in the last 7 days: movies, and seasons of series.
+// Declined and failed requests don't count.
+func (s *Store) RecentUsage(userID int64) (movies, seasons int, err error) {
+	err = s.db.QueryRow(`SELECT COALESCE(SUM(type = 'movie'), 0), COALESCE(SUM(CASE WHEN type = 'series' THEN MAX(season_count, 1) ELSE 0 END), 0)
+		FROM requests WHERE user_id = ? AND status NOT IN ('declined', 'failed') AND created_at > ?`, userID, time.Now().Add(-7*24*time.Hour).UTC().Format(time.RFC3339)).Scan(&movies, &seasons)
+	return
 }

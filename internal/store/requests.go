@@ -27,6 +27,7 @@ type Request struct {
 	Progress    int    `json:"progress"`
 	Error       string `json:"error"`
 	Anime       bool   `json:"anime"`
+	SeasonCount int    `json:"seasonCount"` // seasons asked for (series), for request limits
 	CreatedAt   string `json:"createdAt"`
 	UpdatedAt   string `json:"updatedAt"`
 }
@@ -58,9 +59,9 @@ func (s *Store) CreateRequest(r Request) (Request, error) {
 	if r.ServerID != 0 {
 		server = r.ServerID
 	}
-	res, err := s.db.Exec(`INSERT INTO requests (type, tmdb_id, title, year, poster, backdrop, user_id, status, server_id, profile_id, profile_name, mode, seasons, anime, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.Type, r.TmdbID, r.Title, r.Year, r.Poster, r.Backdrop, r.UserID, r.Status, server, r.ProfileID, r.ProfileName, r.Mode, string(seasons), r.Anime, t, t)
+	res, err := s.db.Exec(`INSERT INTO requests (type, tmdb_id, title, year, poster, backdrop, user_id, status, server_id, profile_id, profile_name, mode, seasons, anime, season_count, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.Type, r.TmdbID, r.Title, r.Year, r.Poster, r.Backdrop, r.UserID, r.Status, server, r.ProfileID, r.ProfileName, r.Mode, string(seasons), r.Anime, r.SeasonCount, t, t)
 	if err != nil {
 		return Request{}, err
 	}
