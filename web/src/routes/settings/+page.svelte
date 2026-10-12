@@ -10,6 +10,7 @@
 	import CacheSettings from '#lib/components/settings/CacheSettings.svelte';
 	import JobsSettings from '#lib/components/settings/JobsSettings.svelte';
 	import ServicesSettings from '#lib/components/settings/ServicesSettings.svelte';
+	import ProfilesSettings from '#lib/components/settings/ProfilesSettings.svelte';
 	import { markAlertsSeen, servicesUnread } from '#lib/alerts.svelte.ts';
 
 	// Section key → label, icon, one-line description (side menu / phone list).
@@ -17,6 +18,7 @@
 		['general', 'General', 'settings', 'Requests, approvals, region'],
 		['plex', 'Plex', 'play', 'Server, libraries, scans'],
 		['services', 'Services', 'plus', 'Radarr, Sonarr'],
+		['profiles', 'Quality profiles', 'flag', "Flixarr's profiles for Radarr and Sonarr"],
 		['notifications', 'Notifications', 'bell', 'Email, Discord, webhooks, push'],
 		['discover', 'Discover', 'discover', 'Discover page rows'],
 		['cache', 'Cache', 'refresh', 'Saved results, images'],
@@ -95,6 +97,8 @@
 
 				{#if tab === 'services'}
 					<ServicesSettings />
+				{:else if tab === 'profiles'}
+					<ProfilesSettings />
 				{:else if tab === 'cache'}
 					<CacheSettings />
 				{:else if tab === 'jobs'}

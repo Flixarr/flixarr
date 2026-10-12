@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -285,22 +286,52 @@ func (s *Server) profilesInfo(w http.ResponseWriter, r *http.Request, _ *store.U
 		}
 		d = s.Profiles.Doc()
 	}
+	// What a profile does in one app, for Settings → Quality profiles.
+	type detail struct {
+		BasedOn   string   `json:"basedOn"`
+		BasedURL  string   `json:"basedOnUrl"`
+		Qualities []string `json:"qualities"` // allowed, best first
+		Cutoff    string   `json:"cutoff"`
+		Formats   int      `json:"formats"`
+		Preferred []string `json:"preferred"` // the highest-scored formats
+		Blocked   []string `json:"blocked"`   // formats scored so low they're never grabbed
+	}
 	type entry struct {
-		ID          string   `json:"id"`
-		Name        string   `json:"name"`
-		Label       string   `json:"label"`
-		Description string   `json:"description"`
-		ArrName     string   `json:"arrName"`
-		Apps        []string `json:"apps"`
+		ID          string             `json:"id"`
+		Name        string             `json:"name"`
+		Label       string             `json:"label"`
+		Description string             `json:"description"`
+		ArrName     string             `json:"arrName"`
+		Rev         string             `json:"rev"`
+		Apps        []string           `json:"apps"`
+		Details     map[string]*detail `json:"details"`
 	}
 	out := []entry{}
 	for _, p := range d.Profiles {
-		e := entry{ID: p.ID, Name: p.Name, Label: p.Label, Description: p.Description, ArrName: profiles.ArrName(p)}
-		if p.Radarr != nil {
-			e.Apps = append(e.Apps, "radarr")
-		}
-		if p.Sonarr != nil {
-			e.Apps = append(e.Apps, "sonarr")
+		e := entry{ID: p.ID, Name: p.Name, Label: p.Label, Description: p.Description, ArrName: profiles.ArrName(p), Rev: p.Rev, Details: map[string]*detail{}}
+		for _, kind := range []string{"radarr", "sonarr"} {
+			ap := p.For(kind)
+			if ap == nil {
+				continue
+			}
+			e.Apps = append(e.Apps, kind)
+			dt := &detail{BasedOn: ap.BasedOn.Name, BasedURL: ap.BasedOn.URL, Cutoff: ap.Profile.Cutoff, Formats: len(ap.Profile.FormatItems), Qualities: []string{}, Preferred: []string{}, Blocked: []string{}}
+			for _, it := range ap.Profile.Items {
+				if it.Allowed {
+					dt.Qualities = append(dt.Qualities, it.Name)
+				}
+			}
+			fi := append([]profiles.FormatItem(nil), ap.Profile.FormatItems...)
+			sort.SliceStable(fi, func(i, j int) bool { return fi[i].Score > fi[j].Score })
+			for _, f := range fi {
+				if f.Score > 0 && len(dt.Preferred) < 6 {
+					dt.Preferred = append(dt.Preferred, f.Name)
+				}
+				if f.Score <= -10000 {
+					dt.Blocked = append(dt.Blocked, f.Name)
+				}
+			}
+			e.Details[kind] = dt
 		}
 		out = append(out, e)
 	}

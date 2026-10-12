@@ -21,6 +21,8 @@ The data server keeps these checks so the number of active installs, the version
 
 **Turning it off:** switch off **Check for updates daily** in **Settings → About**, or set `FLIXARR_UPDATE_CHECK=false` on the server. When it's off, nothing is sent and you won't hear about updates.
 
+**Quality profiles.** Once a day (and when the update check says there's a new version), Flixarr downloads its quality profiles from the data server. That request sends nothing but the Flixarr version in the `User-Agent`. The profiles are public: they're kept at [Flixarr/flixarr-profiles](https://github.com/Flixarr/flixarr-profiles). Flixarr then adds or updates them in your own Radarr and Sonarr; nothing about your servers is sent anywhere.
+
 Never sent: your users, usernames or emails, your requests, your Plex server details, or your library.
 
 ### plex.tv
