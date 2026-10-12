@@ -126,3 +126,11 @@ html.modal-open body { overflow: hidden; overscroll-behavior: none; }
 .toast-in { animation: toast-in 0.2s ease-out; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(6px); } }
 @media (prefers-reduced-motion: reduce) { .toast-in { animation: none; } }
+
+/* Grows a hidden block open (height and fade), e.g. the connection window's settings once connected. */
+.reveal { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 0.3s ease, opacity 0.3s ease; }
+.reveal > * { overflow: hidden; min-height: 0; }
+.reveal.open { grid-template-rows: 1fr; opacity: 1; }
+.swap-in { animation: swap-in 0.25s ease-out; }
+@keyframes swap-in { from { opacity: 0; transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { .reveal { transition: none; } .swap-in { animation: none; } }

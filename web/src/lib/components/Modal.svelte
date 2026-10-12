@@ -4,8 +4,9 @@
 	import type { Snippet } from 'svelte';
 	import Icon from './Icon.svelte';
 
-	let { open = $bindable(false), title, sub = '', wide = false, children, footer }: {
-		open?: boolean; title: string; sub?: string; wide?: boolean; children: Snippet; footer?: Snippet;
+	// `top` replaces the standard title bar (the close button stays, top right).
+	let { open = $bindable(false), title, sub = '', wide = false, children, footer, top }: {
+		open?: boolean; title: string; sub?: string; wide?: boolean; children: Snippet; footer?: Snippet; top?: Snippet;
 	} = $props();
 
 	$effect(() => {
@@ -29,10 +30,17 @@
 	<div class="fixed inset-0 z-50 flex items-end justify-center overscroll-none bg-gray-950/80 backdrop-blur-sm tablet:items-center tablet:p-4"
 		onclick={(e) => e.target === e.currentTarget && (open = false)}>
 		<div class="card max-h-[90dvh] w-full overflow-y-auto overscroll-contain rounded-b-none bg-gray-900 tablet:rounded-b-xl {wide ? 'tablet:max-w-3xl' : 'tablet:max-w-lg'}" role="dialog" aria-modal="true" aria-label={title}>
-			<div class="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-gray-700/40 bg-gray-900/95 px-5 py-4 backdrop-blur">
-				<div><div class="font-semibold">{title}</div>{#if sub}<div class="text-xs text-gray-400">{sub}</div>{/if}</div>
-				<button class="rounded-lg p-1 text-gray-400 hover:bg-white/10 hover:text-white" onclick={() => (open = false)} aria-label="Close"><Icon name="close" /></button>
-			</div>
+			{#if top}
+				<div class="relative">
+					{@render top()}
+					<button class="absolute right-3 top-3 rounded-lg p-1 text-gray-300 hover:bg-white/10 hover:text-white" onclick={() => (open = false)} aria-label="Close"><Icon name="close" /></button>
+				</div>
+			{:else}
+				<div class="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-gray-700/40 bg-gray-900/95 px-5 py-4 backdrop-blur">
+					<div><div class="font-semibold">{title}</div>{#if sub}<div class="text-xs text-gray-400">{sub}</div>{/if}</div>
+					<button class="rounded-lg p-1 text-gray-400 hover:bg-white/10 hover:text-white" onclick={() => (open = false)} aria-label="Close"><Icon name="close" /></button>
+				</div>
+			{/if}
 			{@render children()}
 			{#if footer}
 				<div class="sticky bottom-0 flex justify-end gap-2 border-t border-gray-700/40 bg-gray-900/95 px-5 py-4 backdrop-blur">{@render footer()}</div>

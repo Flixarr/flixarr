@@ -10,9 +10,9 @@
 
 	// Each kind is a list of connection cards. Connections are stored as a list; for now each kind
 	// takes one, so "Add" shows only while a list is empty.
-	const KINDS: { kind: ServiceKind; name: string; what: string; port: number; about: string; color: string }[] = [
-		{ kind: 'radarr', name: 'Radarr', what: 'movies', port: 7878, about: 'Movie requests are sent here.', color: '#ffc230' },
-		{ kind: 'sonarr', name: 'Sonarr', what: 'series', port: 8989, about: 'Series requests are sent here.', color: '#35c5f4' }
+	const KINDS: { kind: ServiceKind; name: string; what: string; port: number; about: string; color: string; rgb: string }[] = [
+		{ kind: 'radarr', name: 'Radarr', what: 'movies', port: 7878, about: 'Movie requests are sent here.', color: '#ffc230', rgb: '255 194 48' },
+		{ kind: 'sonarr', name: 'Sonarr', what: 'series', port: 8989, about: 'Series requests are sent here.', color: '#35c5f4', rgb: '53 197 244' }
 	];
 	const nameOf = (kind: ServiceKind) => KINDS.find((k) => k.kind === kind)!.name;
 
@@ -32,6 +32,9 @@
 	let finding = $state(false);
 	let found = $state<string[] | null>(null);
 	let confirmRemove = $state(false);
+	let changing = $state(false); // editing: the connection form is open ("Change")
+	let initial = $state(''); // the form as it opened, so Save only lights up after a change
+	const dirty = $derived(JSON.stringify(form) !== initial);
 	let more = $state<ServiceKind | null>(null); // which card's ⋯ menu is open
 	let refreshing = $state<ServiceKind | null>(null);
 	// Queue boxes start small (the top item); Show expands them. Remembered in this browser.
@@ -152,6 +155,8 @@
 		error = '';
 		showKey = false;
 		found = null;
+		changing = false;
+		initial = JSON.stringify(form);
 		open = true;
 		if (v) test(); // fills the folder and quality lists
 	}
@@ -163,6 +168,7 @@
 			info = await api<ArrInfo>(`/services/${kind}/test`, { method: 'POST', body: JSON.stringify(form) });
 			if (!info.folders.some((f) => f.path === form.rootFolder)) form.rootFolder = info.folders[0]?.path ?? '';
 			if (!info.profiles.some((p) => p.id === form.qualityProfileId)) form.qualityProfileId = info.profiles[0]?.id ?? 0;
+			changing = false;
 		} catch (e) {
 			info = null;
 			error = e instanceof Error ? e.message : 'Test failed.';
@@ -241,7 +247,6 @@
 	<span class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] ring-1 {bad ? 'bg-yellow-500/10 text-yellow-300 ring-yellow-500/30' : 'bg-gray-900/60 text-gray-400 ring-gray-700/50'}"><span class="size-1.5 rounded-full {bad ? 'bg-yellow-400' : 'bg-green-500'}"></span>{text}</span>
 {/snippet}
 
-{#snippet section(title: string)}<div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</div>{/snippet}
 
 {#if saved}
 	{#each KINDS as s (s.kind)}
@@ -340,80 +345,93 @@
 		</div>
 	{/each}
 
-	<Modal bind:open title={saved[kind] ? `Edit ${saved[kind]!.name}` : `Add ${k.name} server`} sub={k.about}>
-		<div class="space-y-6 p-5">
-			<div class="space-y-4">
-				{@render section('Connection')}
-				<div>
-					<label for="svc-url" class="block text-sm">Address</label>
-					<div class="relative">
-						<input id="svc-url" bind:value={form.url} oninput={addressChanged} placeholder="http://192.168.1.10:{k.port}" autocomplete="off" spellcheck="false" class="{input} pr-20" />
-						<button class="absolute right-2 top-1/2 mt-0.5 -translate-y-1/2 px-2 text-xs text-gray-400 hover:text-white disabled:opacity-50" disabled={finding} onclick={find}>{finding ? 'Looking…' : 'Find it'}</button>
+	{@const isNew = !saved[kind]}
+	{@const connected = !!info && !changing}
+	<Modal bind:open title={isNew ? `Add ${k.name} server` : `Edit ${saved[kind]!.name}`}>
+		{#snippet top()}
+			<!-- The window's top is a band in the app's color, holding the connection (design E4.2). -->
+			<div class="px-5 pb-5 pt-5" style="background:linear-gradient(160deg, rgb({k.rgb} / 0.3), rgb({k.rgb} / 0.04))">
+				<div class="mb-4 flex items-center gap-3 pr-8">
+					<img src="/logos/{kind}.svg" alt="" class="size-10 shrink-0" />
+					<div><div class="text-lg font-semibold">{isNew ? `Add ${k.name} server` : `Edit ${saved![kind]!.name}`}</div><div class="text-xs text-gray-300">{k.about}</div></div>
+				</div>
+				{#if connected}
+					<div class="swap-in flex items-center gap-3 rounded-xl border border-green-500/40 bg-gray-900/90 p-4 shadow-xl">
+						<span class="size-2 shrink-0 rounded-full bg-green-500"></span>
+						<div class="min-w-0 flex-1"><div class="text-sm font-medium text-green-400">Connected · v{info!.version.split('.').slice(0, 2).join('.')}</div><div class="truncate text-xs text-gray-500">{form.url}</div></div>
+						<button class="text-xs text-primary-light hover:underline" onclick={() => (changing = true)}>Change</button>
 					</div>
-					{#if found && found.length > 1}
-						<div class="mt-2 flex flex-wrap gap-2">
-							{#each found as f (f)}<button class="rounded-full border px-3 py-1 text-xs {form.url === f ? 'border-primary bg-primary/15 text-white' : 'border-gray-700 text-gray-300 hover:text-white'}" onclick={() => pick(f)}>{f}</button>{/each}
+				{:else}
+					<div class="space-y-3 rounded-xl border border-gray-700/60 bg-gray-900/90 p-4 shadow-xl">
+						<div>
+							<label for="svc-url" class="block text-sm">Address</label>
+							<div class="relative">
+								<input id="svc-url" bind:value={form.url} oninput={addressChanged} placeholder="http://192.168.1.10:{k.port}" autocomplete="off" spellcheck="false" class="{input} pr-20" />
+								<button class="absolute right-2 top-1/2 mt-0.5 -translate-y-1/2 px-2 text-xs text-gray-400 hover:text-white disabled:opacity-50" disabled={finding} onclick={find}>{finding ? 'Looking…' : 'Find it'}</button>
+							</div>
+							{#if found && found.length > 1}
+								<div class="mt-2 flex flex-wrap gap-2">
+									{#each found as f (f)}<button class="rounded-full border px-3 py-1 text-xs {form.url === f ? 'border-primary bg-primary/15 text-white' : 'border-gray-700 text-gray-300 hover:text-white'}" onclick={() => pick(f)}>{f}</button>{/each}
+								</div>
+							{:else if found && found.length === 0}
+								<p class="mt-1 text-xs text-yellow-400">No {k.name} found nearby. Enter its address.</p>
+							{/if}
 						</div>
-					{:else if found && found.length === 0}
-						<p class="mt-1 text-xs text-yellow-400">No {k.name} found nearby. Enter its address.</p>
-					{/if}
-				</div>
-				<div>
-					<label for="svc-key" class="block text-sm">API key</label>
-					<div class="relative">
-						<input id="svc-key" bind:value={form.apiKey} oninput={() => (error = '')} type={showKey ? 'text' : 'password'} autocomplete="off" spellcheck="false"
-							placeholder={saved[kind]?.apiKeySet ? `Saved, ends in ${saved[kind]!.apiKeyEnd}` : ''} class="{input} pr-16 font-mono" />
-						<button class="absolute right-2 top-1/2 mt-0.5 -translate-y-1/2 px-2 text-xs text-gray-400 hover:text-white" onclick={() => (showKey = !showKey)}>{showKey ? 'Hide' : 'Show'}</button>
+						<div>
+							<label for="svc-key" class="block text-sm">API key</label>
+							<div class="relative">
+								<input id="svc-key" bind:value={form.apiKey} oninput={() => (error = '')} type={showKey ? 'text' : 'password'} autocomplete="off" spellcheck="false"
+									placeholder={saved?.[kind]?.apiKeySet ? `Saved, ends in ${saved![kind]!.apiKeyEnd}` : `${k.name} → Settings → General → Security`} class="{input} pr-16 font-mono" />
+								<button class="absolute right-2 top-1/2 mt-0.5 -translate-y-1/2 px-2 text-xs text-gray-400 hover:text-white" onclick={() => (showKey = !showKey)}>{showKey ? 'Hide' : 'Show'}</button>
+							</div>
+						</div>
+						<div class="flex gap-2">
+							<button class="btn-ghost flex-1 py-2 text-sm" disabled={testing || !form.url} onclick={test}>{testing ? 'Testing…' : 'Test'}</button>
+							{#if changing && info}<button class="btn-ghost px-4 py-2 text-sm" onclick={() => (changing = false)}>Cancel</button>{/if}
+						</div>
+						{#if error}<p class="flex items-center gap-2 text-xs text-red-400"><span class="size-2 shrink-0 rounded-full bg-red-500"></span>{error}</p>{/if}
 					</div>
-					<p class="mt-1 text-xs text-gray-500">In {k.name}: Settings → General → Security.</p>
-				</div>
-				<button class="btn-ghost w-full py-2 text-sm" disabled={testing || !form.url} onclick={test}>{testing ? 'Testing…' : info ? 'Test again' : 'Test connection'}</button>
-				{#if error || info}
-					<p class="-mt-2 flex items-center gap-2 text-xs {error ? 'text-red-400' : 'text-green-400'}">
-						<span class="size-2 shrink-0 rounded-full {error ? 'bg-red-500' : 'bg-green-500'}"></span>
-						{error || `Connected to ${k.name} ${info!.version}`}
-					</p>
 				{/if}
 			</div>
+		{/snippet}
 
-			{#if info}
-				<div class="space-y-4">
-					{@render section('Defaults')}
-					<div>
-						<label for="svc-root" class="block text-sm">Root folder</label>
-						<Select id="svc-root" bind:value={form.rootFolder} placeholder="Pick a folder" search={info.folders.length > 8}
-							options={info.folders.map((f) => ({ value: f.path, label: f.path, hint: f.accessible ? `${fmtBytes(f.freeSpace)} free` : 'not reachable' }))} />
-						{#if !info.folders.length}<p class="mt-1 text-xs text-yellow-400">Add a root folder in {k.name} first (Settings → Media Management).</p>{/if}
+		<!-- The settings stay hidden until the connection works. -->
+		<div class="reveal px-5 {info ? 'open' : ''}" inert={!info}>
+			<div>
+				{#if info}
+					<div class="space-y-4 py-5">
+						<div>
+							<label for="svc-root" class="block text-sm">Root folder</label>
+							<Select id="svc-root" bind:value={form.rootFolder} placeholder="Pick a folder" search={info.folders.length > 8}
+								options={info.folders.map((f) => ({ value: f.path, label: f.path, hint: f.accessible ? `${fmtBytes(f.freeSpace)} free` : 'not reachable' }))} />
+							{#if !info.folders.length}<p class="mt-1 text-xs text-yellow-400">Add a root folder in {k.name} first (Settings → Media Management).</p>{/if}
+						</div>
+						<div>
+							<label for="svc-quality" class="block text-sm">Default quality</label>
+							<Select id="svc-quality" bind:value={form.qualityProfileId} placeholder="Pick a quality" search={info.profiles.length > 8}
+								options={info.profiles.map((p) => ({ value: p.id, label: p.name }))} />
+						</div>
+						<Toggle checked={form.searchOnAdd} label="Search right away" about="Start looking for a download as soon as something is requested." onchange={(on) => (form.searchOnAdd = on)} />
+						{#if kind === 'sonarr'}
+							<Toggle checked={form.seasonFolders} label="Season folders" about="Each season gets its own folder." onchange={(on) => (form.seasonFolders = on)} />
+						{/if}
+						<div>
+							<label for="svc-name" class="block text-sm">Name</label>
+							<input id="svc-name" bind:value={form.name} maxlength="60" placeholder={k.name} class={input} />
+						</div>
+						<div>
+							<label for="svc-web" class="block text-sm">Web address <span class="text-gray-500">(optional)</span></label>
+							<input id="svc-web" bind:value={form.webUrl} placeholder={form.url || `https://${k.kind}.example.com`} autocomplete="off" spellcheck="false" class={input} />
+							<p class="mt-1 text-xs text-gray-500">Used by Open {k.name} when the address above only works from the server.</p>
+						</div>
 					</div>
-					<div>
-						<label for="svc-quality" class="block text-sm">Default quality</label>
-						<Select id="svc-quality" bind:value={form.qualityProfileId} placeholder="Pick a quality" search={info.profiles.length > 8}
-							options={info.profiles.map((p) => ({ value: p.id, label: p.name }))} />
-					</div>
-					<Toggle checked={form.searchOnAdd} label="Search right away" about="Start looking for a download as soon as something is requested." onchange={(on) => (form.searchOnAdd = on)} />
-					{#if kind === 'sonarr'}
-						<Toggle checked={form.seasonFolders} label="Season folders" about="Each season gets its own folder." onchange={(on) => (form.seasonFolders = on)} />
-					{/if}
-				</div>
-
-				<div class="space-y-4">
-					{@render section('Display')}
-					<div>
-						<label for="svc-name" class="block text-sm">Name</label>
-						<input id="svc-name" bind:value={form.name} maxlength="60" placeholder={k.name} class={input} />
-					</div>
-					<div>
-						<label for="svc-web" class="block text-sm">Web address <span class="text-gray-500">(optional)</span></label>
-						<input id="svc-web" bind:value={form.webUrl} placeholder={form.url || `https://${k.kind}.example.com`} autocomplete="off" spellcheck="false" class={input} />
-						<p class="mt-1 text-xs text-gray-500">What "Open {k.name}" uses. Set it when the address above only works from the server, like a Docker address.</p>
-					</div>
-				</div>
-			{/if}
+				{/if}
+			</div>
 		</div>
 		{#snippet footer()}
-			{#if saved?.[kind]}<button class="btn-ghost mr-auto text-red-300" onclick={() => { open = false; confirmRemove = true; }}>Remove</button>{/if}
+			{#if !isNew}<button class="btn-ghost mr-auto text-red-300" onclick={() => { open = false; confirmRemove = true; }}>Remove</button>{/if}
 			<button class="btn-ghost" onclick={() => (open = false)}>Cancel</button>
-			<button class="btn px-6" disabled={!info || saving || !form.rootFolder || !form.qualityProfileId} onclick={save}>{saving ? 'Saving…' : 'Save'}</button>
+			<button class="btn px-6" disabled={!info || changing || saving || !form.rootFolder || !form.qualityProfileId || (!isNew && !dirty)} onclick={save}>{saving ? 'Saving…' : isNew ? 'Add server' : 'Save'}</button>
 		{/snippet}
 	</Modal>
 
