@@ -407,3 +407,34 @@ func (l *Library) Lookup(keys []string) (map[string]Item, error) {
 	}
 	return out, nil
 }
+
+// Seasons says how many episodes of each season of a series are in Plex (season 0 = specials).
+// Empty when the series isn't in Plex.
+func (l *Library) Seasons(ctx context.Context, tmdbID int) (map[int]int, error) {
+	out := map[int]int{}
+	items, err := l.Store.PlexItemsFor([]string{fmt.Sprintf("series:%d", tmdbID)})
+	if err != nil || len(items) == 0 {
+		return out, err
+	}
+	base, tok, ok := l.conn()
+	if !ok {
+		return out, nil
+	}
+	var res struct {
+		MediaContainer struct {
+			Metadata []struct {
+				Index     int `json:"index"`
+				LeafCount int `json:"leafCount"`
+			} `json:"Metadata"`
+		} `json:"MediaContainer"`
+	}
+	for _, it := range items {
+		if err := l.get(ctx, base, "/library/metadata/"+url.PathEscape(it.RatingKey)+"/children", tok, &res); err != nil {
+			return out, err
+		}
+	}
+	for _, s := range res.MediaContainer.Metadata {
+		out[s.Index] = s.LeafCount
+	}
+	return out, nil
+}

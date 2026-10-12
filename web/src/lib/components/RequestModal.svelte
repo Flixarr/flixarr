@@ -16,15 +16,20 @@
 	let whole = $state(true);
 	let seasons = $state<number[]>([]);
 	let sending = $state(false);
+	let inPlex = $state<Record<number, number>>({}); // episodes in Plex per season
 
 	const series = $derived(item.type === 'series' ? (item as Series) : null);
 	const list = $derived(series ? series.seasons.filter((s) => s.n > 0) : []);
+	const complete = (n: number, eps: number) => (inPlex[n] ?? 0) >= eps && eps > 0;
+	const anyInPlex = $derived(Object.keys(inPlex).length > 0);
 
 	$effect(() => {
 		if (!open) return;
 		opts = null;
 		whole = true;
 		seasons = [];
+		inPlex = {};
+		if (item.type === 'series') api<Record<number, number>>(`/plex/seasons/${item.id}`).then((d) => (inPlex = d)).catch(() => {});
 		api<Options>(`/requests/options?type=${item.type}`).then((o) => {
 			opts = o;
 			profileId = o.defaultProfileId ?? 0;
@@ -88,13 +93,17 @@
 						<button class="flex-1 rounded-md px-3 py-1.5 {!whole ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'}" role="radio" aria-checked={!whole} onclick={() => (whole = false)}>Pick seasons</button>
 					</div>
 					{#if whole}
-						<p class="text-xs text-gray-500">Every season, including new ones as they air.</p>
+						<p class="text-xs text-gray-500">Every season, including new ones as they air.{anyInPlex ? ' Episodes you already have are skipped.' : ''}</p>
 					{:else}
 						<div class="max-h-64 divide-y divide-gray-700/40 overflow-y-auto rounded-lg border border-gray-700/50 bg-gray-900/40">
 							{#each list as s (s.n)}
-								<label class="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm hover:bg-white/5">
-									<input type="checkbox" class="accent-[var(--color-primary)]" checked={seasons.includes(s.n)} onchange={() => toggle(s.n)} />
-									<span class="flex-1">{s.name}</span><span class="text-xs text-gray-500">{s.episodes} episode{s.episodes === 1 ? '' : 's'}</span>
+								{@const done = complete(s.n, s.episodes)}
+								<label class="flex items-center gap-3 px-3 py-2 text-sm {done ? 'opacity-60' : 'cursor-pointer hover:bg-white/5'}">
+									<input type="checkbox" class="accent-[var(--color-primary)]" disabled={done} checked={done || seasons.includes(s.n)} onchange={() => toggle(s.n)} />
+									<span class="flex-1">{s.name}</span>
+									{#if done}<span class="text-xs text-green-400">In Plex</span>
+									{:else if inPlex[s.n]}<span class="text-xs text-green-300">{inPlex[s.n]} of {s.episodes} in Plex</span>
+									{:else}<span class="text-xs text-gray-500">{s.episodes} episode{s.episodes === 1 ? '' : 's'}</span>{/if}
 								</label>
 							{/each}
 						</div>

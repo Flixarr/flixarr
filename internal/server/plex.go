@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/Flixarr/flixarr/internal/store"
 )
@@ -76,4 +77,15 @@ func (s *Server) plexLibraries(w http.ResponseWriter, r *http.Request, _ *store.
 func (s *Server) plexScan(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	s.Jobs.RunNow(s.BaseCtx, "plex-full")
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// plexSeasons: episodes in Plex per season of a series, for the series page and the request window.
+func (s *Server) plexSeasons(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	id, _ := strconv.Atoi(r.PathValue("tmdbId"))
+	got, err := s.Library.Seasons(r.Context(), id)
+	if err != nil {
+		s.Log.Warn("plex seasons", "err", err)
+		got = map[int]int{} // the page works without it
+	}
+	writeJSON(w, http.StatusOK, got)
 }

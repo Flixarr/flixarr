@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { meta, fmtDate } from '#lib/api.ts';
+	import { api, meta, fmtDate } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import type { Series, Season } from '#lib/types.ts';
 	import DetailHeader from '#lib/components/DetailHeader.svelte';
@@ -28,6 +28,14 @@
 		const show = (d: Series) => { if (!alive) return; t = d; document.title = 'Flixarr · ' + d.title; };
 		meta<Series>('series/' + id, {}, show).then(show).catch((e) => (error = e.message));
 		return () => (alive = false);
+	});
+
+	// Episodes in Plex per season (empty when the series isn't in Plex).
+	let inPlex = $state<Record<number, number>>({});
+	$effect(() => {
+		const tid = page.params.id;
+		inPlex = {};
+		api<Record<number, number>>(`/plex/seasons/${tid}`).then((d) => tid === page.params.id && (inPlex = d)).catch(() => {});
 	});
 
 	function openSeason(n: number, isOpen: boolean) {
@@ -75,6 +83,9 @@
 									{#if s.poster}<Img path={s.poster} kind="poster" sizes="40px" class="aspect-[2/3] w-10 shrink-0 rounded-md bg-gray-800 ring-1 ring-gray-700/60" />
 									{:else}<div class="grid h-15 w-10 place-items-center rounded-md bg-gray-800 text-xs text-gray-500">S{s.n}</div>{/if}
 									<div class="min-w-0 flex-1"><div class="truncate text-sm font-medium">{s.name}</div><div class="text-xs text-gray-400">{s.episodes} episodes{s.air ? ' · ' + s.air.slice(0, 4) : ''}</div></div>
+									{#if inPlex[s.n]}
+										<span class="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] ring-1 {inPlex[s.n] >= s.episodes ? 'bg-green-500/15 text-green-400 ring-green-500/40' : 'bg-green-500/10 text-green-300 ring-green-500/30'}">{inPlex[s.n] >= s.episodes ? 'In Plex' : `${inPlex[s.n]} of ${s.episodes} in Plex`}</span>
+									{/if}
 									<span class="text-gray-500 transition group-open:rotate-90"><Icon name="chevron" class="size-4" /></span>
 								</summary>
 								<div class="border-t border-gray-700/40">
