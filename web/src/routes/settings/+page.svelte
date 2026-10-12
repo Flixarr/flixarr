@@ -12,6 +12,7 @@
 	import ServicesSettings from '#lib/components/settings/ServicesSettings.svelte';
 	import ProfilesSettings from '#lib/components/settings/ProfilesSettings.svelte';
 	import GeneralSettings from '#lib/components/settings/GeneralSettings.svelte';
+	import PlexSettings from '#lib/components/settings/PlexSettings.svelte';
 	import { markAlertsSeen, servicesUnread } from '#lib/alerts.svelte.ts';
 
 	// Section key → label, icon, one-line description (side menu / phone list).
@@ -98,6 +99,8 @@
 
 				{#if tab === 'general'}
 					<GeneralSettings />
+				{:else if tab === 'plex'}
+					<PlexSettings />
 				{:else if tab === 'services'}
 					<ServicesSettings />
 				{:else if tab === 'profiles'}

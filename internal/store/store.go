@@ -45,6 +45,10 @@ func Open(dataDir string, box *secret.Box) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
+	if err := s.sealSecretSettings("plex_admin_token", "plex_server_token"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("encrypt settings: %w", err)
+	}
 	if err := s.sealServerKeys(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("encrypt keys: %w", err)
@@ -204,4 +208,34 @@ func (s *Store) SessionUser(token string) (*User, error) {
 func (s *Store) DeleteSession(token string) error {
 	_, err := s.db.Exec(`DELETE FROM sessions WHERE token_hash = ?`, hashToken(token))
 	return err
+}
+
+// ---------- secret settings ----------
+
+// SecretSetting returns a setting stored encrypted (Plex tokens), decrypted; def when it isn't set
+// or can't be decrypted.
+func (s *Store) SecretSetting(key, def string) string {
+	v, err := s.box.Open(s.Setting(key, ""))
+	if err != nil || v == "" {
+		return def
+	}
+	return v
+}
+
+// SetSecretSetting stores a setting encrypted.
+func (s *Store) SetSecretSetting(key, value string) error {
+	return s.SetSetting(key, s.box.Seal(value))
+}
+
+// sealSecretSettings encrypts secret settings saved in plain text before encryption existed.
+func (s *Store) sealSecretSettings(keys ...string) error {
+	for _, k := range keys {
+		v := s.Setting(k, "")
+		if v != "" && !secret.Sealed(v) {
+			if err := s.SetSecretSetting(k, v); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

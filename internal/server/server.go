@@ -18,6 +18,7 @@ import (
 	"github.com/Flixarr/flixarr/internal/jobs"
 	"github.com/Flixarr/flixarr/internal/meta"
 	"github.com/Flixarr/flixarr/internal/plex"
+	"github.com/Flixarr/flixarr/internal/plexlib"
 	"github.com/Flixarr/flixarr/internal/profiles"
 	"github.com/Flixarr/flixarr/internal/requests"
 	"github.com/Flixarr/flixarr/internal/store"
@@ -38,6 +39,7 @@ type Server struct {
 	Arr      *arrstatus.Monitor
 	Profiles *profiles.Manager
 	Requests *requests.Service
+	Library  *plexlib.Library
 	Web      fs.FS // built web app (index + assets)
 	Log      *slog.Logger
 	// BaseCtx outlives requests; jobs started with "Run now" use it.
@@ -86,6 +88,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/profiles", s.auth(s.admin(s.profilesInfo)))
 	mux.HandleFunc("PUT /api/services/{kind}", s.auth(s.admin(s.serviceSave)))
 	mux.HandleFunc("DELETE /api/services/{kind}", s.auth(s.admin(s.serviceDelete)))
+	mux.HandleFunc("GET /api/plex", s.auth(s.admin(s.plexStatus)))
+	mux.HandleFunc("GET /api/plex/servers", s.auth(s.admin(s.plexServers)))
+	mux.HandleFunc("POST /api/plex/connect", s.auth(s.admin(s.plexConnect)))
+	mux.HandleFunc("DELETE /api/plex", s.auth(s.admin(s.plexDisconnect)))
+	mux.HandleFunc("PUT /api/plex/libraries", s.auth(s.admin(s.plexLibraries)))
+	mux.HandleFunc("POST /api/plex/scan", s.auth(s.admin(s.plexScan)))
 	mux.HandleFunc("GET /api/jobs", s.auth(s.admin(s.jobList)))
 	mux.HandleFunc("PUT /api/jobs/{id}", s.auth(s.admin(s.jobSet)))
 	mux.HandleFunc("POST /api/jobs/{id}/run", s.auth(s.admin(s.jobRun)))
@@ -237,7 +245,7 @@ func (s *Server) plexCheck(w http.ResponseWriter, r *http.Request) {
 		// First run: the first person to sign in owns this Flixarr and becomes the admin.
 		u, err = s.Store.CreateUser(store.User{PlexID: acct.ID, Username: name, Email: acct.Email, Avatar: acct.Thumb, Role: "Admin"})
 		if err == nil {
-			err = s.Store.SetSetting("plex_admin_token", pin.AuthToken)
+			err = s.Store.SetSecretSetting("plex_admin_token", pin.AuthToken)
 		}
 		s.Log.Info("setup complete: admin created", "user", name)
 	} else {
@@ -249,6 +257,9 @@ func (s *Server) plexCheck(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			err = s.Store.UpdatePlexProfile(u.ID, name, acct.Email, acct.Thumb)
 			u.Username, u.Email, u.Avatar = name, acct.Email, acct.Thumb
+		}
+		if err == nil && u.Role == "Admin" {
+			err = s.Store.SetSecretSetting("plex_admin_token", pin.AuthToken) // keeps the Plex server list working
 		}
 	}
 	if err != nil {

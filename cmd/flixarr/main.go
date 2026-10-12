@@ -20,6 +20,7 @@ import (
 	"github.com/Flixarr/flixarr/internal/jobs"
 	"github.com/Flixarr/flixarr/internal/meta"
 	"github.com/Flixarr/flixarr/internal/plex"
+	"github.com/Flixarr/flixarr/internal/plexlib"
 	"github.com/Flixarr/flixarr/internal/profiles"
 	"github.com/Flixarr/flixarr/internal/requests"
 	"github.com/Flixarr/flixarr/internal/secret"
@@ -114,6 +115,14 @@ func main() {
 			runner.RunNow(runCtx, "profiles-sync")
 		}
 	}
+	// Plex: what's in the server's libraries, so titles show as available whoever added them.
+	lib := &plexlib.Library{Store: st, ClientID: clientID, Version: version.Full(), Log: log}
+	runner.Add(&jobs.Job{ID: "plex-full", Name: "Plex: full library scan", Default: "0 3 * * *",
+		About: "Reads every title in the chosen Plex libraries, and notices ones that were removed.",
+		Run:   lib.FullScan})
+	runner.Add(&jobs.Job{ID: "plex-recent", Name: "Plex: recently added scan", Default: "*/5 * * * *",
+		About: "Reads the newest additions to the chosen Plex libraries, so new titles show as available within minutes.",
+		Run:   lib.RecentScan})
 	runner.Start(runCtx)
 	runner.RunNow(runCtx, "profiles-sync")
 	runner.RunNow(runCtx, "arr-status") // fill the cards right away instead of waiting for the first minute
@@ -128,6 +137,7 @@ func main() {
 		Arr:      arrMon,
 		Profiles: pm,
 		Requests: reqs,
+		Library:  lib,
 		Web:      webui.FS(),
 		Log:      log,
 		BaseCtx:  runCtx,

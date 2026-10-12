@@ -26,6 +26,14 @@ type Service struct {
 // ErrAlready is returned when a title already has an open request.
 var ErrAlready = errors.New("already requested")
 
+// ErrInPlex is returned when the title is already in Plex.
+var ErrInPlex = errors.New("already in Plex")
+
+func inPlex(st *store.Store, typ string, tmdbID int) bool {
+	got, _ := st.PlexItemsFor([]string{fmt.Sprintf("%s:%d", typ, tmdbID)})
+	return len(got) > 0
+}
+
 // New is what someone asks for.
 type New struct {
 	Type      string   `json:"type"` // movie | series
@@ -57,6 +65,9 @@ func (s *Service) Create(ctx context.Context, u *store.User, in New) (store.Requ
 	}
 	if in.TmdbID <= 0 || strings.TrimSpace(in.Title) == "" {
 		return store.Request{}, errors.New("missing title")
+	}
+	if inPlex(s.Store, in.Type, in.TmdbID) {
+		return store.Request{}, ErrInPlex
 	}
 	if _, open, err := s.Store.OpenRequest(in.Type, in.TmdbID); err != nil {
 		return store.Request{}, err
@@ -226,7 +237,7 @@ func isAnime(genres []string, language string) bool {
 }
 
 // Refresh moves sent requests along: downloading (with progress) while in the queue, available once
-// the files are there. It runs with the every-minute Radarr/Sonarr status job.
+// the files are there (or the title shows up in Plex). It runs with the every-minute Radarr/Sonarr status job.
 func (s *Service) Refresh(ctx context.Context) error {
 	reqs, err := s.Store.ActiveRequests()
 	if err != nil || len(reqs) == 0 {
@@ -244,7 +255,9 @@ func (s *Service) Refresh(ctx context.Context) error {
 			continue
 		}
 		before := r
-		if err := s.follow(ctx, v, &r); err != nil {
+		if inPlex(s.Store, r.Type, r.TmdbID) {
+			r.Status, r.Progress = "available", 100 // Plex has it: that's what people care about
+		} else if err := s.follow(ctx, v, &r); err != nil {
 			continue // try again next minute
 		}
 		if r.Status != before.Status || r.Progress != before.Progress {

@@ -186,3 +186,18 @@ func TestApprovalAlreadyThereAndFailure(t *testing.T) {
 		t.Fatalf("again after failure: %+v %v", r2, err)
 	}
 }
+
+func TestPlexMakesAvailable(t *testing.T) {
+	s, st, _, _, admin, _ := setup(t)
+	ctx := context.Background()
+	r, _ := s.Create(ctx, admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix"})
+	st.SavePlexItem(store.PlexItem{Type: "movie", TmdbID: 603, RatingKey: "1", Section: "1", SeenAt: "2026-01-01T00:00:00Z"})
+	s.Refresh(ctx)
+	if r, _ = st.Request(r.ID); r.Status != "available" {
+		t.Fatalf("in Plex: %+v", r)
+	}
+	st.DeleteRequest(r.ID)
+	if _, err := s.Create(ctx, admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix"}); err != ErrInPlex {
+		t.Fatalf("request something in Plex: %v", err)
+	}
+}

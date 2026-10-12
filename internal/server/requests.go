@@ -35,6 +35,10 @@ func (s *Server) requestCreate(w http.ResponseWriter, r *http.Request, u *store.
 		return
 	}
 	req, err := s.Requests.Create(r.Context(), u, in)
+	if errors.Is(err, requests.ErrInPlex) {
+		writeErr(w, http.StatusConflict, "That's already on Plex.")
+		return
+	}
 	if errors.Is(err, requests.ErrAlready) {
 		writeErr(w, http.StatusConflict, "That's already been requested.")
 		return
@@ -63,10 +67,19 @@ func (s *Server) requestStatus(w http.ResponseWriter, r *http.Request, _ *store.
 		ID       int64  `json:"id"`
 		Status   string `json:"status"`
 		Progress int    `json:"progress"`
+		Plex     string `json:"plex,omitempty"` // opens it in Plex
 	}
 	out := map[string]brief{}
 	for k, v := range got {
 		out[k] = brief{ID: v.ID, Status: v.Status, Progress: v.Progress}
+	}
+	// In Plex = available, whoever added it and whether or not it was requested.
+	if inPlex, err := s.Library.Lookup(keys); err == nil {
+		for k, it := range inPlex {
+			b := out[k]
+			b.Status, b.Progress, b.Plex = "available", 100, it.URL
+			out[k] = b
+		}
 	}
 	writeJSON(w, http.StatusOK, out)
 }

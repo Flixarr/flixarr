@@ -11,6 +11,7 @@
 	import Trailer from '#lib/components/Trailer.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import RequestButton from '#lib/components/RequestButton.svelte';
+	import type { RequestBrief } from '#lib/types.ts';
 	import Img from '#lib/components/Img.svelte';
 
 	let m = $state<Movie | null>(null);
@@ -27,15 +28,19 @@
 		meta<Movie>('movie/' + id, {}, show).then(show).catch((e) => (error = e.message));
 		return () => (alive = false);
 	});
+	let brief = $state<RequestBrief | null | undefined>(undefined);
 </script>
 
 {#if error}
 	<div class="px-4 pt-28 text-center text-gray-400">{error}</div>
 {:else if m}
 	<DetailHeader item={m}>
-		{#snippet chip()}<span class="rounded-md bg-gray-900/70 px-1.5 py-0.5 text-gray-300 ring-1 ring-gray-700/60">Not in your library</span>{/snippet}
+		{#snippet chip()}
+			{#if brief?.plex}<span class="rounded-md bg-green-500/15 px-1.5 py-0.5 text-green-300 ring-1 ring-green-500/40">In your library</span>
+			{:else if brief !== undefined}<span class="rounded-md bg-gray-900/70 px-1.5 py-0.5 text-gray-300 ring-1 ring-gray-700/60">Not in your library</span>{/if}
+		{/snippet}
 		{#snippet actions()}
-			{#if m}<RequestButton item={m} />{/if}
+			{#if m}<RequestButton item={m} bind:req={brief} />{/if}
 			{#if m?.trailer}<button class="btn-ghost px-4" onclick={() => (trailer = true)}><Icon name="play" class="size-4" />Trailer</button>{/if}
 		{/snippet}
 	</DetailHeader>
