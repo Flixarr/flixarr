@@ -1,7 +1,9 @@
 <script lang="ts">
+	import { statusOf } from '#lib/availability.svelte.ts';
+	import { can } from '#lib/session.svelte.ts';
+	import PlexMark from './PlexMark.svelte';
 	// Discover banner: rotates trending titles every 5s, fades into the page, pauses on hover.
 	import { href } from '#lib/api.ts';
-	import { notify } from '#lib/toast.svelte.ts';
 	import type { Card } from '#lib/types.ts';
 	import Icon from './Icon.svelte';
 	import Img, { BACKDROP_SIZES } from './Img.svelte';
@@ -37,7 +39,13 @@
 					<h1 class="text-2xl font-bold leading-tight drop-shadow-xl laptop:text-3xl">{h.title}</h1>
 					<p class="line-clamp-1 text-sm text-gray-400 laptop:line-clamp-2">{h.overview}</p>
 					<div class="flex items-center gap-3 pt-1">
-						<button class="btn px-4 py-1.5 text-sm" onclick={() => notify('Requests arrive in the next Flixarr update.', 'orange')}><Icon name="plus" class="size-4" />Request</button>
+						{#if statusOf(`${h.type}:${h.id}`)?.plex}
+							<a href={statusOf(`${h.type}:${h.id}`)?.plex} target="_blank" rel="noopener" class="btn-plex px-4 py-1.5 text-sm"><PlexMark class="size-4" color="#111827" />Play on Plex</a>
+						{:else if statusOf(`${h.type}:${h.id}`) && !['failed', 'declined'].includes(statusOf(`${h.type}:${h.id}`)!.status)}
+							<a href="/requests" class="btn-ghost px-4 py-1.5 text-sm text-yellow-300">Requested</a>
+						{:else if can(h.type === 'series' ? 'requestTv' : 'requestMovies')}
+							<a href="{href(h)}?request=1" class="btn px-4 py-1.5 text-sm"><Icon name="plus" class="size-4" />Request</a>
+						{/if}
 						<a href={href(h)} class="btn-ghost px-4 py-1.5 text-sm">Details</a>
 						<span class="ml-1 text-xs text-gray-400">{h.year} · ★ {h.rating}</span>
 					</div>

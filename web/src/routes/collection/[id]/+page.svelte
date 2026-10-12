@@ -1,14 +1,61 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { meta } from '#lib/api.ts';
+	import { api, meta } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import type { Collection } from '#lib/types.ts';
 	import Poster from '#lib/components/Poster.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import Img, { BACKDROP_SIZES } from '#lib/components/Img.svelte';
+	import Modal from '#lib/components/Modal.svelte';
+	import Select from '#lib/components/Select.svelte';
+	import { statusOf, remember } from '#lib/availability.svelte.ts';
+	import { can } from '#lib/session.svelte.ts';
+	import type { Card, Request } from '#lib/types.ts';
 
 	let c = $state<Collection | null>(null);
 	let error = $state('');
+	let open = $state(false);
+	let picked = $state<number[]>([]);
+	let sending = $state(false);
+	type Options = { connected: boolean; server: string; approval: boolean; defaultProfileId?: number; profiles: { id: number; name: string }[]; usage: { limit: number; used: number } };
+	let opts = $state<Options | null>(null);
+	let profileId = $state(0);
+
+	// Where each movie stands: in Plex, requested, or missing.
+	const st = (p: Card) => statusOf(`movie:${p.id}`);
+	const have = $derived(c ? c.parts.filter((p) => st(p)?.plex || st(p)?.status === 'available').length : 0);
+	const missing = $derived(c ? c.parts.filter((p) => { const s = st(p); return s !== undefined && (!s || s.status === 'failed' || s.status === 'declined'); }) : []);
+
+	async function openRequest() {
+		picked = missing.filter((p) => p.year && p.year <= String(new Date().getFullYear())).map((p) => p.id);
+		opts = null;
+		open = true;
+		try {
+			opts = await api<Options>('/requests/options?type=movie');
+			profileId = opts.defaultProfileId ?? 0;
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Could not load.', 'orange');
+		}
+	}
+	async function send() {
+		sending = true;
+		let ok = 0, failed = 0, firstErr = '';
+		for (const id of picked) {
+			const p = c!.parts.find((x) => x.id === id)!;
+			try {
+				const r = await api<Request>('/requests', { method: 'POST', body: JSON.stringify({ type: 'movie', tmdbId: p.id, title: p.title, year: p.year, poster: p.poster ?? '', backdrop: p.backdrop ?? '', profileId, genres: [], language: '' }) });
+				remember(`movie:${p.id}`, { id: r.id, status: r.status, progress: r.progress });
+				if (r.status === 'failed') { failed++; firstErr ||= r.error; } else ok++;
+			} catch (e) {
+				failed++;
+				firstErr ||= e instanceof Error ? e.message : 'Could not request it.';
+			}
+		}
+		sending = false;
+		open = false;
+		if (failed) notify(`Requested ${ok} of ${ok + failed}. ${firstErr}`, 'orange');
+		else notify(`Requested ${ok} ${ok === 1 ? 'movie' : 'movies'}.${opts?.approval ? ' They wait for an admin to approve them.' : ''}`);
+	}
 	$effect(() => {
 		const id = page.params.id;
 		c = null;
@@ -31,8 +78,15 @@
 			<div class="min-w-0 space-y-3">
 				<span class="rounded-md bg-primary/90 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">Collection</span>
 				<h1 class="text-2xl font-bold tablet:text-3xl laptop:text-4xl">{c.name}</h1>
-				<div class="text-sm text-gray-300">{c.parts.length} movies</div>
-				<button class="btn px-5" onclick={() => notify('Requests arrive in the next Flixarr update.', 'orange')}><Icon name="plus" class="size-4" />Request collection</button>
+				<div class="max-w-xs space-y-1.5">
+					<div class="text-sm text-gray-300">{c.parts.length} movies · {have} in your library</div>
+					<div class="h-1.5 overflow-hidden rounded-full bg-gray-700/60"><div class="h-full rounded-full bg-green-500 transition-all" style="width:{c.parts.length ? (have / c.parts.length) * 100 : 0}%"></div></div>
+				</div>
+				{#if missing.length && can('requestMovies')}
+					<button class="btn px-5" onclick={openRequest}><Icon name="plus" class="size-4" />Request {missing.length} missing</button>
+				{:else if c.parts.length && have === c.parts.length}
+					<span class="inline-flex items-center gap-2 rounded-lg bg-green-500/15 px-4 py-2 text-sm font-medium text-green-300 ring-1 ring-green-500/40"><Icon name="check" class="size-4" />All in your library</span>
+				{/if}
 			</div>
 		</div>
 	</section>
@@ -46,3 +100,33 @@
 		</section>
 	</main>
 {/if}
+
+<Modal bind:open title="Request {c?.name ?? ''}" sub="{missing.length} not in your library">
+	<div class="space-y-4 p-5">
+		{#if !opts}
+			<p class="text-sm text-gray-400">Loading…</p>
+		{:else if !opts.connected}
+			<p class="rounded-lg bg-yellow-500/10 px-3 py-2 text-sm text-yellow-300 ring-1 ring-yellow-500/30">{opts.server} isn't connected yet. An admin can connect it in Settings → Services.</p>
+		{:else}
+			<p class="text-xs text-gray-400">Goes to <span class="text-gray-200">{opts.server}</span>{opts.approval ? ' after an admin approves it' : ''}.{#if opts.usage?.limit}{@const left = Math.max(0, opts.usage.limit - opts.usage.used)} You have {left} movie{left === 1 ? '' : 's'} left this week.{/if}</p>
+			{#if opts.profiles.length}
+				<div>
+					<label for="col-quality" class="block text-sm">Quality</label>
+					<Select id="col-quality" bind:value={profileId} options={opts.profiles.map((p) => ({ value: p.id, label: p.name, hint: p.id === opts!.defaultProfileId ? 'default' : '' }))} />
+				</div>
+			{/if}
+			<div class="max-h-[45dvh] divide-y divide-gray-700/40 overflow-y-auto rounded-lg border border-gray-700/50 bg-gray-900/40">
+				{#each missing as p (p.id)}
+					<label class="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm hover:bg-white/5">
+						<input type="checkbox" class="accent-[var(--color-primary)]" checked={picked.includes(p.id)} onchange={(e) => (picked = (e.currentTarget as HTMLInputElement).checked ? [...picked, p.id] : picked.filter((x) => x !== p.id))} />
+						<span class="min-w-0 flex-1 truncate">{p.title}</span><span class="text-xs text-gray-500">{p.year || 'Not out yet'}</span>
+					</label>
+				{/each}
+			</div>
+		{/if}
+	</div>
+	{#snippet footer()}
+		<button class="btn-ghost" onclick={() => (open = false)}>Cancel</button>
+		<button class="btn px-6" disabled={!opts?.connected || !picked.length || sending} onclick={send}>{sending ? 'Sending…' : `Request ${picked.length}`}</button>
+	{/snippet}
+</Modal>

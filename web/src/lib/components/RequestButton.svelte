@@ -6,11 +6,20 @@
 	import Icon from './Icon.svelte';
 	import PlexMark from './PlexMark.svelte';
 	import { can } from '#lib/session.svelte.ts';
+	import { page } from '$app/state';
 	import { remember } from '#lib/availability.svelte.ts';
 	import RequestModal from './RequestModal.svelte';
 
 	// req: undefined while loading, null when never requested and not in Plex. Bindable so the page can show "In your library".
 	let { item, req = $bindable() }: { item: Movie | Series; req?: RequestBrief | null } = $props();
+	// ?request=1 (the Discover spotlight's Request) opens the window once the status says it can be requested.
+	let autoOpened = false;
+	$effect(() => {
+		if (req === null && !autoOpened && page.url.searchParams.get('request') === '1' && can(item.type === 'series' ? 'requestTv' : 'requestMovies')) {
+			autoOpened = true;
+			open = true;
+		}
+	});
 	let open = $state(false);
 	const key = $derived(`${item.type}:${item.id}`);
 
