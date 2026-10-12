@@ -44,6 +44,20 @@
 		return () => removeEventListener('flixarr:focus-search', f);
 	});
 
+	// Recent searches (this device only): saved when you open a result.
+	const RECENT = 'flixarr_recent_searches';
+	let recent = $state<string[]>(JSON.parse(localStorage.getItem(RECENT) ?? '[]'));
+	function saveRecent() {
+		const term = q.trim();
+		if (term.length < 2) return;
+		recent = [term, ...recent.filter((r) => r.toLowerCase() !== term.toLowerCase())].slice(0, 8);
+		localStorage.setItem(RECENT, JSON.stringify(recent));
+	}
+	function clearRecent() {
+		recent = [];
+		localStorage.removeItem(RECENT);
+	}
+
 	// Debounced live search.
 	$effect(() => {
 		const term = q.trim();
@@ -89,7 +103,9 @@
 		{#if !shown.length && !busy}
 			<p class="px-4 py-20 text-center text-sm text-gray-400">No results for “{q.trim()}”.</p>
 		{:else}
-			<div class="grid grid-cols-3 gap-3 px-4 tablet:grid-cols-4 laptop:grid-cols-6 laptop:px-0 desktop:grid-cols-8">
+			<!-- Opening a result saves the search to Recent (clicks bubble up from the links). -->
+			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+			<div class="grid grid-cols-3 gap-3 px-4 tablet:grid-cols-4 laptop:grid-cols-6 laptop:px-0 desktop:grid-cols-8" onclick={saveRecent}>
 				{#each shown as h (h.type + h.id)}
 					{#if h.type === 'person'}
 						<a href="/person/{h.id}" class="group block text-center">
@@ -106,6 +122,14 @@
 			</div>
 		{/if}
 	{:else}
+		{#if recent.length}
+			<section class="space-y-3 px-4 laptop:px-0">
+				<div class="flex items-center justify-between"><h2 class="text-base font-semibold">Recent searches</h2><button class="text-xs text-gray-400 hover:text-white" onclick={clearRecent}>Clear</button></div>
+				<div class="flex flex-wrap gap-2">
+					{#each recent as r (r)}<button class="rounded-full border border-gray-700/60 bg-gray-800/40 px-3 py-1 text-sm text-gray-300 hover:text-white" onclick={() => (q = r)}>{r}</button>{/each}
+				</div>
+			</section>
+		{/if}
 		<section class="space-y-3">
 			<h2 class="px-4 text-base font-semibold laptop:px-0">Trending now</h2>
 			<div class="grid grid-cols-3 gap-3 px-4 tablet:grid-cols-4 laptop:grid-cols-6 laptop:px-0 desktop:grid-cols-8">

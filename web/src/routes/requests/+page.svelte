@@ -46,10 +46,14 @@
 	// Requested → Approved → Downloading → Available, as a step bar.
 	const step = (s: Request['status']) => ({ pending: 0, approved: 1, sent: 1, downloading: 2, available: 3, failed: -1, declined: -1 })[s];
 
-	async function act(r: Request, what: 'approve' | 'decline' | 'retry') {
+	let declining = $state<Request | null>(null);
+	let declineOpen = $state(false);
+	let reason = $state('');
+
+	async function act(r: Request, what: 'approve' | 'decline' | 'retry', why = '') {
 		busy = r.id;
 		try {
-			const next = await api<Request>(`/requests/${r.id}/${what}`, { method: 'POST' });
+			const next = await api<Request>(`/requests/${r.id}/${what}`, { method: 'POST', body: JSON.stringify({ reason: why }) });
 			list = list!.map((x) => (x.id === r.id ? next : x));
 			notify(next.status === 'failed' ? `Couldn't send it: ${next.error}` : what === 'decline' ? 'Declined.' : 'Sent.', next.status === 'failed' ? 'orange' : 'green');
 		} catch (e) {
@@ -112,7 +116,7 @@
 									{/each}
 								</div>
 							{/if}
-							{#if r.error}<p class="mt-2 text-xs text-red-300">{r.error}</p>{/if}
+							{#if r.error}<p class="mt-2 text-xs {r.status === 'declined' ? 'text-gray-400' : 'text-red-300'}">{r.status === 'declined' ? 'Reason: ' : ''}{r.error}</p>{/if}
 						</div>
 						<div class="flex shrink-0 flex-col items-end gap-2">
 							{#if r.status === 'available' && statusOf(`${r.type}:${r.tmdbId}`)?.plex}
@@ -120,7 +124,7 @@
 							{/if}
 							{#if admin && r.status === 'pending'}
 								<button class="btn px-3 py-1 text-xs" disabled={busy === r.id} onclick={() => act(r, 'approve')}>Approve</button>
-								<button class="btn-ghost px-3 py-1 text-xs" disabled={busy === r.id} onclick={() => act(r, 'decline')}>Decline</button>
+								<button class="btn-ghost px-3 py-1 text-xs" disabled={busy === r.id} onclick={() => { declining = r; reason = ''; declineOpen = true; }}>Decline</button>
 							{:else if admin && r.status === 'failed'}
 								<button class="btn-ghost px-3 py-1 text-xs" disabled={busy === r.id} onclick={() => act(r, 'retry')}>{busy === r.id ? 'Trying…' : 'Try again'}</button>
 							{/if}
@@ -140,5 +144,17 @@
 	{#snippet footer()}
 		<button class="btn-ghost" onclick={() => (removeOpen = false)}>Keep it</button>
 		<button class="btn px-6" onclick={remove}>Remove</button>
+	{/snippet}
+</Modal>
+
+<Modal bind:open={declineOpen} title="Decline this request?" sub={declining?.title}>
+	<div class="p-5">
+		<label for="decline-why" class="block text-sm">Reason <span class="text-gray-500">(optional)</span></label>
+		<textarea id="decline-why" rows="2" maxlength="500" bind:value={reason} class="mt-1 w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/60" placeholder="e.g. it's not out in good quality yet"></textarea>
+		<p class="mt-1 text-xs text-gray-500">{declining?.userName || 'They'} see{declining?.userName ? 's' : ''} it on the request and in their notification.</p>
+	</div>
+	{#snippet footer()}
+		<button class="btn-ghost" onclick={() => (declineOpen = false)}>Cancel</button>
+		<button class="btn px-6" onclick={() => { declineOpen = false; act(declining!, 'decline', reason.trim()); }}>Decline</button>
 	{/snippet}
 </Modal>

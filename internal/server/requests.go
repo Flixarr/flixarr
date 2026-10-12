@@ -146,8 +146,19 @@ func (s *Server) requestDecline(w http.ResponseWriter, r *http.Request, u *store
 		writeErr(w, http.StatusConflict, "Only waiting requests can be declined.")
 		return
 	}
+	var in struct {
+		Reason string `json:"reason"`
+	}
+	json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in) // the reason is optional
 	s.Store.DecideRequest(req.ID, u.ID, "declined")
 	req, _ = s.Store.Request(req.ID)
+	if reason := strings.TrimSpace(in.Reason); reason != "" {
+		if len(reason) > 500 {
+			reason = reason[:500]
+		}
+		req.Error = reason // shown on the card and in the notification
+		s.Store.UpdateRequest(req)
+	}
 	s.Notify.Send(s.Notify.FromRequest("request_declined", req))
 	writeJSON(w, http.StatusOK, req)
 }

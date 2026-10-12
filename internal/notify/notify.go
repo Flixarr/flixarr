@@ -228,6 +228,9 @@ func (n *Notifier) FromRequest(event string, r store.Request) Message {
 		m.Text = "Requested by " + user + ", now on its way"
 	case "request_declined":
 		m.Text = "Requested by " + user
+		if r.Error != "" {
+			m.Text += ". Reason: " + r.Error
+		}
 	case "request_available":
 		m.Text = "Ready to watch in Plex. Requested by " + user
 	case "request_failed":
