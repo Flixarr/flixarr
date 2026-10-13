@@ -29,7 +29,9 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer f.mu.Unlock()
 	b, _ := io.ReadAll(r.Body)
 	f.calls = append(f.calls, r.Method+" "+r.URL.Path+" "+string(b))
-	day := func(n int) string { return time.Now().Add(time.Duration(-n) * 24 * time.Hour).UTC().Format("2006-01-02 15:04:05.000") }
+	day := func(n int) string {
+		return time.Now().Add(time.Duration(-n) * 24 * time.Hour).UTC().Format("2006-01-02 15:04:05.000")
+	}
 	switch {
 	case r.URL.Path == "/api/app/status":
 		w.Write([]byte(`{"version":"3.30.1"}`))
