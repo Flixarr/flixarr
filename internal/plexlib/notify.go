@@ -184,9 +184,9 @@ func libraryRemoved(msg []byte) (ids []string, episodes bool) {
 		NotificationContainer struct {
 			Type          string `json:"type"`
 			TimelineEntry []struct {
-				Type   int   `json:"type"`
-				State  int   `json:"state"`
-				ItemID int64 `json:"itemID"`
+				Type   int             `json:"type"`
+				State  int             `json:"state"`
+				ItemID json.RawMessage `json:"itemID"` // Plex sends it as a string ("75119"); a number is accepted too
 			} `json:"TimelineEntry"`
 		} `json:"NotificationContainer"`
 	}
@@ -199,7 +199,9 @@ func libraryRemoved(msg []byte) (ids []string, episodes bool) {
 		}
 		switch e.Type {
 		case 1, 2:
-			ids = append(ids, fmt.Sprint(e.ItemID))
+			if id := strings.Trim(string(e.ItemID), `"`); id != "" {
+				ids = append(ids, id)
+			}
 		case 3, 4:
 			episodes = true
 		}

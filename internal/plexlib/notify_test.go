@@ -33,7 +33,7 @@ func TestLibraryAddedAndFrames(t *testing.T) {
 }
 
 func TestLibraryRemoved(t *testing.T) {
-	ids, eps := libraryRemoved([]byte(`{"NotificationContainer":{"type":"timeline","size":3,"TimelineEntry":[{"type":2,"state":9,"itemID":75103},{"type":4,"state":9,"itemID":75110},{"type":1,"state":5,"itemID":1}]}}`))
+	ids, eps := libraryRemoved([]byte(`{"NotificationContainer":{"type":"timeline","size":3,"TimelineEntry":[{"type":2,"state":9,"itemID":75103},{"type":4,"state":9,"itemID":"75110"},{"type":1,"state":5,"itemID":"1"}]}}`))
 	if len(ids) != 1 || ids[0] != "75103" || !eps {
 		t.Fatalf("got %v %v", ids, eps)
 	}
@@ -42,5 +42,13 @@ func TestLibraryRemoved(t *testing.T) {
 	}
 	if !scanEnded([]byte(`{"NotificationContainer":{"type":"activity","ActivityNotification":[{"event":"ended","Activity":{"type":"library.update.section"}}]}}`)) {
 		t.Fatal("scan end missed")
+	}
+}
+
+// The exact message Plex sent when a movie was deleted (captured 2026-10-13): itemID is a string.
+func TestLibraryRemovedRealMessage(t *testing.T) {
+	msg := `{"NotificationContainer":{"type":"timeline","size":1,"TimelineEntry":[{"identifier":"com.plexapp.plugins.library","sectionID":"1","itemID":"75119","type":1,"title":"","state":9,"metadataState":"deleted","updatedAt":1791865425}]}}`
+	if ids, _ := libraryRemoved([]byte(msg)); len(ids) != 1 || ids[0] != "75119" {
+		t.Fatalf("got %v", ids)
 	}
 }
