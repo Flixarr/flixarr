@@ -21,6 +21,7 @@
 		api<Page<Card>>('/discover/recent-requests?mine=1').then((p) => (mine = p.results)).catch(() => {});
 		api<Watch>('/me/watchlist').then((d) => (watch = d)).catch(() => {});
 		api<{ on: boolean }>('/push').then((d) => (pushOn = d.on)).catch(() => {});
+		api<Prefs>('/me/notifications').then((d) => (prefs = d)).catch(() => {});
 		subscribed().then((v) => (device = v));
 	});
 
@@ -40,6 +41,25 @@
 			notify(e instanceof Error ? e.message : 'Could not change it.', 'orange');
 		} finally {
 			pushBusy = false;
+		}
+	}
+
+	// Which events reach me, per personal channel (everything on until switched off).
+	type Prefs = { channels: Record<'email' | 'push', boolean>; events: string[]; sent: Record<'email' | 'push', string[]>; off: Record<'email' | 'push', string[]> };
+	let prefs = $state<Prefs | null>(null);
+	const EVENT_TEXT: Record<string, string> = {
+		request_submitted: 'Someone requests something', request_approved: 'My request is approved', request_declined: 'My request is declined',
+		request_available: 'My request is ready to watch', request_failed: "My request couldn't be added", issue_reported: 'Someone reports an issue',
+		issue_resolved: 'My issue is fixed', server_problem: 'Radarr or Sonarr has a problem'
+	};
+	const CH: ['email' | 'push', string][] = [['email', 'Email'], ['push', 'Push']];
+	const shownCh = $derived(prefs ? CH.filter(([c]) => prefs!.channels[c]) : []);
+	async function setPref(ch: 'email' | 'push', ev: string, on: boolean) {
+		const off = { ...prefs!.off, [ch]: on ? prefs!.off[ch].filter((e) => e !== ev) : [...prefs!.off[ch], ev] };
+		try {
+			prefs = await api<Prefs>('/me/notifications', { method: 'PUT', body: JSON.stringify({ off }) });
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
 		}
 	}
 
@@ -84,15 +104,34 @@
 			<div class="-mx-4 laptop:mx-0"><Row title="My requests" items={mine} more="/requests">{#snippet item(c)}<Poster item={c} />{/snippet}</Row></div>
 		{/if}
 
-		{#if pushOn}
+		{#if pushOn || shownCh.length}
 			<section>
 				<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Notifications</div>
-				<div class="card px-4 py-3">
-					{#if !pushSupported() || needsHomeScreen()}
-						<p class="text-sm text-gray-300">Notifications on this device</p>
-						<p class="text-xs text-gray-500">{needsHomeScreen() ? 'On iPhone and iPad, add Flixarr to your home screen first (Share, Add to Home Screen), open it from there, then turn this on.' : "This browser can't receive notifications."}</p>
-					{:else}
-						<Toggle checked={device} disabled={pushBusy} label="Notifications on this device" about="Your requests (approved, available, declined, failed) and your issues. Admins also get new requests and new issues." onchange={setDevice} />
+				<div class="card divide-y divide-gray-700/40">
+					{#if pushOn}
+						<div class="px-4 py-3">
+							{#if !pushSupported() || needsHomeScreen()}
+								<p class="text-sm text-gray-300">Notifications on this device</p>
+								<p class="text-xs text-gray-500">{needsHomeScreen() ? 'On iPhone and iPad, add Flixarr to your home screen first (Share, Add to Home Screen), open it from there, then turn this on.' : "This browser can't receive notifications."}</p>
+							{:else}
+								<Toggle checked={device} disabled={pushBusy} label="Notifications on this device" about="Push notifications reach every device you turn this on for." onchange={setDevice} />
+							{/if}
+						</div>
+					{/if}
+					{#if prefs && shownCh.length}
+						<div class="px-4 py-3">
+							<div class="mb-1 flex items-center text-xs text-gray-500"><span class="flex-1">Tell me when</span>{#each shownCh as [, l] (l)}<span class="w-14 text-center">{l}</span>{/each}</div>
+							{#each prefs.events as ev (ev)}
+								<div class="flex items-center py-1.5 text-sm">
+									<span class="flex-1 text-gray-300">{EVENT_TEXT[ev] ?? ev}</span>
+									{#each shownCh as [ch] (ch)}
+										{@const sent = prefs.sent[ch].includes(ev)}
+										<span class="w-14 text-center"><input type="checkbox" class="accent-[var(--color-primary)]" aria-label="{EVENT_TEXT[ev]} by {ch}" disabled={!sent} checked={sent && !prefs.off[ch].includes(ev)} onchange={(e) => setPref(ch, ev, (e.currentTarget as HTMLInputElement).checked)} /></span>
+									{/each}
+								</div>
+							{/each}
+							{#if prefs.events.some((ev) => shownCh.some(([ch]) => !prefs!.sent[ch].includes(ev)))}<p class="mt-2 text-xs text-gray-500">Greyed out: not sent by this server at all (an admin sets that in Settings, Notifications).</p>{/if}
+						</div>
 					{/if}
 				</div>
 			</section>

@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/Flixarr/flixarr/internal/notify"
 	"github.com/Flixarr/flixarr/internal/store"
 )
 
@@ -173,6 +174,30 @@ func (s *Server) userSettings(w http.ResponseWriter, r *http.Request, _ *store.U
 }
 
 // myWatchlist reads or changes the Profile's "Request from my Plex Watchlist" switch.
+// myNotifications is Profile → Notifications: which events reach this person by email and push.
+// Channels show only when an admin has set them up (and email only with an address on the account).
+func (s *Server) myNotifications(w http.ResponseWriter, r *http.Request, u *store.User) {
+	if r.Method == http.MethodPut {
+		var in struct {
+			Off map[string][]string `json:"off"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&in); err != nil {
+			writeErr(w, http.StatusBadRequest, "Bad request.")
+			return
+		}
+		if err := s.Notify.SetOff(u.ID, in.Off); err != nil {
+			writeErr(w, http.StatusInternalServerError, "Database error.")
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"channels": map[string]bool{"email": s.Notify.Load("email").On && u.Email != "", "push": s.Notify.Load("push").On},
+		"events":   notify.EventsFor(u),
+		"sent":     map[string][]string{"email": s.Notify.Load("email").Events, "push": s.Notify.Load("push").Events}, // what Settings sends at all
+		"off":      s.Notify.Off(u.ID),
+	})
+}
+
 func (s *Server) myWatchlist(w http.ResponseWriter, r *http.Request, u *store.User) {
 	if r.Method == http.MethodPut {
 		var in struct {

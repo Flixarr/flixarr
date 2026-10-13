@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -209,5 +210,26 @@ func TestPushRoutingAndGone(t *testing.T) {
 	}
 	if subs, _ := st.PushSubs(eryn.ID); len(subs) != 1 {
 		t.Fatalf("gone subscription kept: %d", len(subs))
+	}
+}
+
+func TestPersonalOff(t *testing.T) {
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	st, _ := store.Open(dir, box)
+	t.Cleanup(func() { st.Close() })
+	n := &Notifier{Store: st}
+	n.SetOff(7, map[string][]string{"push": {"request_available", "nonsense"}, "discord": {"request_failed"}})
+	off := n.Off(7)
+	if len(off["push"]) != 1 || off["push"][0] != "request_available" || len(off["email"]) != 0 || off["discord"] != nil {
+		t.Fatalf("off: %v", off)
+	}
+	user := &store.User{Perms: []string{"requestMovies"}}
+	admin := &store.User{Perms: []string{"admin"}}
+	if ev := EventsFor(user); slices.Contains(ev, "request_submitted") || slices.Contains(ev, "server_problem") || !slices.Contains(ev, "request_available") {
+		t.Fatalf("user events: %v", ev)
+	}
+	if ev := EventsFor(admin); !slices.Contains(ev, "server_problem") {
+		t.Fatalf("admin events: %v", ev)
 	}
 }

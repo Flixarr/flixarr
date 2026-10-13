@@ -95,7 +95,7 @@ func (n *Notifier) Save(ch string, c Config) error {
 // who manage requests, new issues to people who manage issues. Only people with an email address.
 func (n *Notifier) recipients(m Message) []string {
 	out := []string{}
-	for _, u := range n.people(m) {
+	for _, u := range n.peopleOn(m, "email") {
 		if u.Email != "" {
 			out = append(out, u.Email)
 		}
@@ -117,6 +117,68 @@ func (n *Notifier) people(m Message) []store.User {
 	for _, u := range rows {
 		if u.Can(perm) && u.ID != m.UserID {
 			out = append(out, u.User)
+		}
+	}
+	return out
+}
+
+// PersonalChannels are the channels that reach one person (Discord and webhooks go to a shared place).
+var PersonalChannels = []string{"email", "push"}
+
+func offKey(userID int64) string { return fmt.Sprintf("notify_off_%d", userID) }
+
+// Off is what a person has switched off: channel → events. Everything is on until they change it.
+func (n *Notifier) Off(userID int64) map[string][]string {
+	out := map[string][]string{"email": {}, "push": {}}
+	json.Unmarshal([]byte(n.Store.Setting(offKey(userID), "")), &out)
+	return out
+}
+
+// SetOff saves what a person has switched off (unknown channels and events are dropped).
+func (n *Notifier) SetOff(userID int64, off map[string][]string) error {
+	clean := map[string][]string{}
+	for _, ch := range PersonalChannels {
+		clean[ch] = []string{}
+		for _, e := range off[ch] {
+			if slices.Contains(Events, e) && !slices.Contains(clean[ch], e) {
+				clean[ch] = append(clean[ch], e)
+			}
+		}
+	}
+	b, _ := json.Marshal(clean)
+	return n.Store.SetSetting(offKey(userID), string(b))
+}
+
+// EventsFor are the events a person can get: news about their own requests and issues, plus new
+// requests, new issues and server problems for the people who handle them.
+func EventsFor(u *store.User) []string {
+	out := []string{}
+	for _, e := range Events {
+		switch e {
+		case "request_submitted":
+			if !u.Can("manageRequests") {
+				continue
+			}
+		case "issue_reported":
+			if !u.Can("manageIssues") {
+				continue
+			}
+		case "server_problem":
+			if !u.Can("admin") {
+				continue
+			}
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+// peopleOn is who an event goes to on a personal channel, leaving out anyone who switched it off.
+func (n *Notifier) peopleOn(m Message, ch string) []store.User {
+	out := []store.User{}
+	for _, u := range n.people(m) {
+		if !slices.Contains(n.Off(u.ID)[ch], m.Event) {
+			out = append(out, u)
 		}
 	}
 	return out
@@ -335,7 +397,7 @@ func (n *Notifier) deliver(ctx context.Context, ch string, c Config, m Message) 
 		return sendMail(ctx, c, to, m)
 	case "push":
 		ids := []int64{}
-		for _, u := range n.people(m) {
+		for _, u := range n.peopleOn(m, "push") {
 			ids = append(ids, u.ID)
 		}
 		if m.Event == "test" {

@@ -69,6 +69,8 @@ func (s *Server) Handler() http.Handler {
 	})))
 	mux.HandleFunc("GET /api/me/stats", s.auth(s.myStats))
 	mux.HandleFunc("GET /api/me/watchlist", s.auth(s.myWatchlist))
+	mux.HandleFunc("GET /api/me/notifications", s.auth(s.myNotifications))
+	mux.HandleFunc("PUT /api/me/notifications", s.auth(s.myNotifications))
 	mux.HandleFunc("PUT /api/me/watchlist", s.auth(s.myWatchlist))
 	mux.HandleFunc("POST /api/auth/plex/pin", s.plexPin)
 	mux.HandleFunc("POST /api/auth/plex/check", s.plexCheck)
