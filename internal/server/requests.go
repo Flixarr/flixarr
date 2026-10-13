@@ -212,6 +212,26 @@ func (s *Server) requestFix(w http.ResponseWriter, r *http.Request, _ *store.Use
 	writeJSON(w, http.StatusOK, map[string]any{"request": fixed, "done": done})
 }
 
+// redownload replaces a bad file (needs the Redownload permission): {type, tmdbId, seasons}.
+func (s *Server) redownload(w http.ResponseWriter, r *http.Request, u *store.User) {
+	var in struct {
+		Type    string `json:"type"`
+		TmdbID  int    `json:"tmdbId"`
+		Seasons []int  `json:"seasons"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil || (in.Type != "movie" && in.Type != "series") || in.TmdbID <= 0 {
+		writeErr(w, http.StatusBadRequest, "Bad request.")
+		return
+	}
+	done, err := s.Requests.Redownload(r.Context(), in.Type, in.TmdbID, in.Seasons)
+	if err != nil {
+		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
+		return
+	}
+	s.Log.Info("redownload asked", "by", u.Username, "type", in.Type, "tmdb", in.TmdbID)
+	writeJSON(w, http.StatusOK, map[string]any{"done": done})
+}
+
 // requestDelete removes a request: your own while it's waiting, or any request for an admin.
 // Nothing is removed from Radarr/Sonarr.
 func (s *Server) requestDelete(w http.ResponseWriter, r *http.Request, u *store.User) {

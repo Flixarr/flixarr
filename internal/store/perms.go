@@ -8,7 +8,7 @@ import (
 )
 
 // Permission switches. Roles are presets that set them; changing any switch makes the role Custom.
-var AllPerms = []string{"admin", "manageRequests", "autoApprove", "requestMovies", "requestTv", "advanced", "viewRequests", "reportIssues", "manageIssues", "watchlist"}
+var AllPerms = []string{"admin", "manageRequests", "autoApprove", "requestMovies", "requestTv", "advanced", "viewRequests", "reportIssues", "manageIssues", "watchlist", "redownload"}
 
 // RolePerms are the presets, in the order Users shows them.
 var RolePerms = map[string][]string{

@@ -102,6 +102,15 @@ func (c *Client) Put(ctx context.Context, path string, body, out any) error {
 	return c.do(ctx, http.MethodPut, path, body, out)
 }
 
+// Delete removes something, with an optional body (bulk deletes take a list of IDs).
+func (c *Client) Delete(ctx context.Context, path string, body ...any) error {
+	var in any
+	if len(body) > 0 {
+		in = body[0]
+	}
+	return c.do(ctx, http.MethodDelete, path, in, nil)
+}
+
 func (c *Client) do(ctx context.Context, method, path string, in, out any) error {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()

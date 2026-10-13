@@ -25,7 +25,8 @@
 		['viewRequests', 'View all requests', "See everyone's requests, not just their own."],
 		['reportIssues', 'Report issues', 'Report problems on titles in the library.'],
 		['manageIssues', 'Manage issues', "See, resolve and remove anyone's issues."],
-		['watchlist', 'Plex Watchlist requests', 'Can switch on requests from their Plex Watchlist (in their Profile).']
+		['watchlist', 'Plex Watchlist requests', 'Can switch on requests from their Plex Watchlist (in their Profile).'],
+		['redownload', 'Redownload', "Delete a title's file and get a new copy (for a bad download). The release it came from isn't grabbed again."]
 	];
 	const ROLES = ['Admin', 'Trusted', 'User', 'Custom'];
 	const ROLE_TONE: Record<string, string> = {
