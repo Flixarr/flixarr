@@ -236,17 +236,6 @@ func (s *Store) SetPassword(id int64, hash string) error {
 	return err
 }
 
-// UpdateLocalProfile changes a local account's username and email (Plex accounts get theirs from plex.tv).
-func (s *Store) UpdateLocalProfile(id int64, username, email string) error {
-	var n int
-	s.db.QueryRow(`SELECT COUNT(*) FROM users WHERE plex_id = 0 AND lower(username) = lower(?) AND id != ?`, username, id).Scan(&n)
-	if n > 0 {
-		return ErrNameTaken
-	}
-	_, err := s.db.Exec(`UPDATE users SET username = ?, email = ? WHERE id = ? AND plex_id = 0`, username, email, id)
-	return err
-}
-
 // UpdatePlexProfile refreshes the name, email and avatar from plex.tv on each sign-in.
 func (s *Store) UpdatePlexProfile(id int64, username, email, avatar string) error {
 	_, err := s.db.Exec(`UPDATE users SET username = ?, email = ?, avatar = ? WHERE id = ?`, username, email, avatar, id)

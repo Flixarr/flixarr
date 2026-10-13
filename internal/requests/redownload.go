@@ -56,11 +56,20 @@ func (s *Service) redownloadMovie(ctx context.Context, c *arr.Client, tmdbID int
 		return "", errors.New("Radarr has no file for it")
 	}
 	var hist []map[string]any
-	c.Get(ctx, fmt.Sprintf("history/movie?movieId=%d", id), &hist)
-	marked := markFailed(ctx, c, hist, func(map[string]any) bool { return true })
+	c.Get(ctx, fmt.Sprintf("history/movie?movieId=%d", id), &hist) // read before the delete adds to it
+	// Order matters: delete first (a search while the old file is there finds nothing better), monitor
+	// it again (Radarr can unmonitor movies whose file was deleted), then mark the grab failed.
 	if err := c.Delete(ctx, fmt.Sprintf("moviefile/%d", num(file["id"]))); err != nil {
 		return "", fmt.Errorf("Radarr didn't delete the file: %w", err)
 	}
+	var movie map[string]any
+	if err := c.Get(ctx, fmt.Sprintf("movie/%d", id), &movie); err == nil && movie["monitored"] != true {
+		movie["monitored"] = true
+		if err := c.Put(ctx, fmt.Sprintf("movie/%d", id), movie, nil); err != nil {
+			return "", fmt.Errorf("Radarr didn't turn it back on: %w", err)
+		}
+	}
+	marked := markFailed(ctx, c, hist, func(map[string]any) bool { return true })
 	notes := []string{"Deleted the file."}
 	if marked > 0 {
 		notes = append(notes, "The release it came from won't be grabbed again.")
@@ -91,13 +100,16 @@ func (s *Service) redownloadSeries(ctx context.Context, c *arr.Client, v store.S
 		want[n] = true
 	}
 	inSeason := map[int]int{} // episode ID → season
-	files, picked := []int{}, []int{}
+	files, picked, hadFile := []int{}, []int{}, []int{}
 	for _, e := range eps {
 		n := num(e["seasonNumber"])
 		if n == 0 || (len(want) > 0 && !want[n]) {
 			continue
 		}
 		inSeason[num(e["id"])] = n
+		if f := num(e["episodeFileId"]); f > 0 {
+			hadFile = append(hadFile, num(e["id"]))
+		}
 		if f := num(e["episodeFileId"]); f > 0 && !slices.Contains(files, f) {
 			files = append(files, f)
 			if !slices.Contains(picked, n) {
@@ -110,17 +122,20 @@ func (s *Service) redownloadSeries(ctx context.Context, c *arr.Client, v store.S
 	}
 	var hist []map[string]any
 	c.Get(ctx, fmt.Sprintf("history/series?seriesId=%d", id), &hist)
-	marked := markFailed(ctx, c, hist, func(h map[string]any) bool { _, ok := inSeason[num(h["episodeId"])]; return ok })
+	// Delete, monitor again (Sonarr can unmonitor episodes whose files were deleted), then mark failed.
 	if err := c.Delete(ctx, "episodefile/bulk", map[string]any{"episodeFileIds": files}); err != nil {
 		return "", fmt.Errorf("Sonarr didn't delete the files: %w", err)
 	}
+	if err := c.Put(ctx, "episode/monitor", map[string]any{"episodeIds": hadFile, "monitored": true}, nil); err != nil {
+		return "", fmt.Errorf("Sonarr didn't turn the episodes back on: %w", err)
+	}
 	slices.Sort(picked)
-	// The seasons must be monitored for Sonarr to grab them again.
 	set := map[int]bool{}
 	for _, n := range picked {
 		set[n] = true
 	}
 	s.monitorSeasons(ctx, c, store.Server{}, id, false, set)
+	marked := markFailed(ctx, c, hist, func(h map[string]any) bool { _, ok := inSeason[num(h["episodeId"])]; return ok })
 	notes := []string{fmt.Sprintf("Deleted %d file%s.", len(files), map[bool]string{true: "", false: "s"}[len(files) == 1])}
 	if marked > 0 {
 		notes = append(notes, "The releases they came from won't be grabbed again.")

@@ -29,6 +29,7 @@ func (a *arrLog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.calls = append(a.calls, r.Method+" "+p+" "+string(body))
 	reply := map[string]string{
 		"movie":                 `[{"id":5,"hasFile":true,"movieFile":{"id":50}}]`,
+		"movie/5":               `{"id":5,"monitored":false}`,
 		"history/movie":         `[{"id":9,"eventType":"downloadFolderImported","downloadId":"A"},{"id":8,"eventType":"grabbed","downloadId":"A"},{"id":3,"eventType":"grabbed","downloadId":"OLD"}]`,
 		"config/downloadclient": `{"autoRedownloadFailed":true}`,
 		"series/lookup":         `[{"id":7}]`,
@@ -43,6 +44,16 @@ func (a *arrLog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		reply = "{}"
 	}
 	w.Write([]byte(reply))
+}
+
+// at is where the first call starting with prefix happened (-1 = never).
+func (a *arrLog) at(prefix string) int {
+	for i, c := range a.calls {
+		if strings.HasPrefix(c, prefix) {
+			return i
+		}
+	}
+	return -1
 }
 
 func (a *arrLog) did(prefix string) []string {
@@ -80,6 +91,10 @@ func TestRedownload(t *testing.T) {
 	if len(radarr.did("DELETE moviefile/50")) != 1 || len(radarr.did("POST command")) != 0 {
 		t.Fatalf("calls: %v", radarr.calls)
 	}
+	// Delete, then monitor again (Radarr unmonitors on delete), then mark failed.
+	if d, m, f := radarr.at("DELETE moviefile/50"), radarr.at("PUT movie/5"), radarr.at("POST history/failed/"); !(d >= 0 && d < m && m < f) {
+		t.Fatalf("order: delete %d, monitor %d, failed %d", d, m, f)
+	}
 
 	// Season 1 only: its one pack is marked failed once, its file deleted, the season turned on.
 	done, err = s.Redownload(ctx, "series", 1396, []int{1})
@@ -96,5 +111,11 @@ func TestRedownload(t *testing.T) {
 	}
 	if len(sonarr.did("PUT series/7")) != 1 {
 		t.Fatalf("season 1 not turned on: %v", sonarr.calls)
+	}
+	if d, m, f := sonarr.at("DELETE episodefile/bulk"), sonarr.at("PUT episode/monitor"), sonarr.at("POST history/failed/"); !(d >= 0 && d < m && m < f) {
+		t.Fatalf("order: delete %d, monitor %d, failed %d", d, m, f)
+	}
+	if mon := sonarr.did("PUT episode/monitor"); !strings.Contains(mon[0], "[71,72]") {
+		t.Fatalf("episodes turned on: %v", mon)
 	}
 }

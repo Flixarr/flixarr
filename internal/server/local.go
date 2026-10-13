@@ -53,6 +53,11 @@ func (f *failures) add(keys ...string) {
 	if f.seen == nil {
 		f.seen = map[string][]time.Time{}
 	}
+	for k, list := range f.seen { // forget names and addresses that have gone quiet
+		if time.Since(list[len(list)-1]) > failSpan+lockedFor {
+			delete(f.seen, k)
+		}
+	}
 	for _, k := range keys {
 		list := append(f.seen[k], time.Now())
 		if len(list) > maxFails*2 {
@@ -68,13 +73,26 @@ func (f *failures) clear(key string) {
 	delete(f.seen, key)
 }
 
-// clientIP is the caller's address (the reverse proxy's forwarded address when it sends one).
+// clientIP is the caller's address. A forwarded address is believed only from a reverse proxy on the
+// local network (anyone else could make one up to dodge the sign-in pause).
 func clientIP(r *http.Request) string {
-	if f := r.Header.Get("X-Forwarded-For"); f != "" {
-		return strings.TrimSpace(strings.Split(f, ",")[0])
-	}
 	host, _, _ := net.SplitHostPort(r.RemoteAddr)
+	if ip := net.ParseIP(host); ip != nil && (ip.IsLoopback() || ip.IsPrivate()) {
+		if f := r.Header.Get("X-Forwarded-For"); f != "" {
+			return strings.TrimSpace(strings.Split(f, ",")[0])
+		}
+	}
 	return host
+}
+
+// checking limits how many password checks run at once: each is deliberately slow, so a flood of
+// sign-ins waits its turn instead of using every CPU.
+var checking = make(chan struct{}, 3)
+
+func checkPassword(pw, hash string) bool {
+	checking <- struct{}{}
+	defer func() { <-checking }()
+	return password.Check(pw, hash)
 }
 
 func (s *Server) localLogin(w http.ResponseWriter, r *http.Request) {
@@ -93,9 +111,9 @@ func (s *Server) localLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, hash, err := s.Store.LocalLogin(name)
-	ok := err == nil && password.Check(in.Password, hash)
+	ok := err == nil && checkPassword(in.Password, hash)
 	if !ok && errors.Is(err, store.ErrNotFound) {
-		password.Check(in.Password, dummyHash) // same work either way: a wrong name isn't faster than a wrong password
+		checkPassword(in.Password, dummyHash) // same work either way: a wrong name isn't faster than a wrong password
 	}
 	if !ok {
 		s.fails.add(byName, byIP)
@@ -189,7 +207,7 @@ func (s *Server) myPassword(w http.ResponseWriter, r *http.Request, u *store.Use
 		New     string `json:"new"`
 	}
 	json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in)
-	if !password.Check(in.Current, s.Store.PasswordHash(u.ID)) {
+	if !checkPassword(in.Current, s.Store.PasswordHash(u.ID)) {
 		writeErr(w, http.StatusForbidden, "Your current password isn't right.")
 		return
 	}
