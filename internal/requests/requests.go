@@ -218,6 +218,7 @@ func (s *Service) Create(ctx context.Context, u *store.User, in New) (store.Requ
 	if in.Type == "movie" && inPlex(s.Store, in.Type, in.TmdbID) {
 		return store.Request{}, ErrInPlex
 	}
+	covered := 0 // series: seasons already asked for by open requests
 	if in.Type == "movie" {
 		if _, open, err := s.Store.OpenRequest(in.Type, in.TmdbID); err != nil {
 			return store.Request{}, err
@@ -233,6 +234,7 @@ func (s *Service) Create(ctx context.Context, u *store.User, in New) (store.Requ
 		if cov.Whole {
 			return store.Request{}, ErrAlready
 		}
+		covered = len(cov.Seasons)
 		if len(in.Seasons) > 0 {
 			in.Seasons = without(in.Seasons, cov.Seasons)
 			if len(in.Seasons) == 0 {
@@ -280,7 +282,7 @@ func (s *Service) Create(ctx context.Context, u *store.User, in New) (store.Requ
 	}
 	count := 0
 	if in.Type == "series" {
-		count = max(in.SeasonCount, 1)
+		count = max(in.SeasonCount-covered, 1) // the whole show on top of season requests: only the rest counts
 		switch mode {
 		case "seasons":
 			count = len(seasons)

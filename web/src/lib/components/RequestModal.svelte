@@ -28,6 +28,13 @@
 	const requested = (n: number) => !!asked?.seasons.includes(n);
 	const more = $derived(!!asked?.seasons.length); // some seasons already asked for: this asks for the rest
 	const anyInPlex = $derived(Object.keys(inPlex).length > 0);
+	// Every season that's out is ticked, already asked for or in Plex: that's the whole show, so it's sent
+	// as one and also follows seasons that air later.
+	const today = new Date().toISOString().slice(0, 10);
+	const allLeft = $derived(
+		mode === 'seasons' && seasons.length > 0 &&
+		list.filter((s) => s.episodes > 0 && (!s.air || s.air <= today)).every((s) => seasons.includes(s.n) || requested(s.n) || complete(s.n, s.episodes))
+	);
 
 	$effect(() => {
 		if (!open) return;
@@ -55,7 +62,7 @@
 			const r = await api<Request>('/requests', {
 				method: 'POST',
 				body: JSON.stringify({ type: item.type, tmdbId: item.id, title: item.title, year: item.year, poster: item.poster ?? '', backdrop: item.backdrop ?? '',
-					seasons: series && mode === 'seasons' ? seasons : [], episodes: series && mode === 'episodes' ? episodes : [], profileId, genres: item.genres, language: series ? series.language : '', seasonCount: list.length })
+					seasons: series && mode === 'seasons' && !allLeft ? seasons : [], episodes: series && mode === 'episodes' ? episodes : [], profileId, genres: item.genres, language: series ? series.language : '', seasonCount: list.length })
 			});
 			open = false;
 			onrequested?.(r);
@@ -72,7 +79,7 @@
 
 	const label = $derived(
 		!series || mode === 'whole' ? 'Request'
-		: mode === 'seasons' ? (seasons.length ? `Request ${seasons.length} season${seasons.length === 1 ? '' : 's'}` : 'Pick seasons')
+		: mode === 'seasons' ? (allLeft ? (more ? 'Request the rest' : 'Request the whole show') : seasons.length ? `Request ${seasons.length} season${seasons.length === 1 ? '' : 's'}` : 'Pick seasons')
 		: episodes.length ? `Request ${episodes.length} episode${episodes.length === 1 ? '' : 's'}` : 'Pick episodes'
 	);
 	const ready = $derived(!series || mode === 'whole' || (mode === 'seasons' ? seasons.length > 0 : episodes.length > 0));
@@ -127,7 +134,7 @@
 								</label>
 							{/each}
 						</div>
-						<p class="mt-2 text-xs text-gray-500">Only the seasons you pick. Seasons that air later are not added.</p>
+						<p class="mt-2 text-xs {allLeft ? 'text-green-300' : 'text-gray-500'}">{allLeft ? "That's every season, so new ones will come in as they air." : 'Only the seasons you pick. Seasons that air later are not added.'}</p>
 					{:else}
 						<EpisodePicker {series} bind:picked={episodes} done={inPlex} />
 						<p class="mt-2 text-xs text-gray-500">Open a season to pick its episodes, or tick the season for all of them.</p>

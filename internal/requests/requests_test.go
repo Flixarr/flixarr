@@ -542,8 +542,12 @@ func TestSeriesMoreSeasons(t *testing.T) {
 		t.Fatalf("coverage: %+v", c)
 	}
 	// The whole show on top: allowed once, then nothing more.
-	if _, err := s.Create(ctx, admin, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad"}); err != nil {
+	if _, err := s.Create(ctx, admin, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad", SeasonCount: 5}); err != nil {
 		t.Fatalf("whole show: %v", err)
+	}
+	// Seasons 1 and 2, then the whole show of 5: 5 seasons used, not 7.
+	if _, used, _ := st.RecentUsage(admin.ID); used != 5 {
+		t.Fatalf("seasons counted: %d", used)
 	}
 	if _, err := s.Create(ctx, admin, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad", Seasons: []int{3}}); err != ErrAlready {
 		t.Fatalf("after the whole show: %v", err)
