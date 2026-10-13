@@ -26,7 +26,8 @@
 		request_available: ['Available', 'A requested title is ready to watch in Plex.'],
 		request_failed: ['Failed', "Radarr or Sonarr couldn't add it."],
 		issue_reported: ['Issue reported', 'Someone reported a problem with a title.'],
-		issue_resolved: ['Issue resolved', 'A reported problem was fixed.']
+		issue_resolved: ['Issue resolved', 'A reported problem was fixed.'],
+		server_problem: ['Radarr or Sonarr problem', "A server can't be reached, a download failed or is stuck, or it reports a health issue. Admins only."]
 	};
 	const SOON: string[] = [];
 	const input = 'mt-1 w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/60';

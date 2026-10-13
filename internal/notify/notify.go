@@ -20,7 +20,7 @@ import (
 )
 
 // Events, in the order Settings shows them.
-var Events = []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved"}
+var Events = []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved", "server_problem"}
 
 // Channels Flixarr can send through.
 var Channels = []string{"discord", "webhook", "email", "push"}
@@ -52,10 +52,10 @@ type Config struct {
 }
 
 var defaults = map[string]Config{
-	"discord": {Events: []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved"}, BotName: "Flixarr", Poster: true},
+	"discord": {Events: []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved", "server_problem"}, BotName: "Flixarr", Poster: true},
 	"webhook": {Events: []string{"request_available", "request_failed"}, Method: "POST"},
-	"push":    {Events: []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved"}},
-	"email":   {Events: []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved"}, Port: 587, Security: "starttls", FromName: "Flixarr"},
+	"push":    {Events: []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved", "server_problem"}},
+	"email":   {Events: []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved", "server_problem"}, Port: 587, Security: "starttls", FromName: "Flixarr"},
 }
 
 // Notifier loads the channel settings and sends.
@@ -105,7 +105,7 @@ func (n *Notifier) recipients(m Message) []string {
 
 // people is who an event is for (email and Web Push).
 func (n *Notifier) people(m Message) []store.User {
-	perm := map[string]string{"request_submitted": "manageRequests", "issue_reported": "manageIssues"}[m.Event]
+	perm := map[string]string{"request_submitted": "manageRequests", "issue_reported": "manageIssues", "server_problem": "admin"}[m.Event]
 	if perm == "" {
 		if u, err := n.Store.UserByID(m.UserID); err == nil {
 			return []store.User{*u}
@@ -191,6 +191,7 @@ var eventText = map[string]struct {
 	"request_failed":    {"Request failed", 0xef4444},
 	"issue_reported":    {"Issue reported", 0xeab308},
 	"issue_resolved":    {"Issue resolved", 0x22c55e},
+	"server_problem":    {"Radarr or Sonarr problem", 0xef4444},
 	"test":              {"Test notification", 0xf97316},
 }
 
@@ -269,6 +270,15 @@ func (n *Notifier) FromIssue(event string, i store.Issue) Message {
 	}
 	if base := n.Store.Setting("app_url", ""); base != "" {
 		m.Link = base + "/issues"
+	}
+	return m
+}
+
+// FromServer builds the message for a Radarr/Sonarr problem (admins only).
+func (n *Notifier) FromServer(name, detail string) Message {
+	m := Message{Event: "server_problem", Title: name, Text: detail}
+	if base := n.Store.Setting("app_url", ""); base != "" {
+		m.Link = base + "/settings#services"
 	}
 	return m
 }
@@ -370,7 +380,9 @@ func discordBody(c Config, m Message) map[string]any {
 
 func webhookBody(m Message) map[string]any {
 	out := map[string]any{"event": m.Event, "title": m.Title, "message": m.Text}
-	if m.Event != "test" {
+	if m.Event == "server_problem" {
+		out["server"] = map[string]any{"name": m.Title, "problem": m.Text}
+	} else if m.Event != "test" {
 		out["media"] = map[string]any{"type": m.Type, "tmdbId": m.TmdbID, "poster": m.Poster}
 		if strings.HasPrefix(m.Event, "issue_") {
 			out["issue"] = map[string]any{"id": m.Request, "status": m.Status, "user": m.User, "where": m.Seasons}

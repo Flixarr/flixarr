@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// Alert is one entry in the bell. It turns unread again only when its Sig gets "louder" (see louder):
+// Alert is one entry in the bell. It turns unread again only when its Sig gets "louder" (see Louder):
 // something new needs attention. Anything quieter (a count going down, a problem clearing while others
 // stay, new wording) updates it in place without turning the bell red.
 type Alert struct {
@@ -55,7 +55,7 @@ func (s *Store) RaiseAlert(a Alert) error {
 	if err != nil {
 		return err
 	}
-	if louder(sig, a.Sig) {
+	if Louder(sig, a.Sig) {
 		_, err = s.db.Exec(`UPDATE alerts SET severity = ?, title = ?, detail = ?, link = ?, sig = ?, changed_at = ? WHERE id = ?`, a.Severity, a.Title, a.Detail, a.Link, a.Sig, t, id)
 	} else {
 		// Quieter or the same: new wording and sig, seen state kept.
@@ -67,9 +67,9 @@ func (s *Store) RaiseAlert(a Alert) error {
 	return err
 }
 
-// louder says whether an alert's new sig needs attention again. Numbers (a waiting count): only a bigger
+// Louder says whether an alert's new sig needs attention again. Numbers (a waiting count): only a bigger
 // one. Otherwise sigs are comma lists of what's wrong: louder when the new one names something the old didn't.
-func louder(old, new string) bool {
+func Louder(old, new string) bool {
 	if old == new {
 		return false
 	}

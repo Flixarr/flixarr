@@ -107,6 +107,7 @@ func main() {
 	st.OnAlert = func(audience string) { hub.Publish(live.Event{Type: "alerts", For: live.ForAudience(audience)}) }
 	arrMon := &arrstatus.Monitor{Store: st, Log: log, OnRefresh: func() { hub.Publish(live.Event{Type: "services", For: live.Admins}) }}
 	notifier := &notify.Notifier{Store: st, Log: log}
+	arrMon.OnProblem = func(v store.Server, a store.Alert) { notifier.Send(notifier.FromServer(v.Name, a.Detail)) }
 	reqs := &requests.Service{Store: st, Log: log, Notify: func(ev string, r store.Request) { notifier.Send(notifier.FromRequest(ev, r)) }}
 	runner.Add(&jobs.Job{ID: "arr-status", Name: "Radarr / Sonarr: refresh status", Default: "* * * * *",
 		About: "Reads each Radarr and Sonarr connection's queue, health, disk space, indexers and download clients for the Services cards. (Requests are followed separately, every few seconds.)",

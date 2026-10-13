@@ -19,6 +19,10 @@ type Monitor struct {
 	Store     *store.Store
 	Log       *slog.Logger
 	OnRefresh func() // after a refresh: the Services cards reload
+	// OnProblem is told when a server gets a new problem (the same "louder" rule as the bell, and a
+	// problem back within 30 minutes of clearing doesn't count again): it goes out as a notification.
+	OnProblem func(v store.Server, a store.Alert)
+	told      map[int64]told
 
 	mu    sync.RWMutex
 	snaps map[int64]arr.Snapshot
@@ -109,6 +113,37 @@ func (m *Monitor) refresh(ctx context.Context, force bool) (string, error) {
 	return fmt.Sprintf("%d of %d connected", up, len(servers)), fmt.Errorf("%d not reachable", len(servers)-up)
 }
 
+// told is the last problem sent out for a server, and when it cleared.
+type told struct {
+	sig     string
+	cleared time.Time
+}
+
+// tell sends a server's problem out if it's new.
+func (m *Monitor) tell(v store.Server, a store.Alert) {
+	m.mu.Lock()
+	if m.told == nil {
+		m.told = map[int64]told{}
+	}
+	last, seen := m.told[v.ID]
+	news := !seen || store.Louder(last.sig, a.Sig) || (!last.cleared.IsZero() && time.Since(last.cleared) > 30*time.Minute)
+	m.told[v.ID] = told{sig: a.Sig}
+	m.mu.Unlock()
+	if news && m.OnProblem != nil {
+		m.OnProblem(v, a)
+	}
+}
+
+// cleared notes that a server's problems are gone.
+func (m *Monitor) cleared(v store.Server) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if t, ok := m.told[v.ID]; ok && t.cleared.IsZero() {
+		t.cleared = time.Now()
+		m.told[v.ID] = t
+	}
+}
+
 // alertKey is the bell alert for one server: all of its problems are grouped into this one alert.
 func alertKey(v store.Server) string { return fmt.Sprintf("arr:%s:%d", v.Kind, v.ID) }
 
@@ -142,6 +177,7 @@ func (m *Monitor) syncAlert(v store.Server, snap arr.Snapshot) {
 			if err := m.Store.ResolveAlert(key); err != nil {
 				m.Log.Warn("alert", "err", err)
 			}
+			m.cleared(v)
 			return
 		}
 		a.Severity = "warning"
@@ -154,6 +190,7 @@ func (m *Monitor) syncAlert(v store.Server, snap arr.Snapshot) {
 	if err := m.Store.RaiseAlert(a); err != nil {
 		m.Log.Warn("alert", "err", err)
 	}
+	m.tell(v, a)
 }
 
 func count(n int, one, many string) string {
