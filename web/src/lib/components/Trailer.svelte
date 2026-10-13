@@ -3,7 +3,7 @@
 	let { key, open = $bindable(false) }: { key: string; open?: boolean } = $props();
 </script>
 
-<Modal bind:open title="Trailer" wide>
+<Modal bind:open title="Trailer" wide center>
 	<div class="aspect-video bg-black">
 		<!-- YouTube refuses embeds that don't say which site they're on ("video player configuration error", 153).
 		     The app's Referrer-Policy is same-origin, so this player alone sends just the origin. -->

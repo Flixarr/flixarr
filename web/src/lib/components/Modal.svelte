@@ -4,9 +4,10 @@
 	import type { Snippet } from 'svelte';
 	import Icon from './Icon.svelte';
 
-	// `top` replaces the standard title bar (the close button stays, top right).
-	let { open = $bindable(false), title, sub = '', wide = false, children, footer, top }: {
-		open?: boolean; title: string; sub?: string; wide?: boolean; children: Snippet; footer?: Snippet; top?: Snippet;
+	// `top` replaces the standard title bar (the close button stays, top right). `center` keeps it a
+	// centered dialog on phones too (the trailer: a video doesn't belong in a bottom sheet).
+	let { open = $bindable(false), title, sub = '', wide = false, center = false, children, footer, top }: {
+		open?: boolean; title: string; sub?: string; wide?: boolean; center?: boolean; children: Snippet; footer?: Snippet; top?: Snippet;
 	} = $props();
 
 	$effect(() => {
@@ -27,9 +28,9 @@
 
 {#if open}
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-	<div class="fixed inset-0 z-50 flex items-end justify-center overscroll-none bg-gray-950/80 backdrop-blur-sm tablet:items-center tablet:p-4"
+	<div class="fixed inset-0 z-50 flex justify-center overscroll-none bg-gray-950/80 backdrop-blur-sm tablet:items-center tablet:p-4 {center ? 'items-center p-3' : 'items-end'}"
 		onclick={(e) => e.target === e.currentTarget && (open = false)}>
-		<div class="card max-h-[90dvh] w-full overflow-y-auto overscroll-contain rounded-b-none bg-gray-900 tablet:rounded-b-xl {wide ? 'tablet:max-w-3xl' : 'tablet:max-w-lg'}" role="dialog" aria-modal="true" aria-label={title}>
+		<div class="card max-h-[90dvh] w-full overflow-y-auto overscroll-contain bg-gray-900 tablet:rounded-b-xl {center ? '' : 'rounded-b-none'} {wide ? 'tablet:max-w-3xl' : 'tablet:max-w-lg'}" role="dialog" aria-modal="true" aria-label={title}>
 			{#if top}
 				<div class="relative">
 					{@render top()}
