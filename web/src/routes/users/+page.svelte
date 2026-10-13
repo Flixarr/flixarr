@@ -35,6 +35,7 @@
 	};
 
 	let users = $state<Row[] | null>(null);
+	let userQuery = $state('');
 	let presets = $state<Record<string, string[]>>({});
 	let editing = $state<Row | null>(null);
 	let perms = $state<string[]>([]);
@@ -149,8 +150,11 @@
 	{#if !users}
 		<p class="mt-8 text-sm text-gray-400">Loading…</p>
 	{:else}
-		<div class="mt-5 space-y-2">
-			{#each users as u (u.id)}
+		{#if users.length > 6}
+			<input class="mt-5 w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/60 tablet:w-72" placeholder="Search people" bind:value={userQuery} />
+		{/if}
+		<div class="mt-3 space-y-2">
+			{#each users.filter((u) => !userQuery.trim() || u.username.toLowerCase().includes(userQuery.trim().toLowerCase()) || (u.email ?? '').toLowerCase().includes(userQuery.trim().toLowerCase())) as u (u.id)}
 				<button class="card flex w-full items-center gap-3 p-3 text-left transition hover:ring-1 hover:ring-primary/50" onclick={() => edit(u)}>
 					<Avatar user={u} class="size-10 text-sm" />
 					<div class="min-w-0 flex-1">

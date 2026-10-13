@@ -1,6 +1,7 @@
 <script lang="ts">
 	// Requests: newest first. Everyone sees their own; View all requests shows everyone's, and Manage
 	// requests can approve, decline, retry and remove. Statuses update on their own while the page is open.
+	import Select from '#lib/components/Select.svelte';
 	import { api, fmtDate } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import { session, can } from '#lib/session.svelte.ts';
@@ -48,7 +49,21 @@
 	});
 
 	const GROUPS: Record<string, Request['status'][]> = { waiting: ['pending'], active: ['approved', 'sent', 'grabbed', 'downloading', 'importing'], available: ['available'], problems: ['failed', 'declined'] };
-	const shown = $derived(list ? (filter === 'all' ? list : list.filter((r) => GROUPS[filter].includes(r.status))) : []);
+	let query = $state('');
+	let sort = $state<'new' | 'old' | 'title' | 'status'>('new');
+	const ORDER = ['pending', 'failed', 'importing', 'downloading', 'grabbed', 'sent', 'approved', 'available', 'declined'];
+	const shown = $derived.by(() => {
+		if (!list) return [];
+		const q = query.trim().toLowerCase();
+		const out = list.filter((r) => (filter === 'all' || GROUPS[filter].includes(r.status)) && (!q || r.title.toLowerCase().includes(q) || r.userName.toLowerCase().includes(q)));
+		const by: Record<typeof sort, (a: Request, b: Request) => number> = {
+			new: (a, b) => b.id - a.id,
+			old: (a, b) => a.id - b.id,
+			title: (a, b) => a.title.localeCompare(b.title),
+			status: (a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status) || b.id - a.id
+		};
+		return out.sort(by[sort]);
+	});
 	const count = (f: keyof typeof GROUPS) => list?.filter((r) => GROUPS[f].includes(r.status)).length ?? 0;
 
 	const TEXT_TONE: Record<string, string> = { pending: 'text-yellow-300', grabbed: 'text-blue-300', downloading: 'text-blue-300', importing: 'text-purple-300', available: 'text-green-400', failed: 'text-red-400', declined: 'text-gray-500' };
@@ -107,7 +122,11 @@
 	<h1 class="text-2xl font-bold laptop:text-3xl">Requests</h1>
 	<p class="text-sm text-gray-400">{everyone ? "Everyone's requests." : 'Your requests.'} {approval ? 'New requests wait for an admin to approve them.' : 'Requests are sent straight to Radarr and Sonarr.'}</p>
 
-	<div class="mt-5 flex gap-2 overflow-x-auto pb-1 text-sm">
+	<div class="mt-5 flex flex-wrap items-center gap-2">
+		<input class="w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/60 tablet:w-64" placeholder="Search titles or people" bind:value={query} />
+		<Select bind:value={sort} class="w-44" options={[{ value: 'new', label: 'Newest first' }, { value: 'old', label: 'Oldest first' }, { value: 'title', label: 'Title A to Z' }, { value: 'status', label: 'By status' }]} />
+	</div>
+	<div class="mt-3 flex gap-2 overflow-x-auto pb-1 text-sm">
 		{#each [['all', 'All', list?.length ?? 0], ['waiting', 'Waiting', count('waiting')], ['active', 'In progress', count('active')], ['available', 'Available', count('available')], ['problems', 'Failed or declined', count('problems')]] as [k, l, n] (k)}
 			<button class="shrink-0 rounded-full border px-3 py-1 {filter === k ? 'border-primary bg-primary/15 text-white' : 'border-gray-700 text-gray-300 hover:text-white'}" onclick={() => (filter = k as typeof filter)}>{l} <span class="text-gray-500">{n}</span></button>
 		{/each}
@@ -116,7 +135,7 @@
 	{#if !list}
 		<p class="mt-8 text-sm text-gray-400">Loading…</p>
 	{:else if !shown.length}
-		<div class="card mt-6 p-8 text-center text-sm text-gray-400">{list.length ? 'Nothing here.' : 'No requests yet. Find a movie or series and hit Request.'}</div>
+		<div class="card mt-6 p-8 text-center text-sm text-gray-400">{list.length ? (query ? 'Nothing matches that search.' : 'Nothing here.') : 'No requests yet. Find a movie or series and hit Request.'}</div>
 	{:else}
 		<div class="mt-5 space-y-3">
 			{#each shown as r (r.id)}
