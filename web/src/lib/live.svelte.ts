@@ -5,7 +5,7 @@ type Handler = (data: any) => void; // eslint-disable-line @typescript-eslint/no
 
 const handlers = new Map<string, Set<Handler>>();
 let es: EventSource | null = null;
-const TYPES = ['request', 'alerts', 'plex', 'job', 'services', 'resync'];
+const TYPES = ['request', 'alerts', 'plex', 'job', 'services', 'resync', 'leaving'];
 
 export function on(type: string, fn: Handler) {
 	if (!handlers.has(type)) handlers.set(type, new Set());

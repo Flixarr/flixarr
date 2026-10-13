@@ -5,7 +5,7 @@ type Status = Request['status'] | 'blocked';
 
 export const LABEL: Record<Status, string> = {
 	pending: 'Waiting for approval', approved: 'Requested', sent: 'Requested', grabbed: 'Grabbed', downloading: 'Downloading',
-	importing: 'Importing', available: 'Available', failed: 'Failed', declined: 'Declined', blocked: "Can't be requested"
+	importing: 'Importing', available: 'Available', failed: 'Failed', declined: 'Declined', expired: 'Expired', blocked: "Can't be requested"
 };
 
 // Pill colours: [background, text, ring].

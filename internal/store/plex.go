@@ -153,3 +153,11 @@ func (s *Store) PlexItemsPage(typ, sort string, page, size int) ([]PlexItem, int
 	}
 	return out, total, rows.Err()
 }
+
+// PlexItemByRatingKey finds a title by the key Plex knows it by.
+func (s *Store) PlexItemByRatingKey(key string) (PlexItem, bool) {
+	var it PlexItem
+	err := s.db.QueryRow(`SELECT type, tmdb_id, rating_key, section, title, added_at, seen_at FROM plex_items WHERE rating_key = ?`, key).
+		Scan(&it.Type, &it.TmdbID, &it.RatingKey, &it.Section, &it.Title, &it.AddedAt, &it.SeenAt)
+	return it, err == nil
+}

@@ -100,13 +100,13 @@
 {:else if req?.blocked}
 	<span class="btn-ghost act cursor-default text-gray-400">Can't be requested</span>
 	{#if can('admin')}<button class="btn-ghost act" onclick={unblock}>Unblock</button>{/if}
-{:else if req && req.status !== 'declined' && req.status !== 'failed'}
+{:else if req && req.status !== 'declined' && req.status !== 'failed' && req.status !== 'expired'}
 	{@render pill(req)}
 	{#if moreSeasons && can('requestTv')}{@render more()}{/if}
 {:else if req !== undefined && !can(item.type === 'series' ? 'requestTv' : 'requestMovies')}
 	<span class="btn-ghost act cursor-default text-gray-400">You can't request {item.type === 'series' ? 'series' : 'movies'}</span>
 {:else if req !== undefined}
-	<button class="btn act" onclick={() => (open = true)}><Icon name="plus" class="size-4" />Request</button>
+	<button class="btn act" onclick={() => (open = true)}><Icon name="plus" class="size-4" />{req && ['failed', 'declined', 'expired'].includes(req.status) ? 'Request again' : 'Request'}</button>
 	{#if can('admin') && req === null}<button class="btn-ghost act" onclick={() => (blockOpen = true)}>Block</button>{/if}
 {/if}
 <Modal bind:open={blockOpen} title="Block {item.title}?">

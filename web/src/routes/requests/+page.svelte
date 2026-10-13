@@ -48,10 +48,10 @@
 		return () => offs.forEach((off) => off());
 	});
 
-	const GROUPS: Record<string, Request['status'][]> = { waiting: ['pending'], active: ['approved', 'sent', 'grabbed', 'downloading', 'importing'], available: ['available'], problems: ['failed', 'declined'] };
+	const GROUPS: Record<string, Request['status'][]> = { waiting: ['pending'], active: ['approved', 'sent', 'grabbed', 'downloading', 'importing'], available: ['available'], problems: ['failed', 'declined', 'expired'] };
 	let query = $state('');
 	let sort = $state<'new' | 'old' | 'title' | 'status'>('new');
-	const ORDER = ['pending', 'failed', 'importing', 'downloading', 'grabbed', 'sent', 'approved', 'available', 'declined'];
+	const ORDER = ['pending', 'failed', 'importing', 'downloading', 'grabbed', 'sent', 'approved', 'available', 'declined', 'expired'];
 	const shown = $derived.by(() => {
 		if (!list) return [];
 		const q = query.trim().toLowerCase();
@@ -127,7 +127,7 @@
 		<Select bind:value={sort} class="w-44" options={[{ value: 'new', label: 'Newest first' }, { value: 'old', label: 'Oldest first' }, { value: 'title', label: 'Title A to Z' }, { value: 'status', label: 'By status' }]} />
 	</div>
 	<div class="mt-3 flex gap-2 overflow-x-auto pb-1 text-sm">
-		{#each [['all', 'All', list?.length ?? 0], ['waiting', 'Waiting', count('waiting')], ['active', 'In progress', count('active')], ['available', 'Available', count('available')], ['problems', 'Failed or declined', count('problems')]] as [k, l, n] (k)}
+		{#each [['all', 'All', list?.length ?? 0], ['waiting', 'Waiting', count('waiting')], ['active', 'In progress', count('active')], ['available', 'Available', count('available')], ['problems', 'Failed or ended', count('problems')]] as [k, l, n] (k)}
 			<button class="shrink-0 rounded-full border px-3 py-1 {filter === k ? 'border-primary bg-primary/15 text-white' : 'border-gray-700 text-gray-300 hover:text-white'}" onclick={() => (filter = k as typeof filter)}>{l} <span class="text-gray-500">{n}</span></button>
 		{/each}
 	</div>
@@ -159,7 +159,7 @@
 									{/each}
 								</div>
 							{/if}
-							{#if r.error}<p class="mt-2 text-xs {r.status === 'declined' ? 'text-gray-400' : 'text-red-300'}">{r.status === 'declined' ? 'Reason: ' : ''}{r.error}</p>{/if}
+							{#if r.error}<p class="mt-2 text-xs {r.status === 'declined' || r.status === 'expired' ? 'text-gray-400' : 'text-red-300'}">{r.status === 'declined' ? 'Reason: ' : ''}{r.error}</p>{/if}
 						</div>
 						<div class="flex shrink-0 flex-col items-end gap-2">
 							{#if r.status === 'available' && statusOf(`${r.type}:${r.tmdbId}`)?.plex}

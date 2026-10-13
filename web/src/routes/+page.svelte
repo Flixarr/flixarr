@@ -16,10 +16,10 @@
 	let lists = $state<Record<string, Card[]>>({});
 	let pages = $state<Record<string, number>>({}); // total pages per list (20 titles each), for the See all count
 	let error = $state('');
-	let local = $state<{ added: Card[]; requests: Card[] }>({ added: [], requests: [] });
+	let local = $state<{ added: Card[]; requests: Card[]; leaving: Card[] }>({ added: [], requests: [], leaving: [] });
 	// Row order and on/off from Settings → Discover; until it arrives, every row in the default order.
 	let order = $state<DiscoverRow[] | null>(null);
-	const shown = $derived((order ?? [{ key: 'recently-added', on: true }, { key: 'recent-requests', on: true }, ...ROWS.map(([k]) => ({ key: k, on: true }))]).filter((r) => r.on).map((r) => r.key));
+	const shown = $derived((order ?? [{ key: 'recently-added', on: true }, { key: 'recent-requests', on: true }, { key: 'leaving-soon', on: true }, ...ROWS.map(([k]) => ({ key: k, on: true }))]).filter((r) => r.on).map((r) => r.key));
 
 	$effect(() => {
 		let alive = true;
@@ -35,6 +35,7 @@
 		// Flixarr's own rows: what just landed in Plex, and the newest requests.
 		api<Page<Card>>('/discover/recently-added').then((p) => alive && (local.added = p.results)).catch(() => {});
 		api<Page<Card>>('/discover/recent-requests').then((p) => alive && (local.requests = p.results)).catch(() => {});
+		api<{ results: { card: Card }[] }>('/leaving').then((d) => alive && (local.leaving = d.results.map((r) => r.card))).catch(() => {});
 		return () => (alive = false);
 	});
 	// Going back to Discover: same rows, each row scrolled sideways where you left it (design rule 11), same page scroll.
@@ -72,6 +73,10 @@
 		{#each shown as k (k)}
 			{#if k === 'recently-added'}
 				<Row title="Recently Added" items={local.added}>
+					{#snippet item(c)}<Poster item={c} />{/snippet}
+				</Row>
+			{:else if k === 'leaving-soon'}
+				<Row title="Leaving Soon" items={local.leaving} more="/leaving">
 					{#snippet item(c)}<Poster item={c} />{/snippet}
 				</Row>
 			{:else if k === 'recent-requests'}

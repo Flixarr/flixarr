@@ -42,6 +42,8 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"totalSize":2,"items":[{"mediaServerId":"56","tmdbId":603,"addDate":"%s"},{"mediaServerId":"57","tmdbId":949,"addDate":"%s"}]}`, day(25), day(0))
 	case strings.HasPrefix(r.URL.Path, "/api/collections/media/4/content/"):
 		fmt.Fprintf(w, `{"totalSize":1,"items":[{"mediaServerId":"90","tmdbId":1396,"addDate":"%s"}]}`, day(1))
+	case r.URL.Path == "/api/settings":
+		w.Write([]byte(`{"collection_handler_job_cron":"0 4 * * *"}`)) // daily at 4
 	case r.URL.Path == "/api/rules/exclusion":
 		w.Write([]byte(`{"code":1,"result":"Success"}`))
 	default:
@@ -87,8 +89,8 @@ func TestSync(t *testing.T) {
 	if len(now) != 2 || now[0].TmdbID != 603 || now[0].Collection != "Movies leaving" {
 		t.Fatalf("leaving: %+v", now) // season collections aren't shown as the show leaving
 	}
-	if at, _ := time.Parse(time.RFC3339, now[0].LeaveAt); time.Until(at) < 2*24*time.Hour || time.Until(at) > 4*24*time.Hour {
-		t.Fatalf("leave date: %s", now[0].LeaveAt)
+	if at, _ := time.Parse(time.RFC3339, now[0].LeaveAt); time.Until(at) < 2*24*time.Hour || time.Until(at) > 4*24*time.Hour || at.In(time.Local).Hour() != 4 || at.Minute() != 0 {
+		t.Fatalf("leave date: %s (the 4 AM run after its 28 days)", now[0].LeaveAt)
 	}
 	if len(changed) != 2 || len(f.did("POST /api/rules/exclusion")) != 0 {
 		t.Fatalf("changed %v, exclusions %v", changed, f.did("POST /api/rules/exclusion"))

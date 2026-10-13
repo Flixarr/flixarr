@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Flixarr/flixarr/internal/jobs"
 	"github.com/Flixarr/flixarr/internal/store"
 )
 
@@ -108,6 +109,11 @@ func (w *Watcher) Sync(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// Titles go on the removal run after their time is up, not the moment it is.
+	var runs *jobs.Schedule
+	if cron := c.HandlerSchedule(ctx); cron != "" {
+		runs, _ = jobs.Parse(cron)
+	}
 	before, _ := w.Store.LeavingNow(w.Seen())
 	seen := time.Now().UTC().Format("2006-01-02T15:04:05.000000000Z")
 	items, stats := []store.Leaving{}, []Stat{}
@@ -116,10 +122,20 @@ func (w *Watcher) Sync(ctx context.Context) (string, error) {
 		typ, ok := kindOf(col.Type)
 		if ok && col.Active {
 			for _, m := range col.Media {
+				if m.TmdbID == 0 { // Maintainerr didn't match it: Flixarr may know it by its Plex key
+					if it, ok := w.Store.PlexItemByRatingKey(m.PlexID); ok && it.Type == typ {
+						m.TmdbID = it.TmdbID
+					}
+				}
 				if m.TmdbID == 0 || m.Added.IsZero() {
 					continue
 				}
 				at := m.Added.Add(time.Duration(col.DeleteAfterDays) * 24 * time.Hour)
+				if runs != nil {
+					if next := runs.Next(at.In(time.Local)); !next.IsZero() {
+						at = next
+					}
+				}
 				items = append(items, store.Leaving{Type: typ, TmdbID: m.TmdbID, PlexID: m.PlexID, CollectionID: col.ID, Collection: col.Title, LeaveAt: at.Format(time.RFC3339)})
 				st.Leaving++
 			}

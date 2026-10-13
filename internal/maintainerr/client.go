@@ -90,6 +90,18 @@ func (c *Client) Status(ctx context.Context) (Status, error) {
 	return s, err
 }
 
+// HandlerSchedule is when Maintainerr removes titles whose time is up (a cron expression; its default
+// is daily). Titles leave on its first run after their days in the collection have passed.
+func (c *Client) HandlerSchedule(ctx context.Context) string {
+	var s struct {
+		Cron string `json:"collection_handler_job_cron"`
+	}
+	if c.do(ctx, http.MethodGet, "/settings", nil, &s) != nil {
+		return ""
+	}
+	return s.Cron
+}
+
 // Collection is one rule's "leaving" collection.
 type Collection struct {
 	ID              int     `json:"id"`
@@ -208,7 +220,7 @@ func (c *Client) AddWebhook(ctx context.Context, url string) error {
 			c.do(ctx, http.MethodDelete, fmt.Sprintf("/notifications/configuration/%d", cfg.ID), nil, nil)
 		}
 	}
-	payload := `{"event":"{{notification_type}}","subject":"{{subject}}","message":"{{message}}"}`
+	payload := map[string]any{"event": "{{notification_type}}", "subject": "{{subject}}", "message": "{{message}}"} // an object, not text
 	in := map[string]any{"agent": "webhook", "name": WebhookName, "enabled": true, "types": []int{2, 4, 8, 16}, "aboutScale": 3,
 		"options": map[string]any{"webhookUrl": url, "jsonPayload": payload, "authHeader": ""}}
 	if err := c.do(ctx, http.MethodPost, "/notifications/configuration/add", in, nil); err != nil {

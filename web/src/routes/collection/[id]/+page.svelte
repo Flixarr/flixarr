@@ -24,7 +24,7 @@
 	// Where each movie stands: in Plex, requested, or missing.
 	const st = (p: Card) => statusOf(`movie:${p.id}`);
 	const have = $derived(c ? c.parts.filter((p) => st(p)?.plex || st(p)?.status === 'available').length : 0);
-	const missing = $derived(c ? c.parts.filter((p) => { const s = st(p); return s !== undefined && (!s || s.status === 'failed' || s.status === 'declined'); }) : []);
+	const missing = $derived(c ? c.parts.filter((p) => { const s = st(p); return s !== undefined && (!s || s.status === 'failed' || s.status === 'declined' || s.status === 'expired'); }) : []);
 
 	async function openRequest() {
 		picked = missing.filter((p) => p.year && p.year <= String(new Date().getFullYear())).map((p) => p.id);

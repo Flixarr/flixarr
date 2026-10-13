@@ -13,6 +13,7 @@
 	import RequestButton from '#lib/components/RequestButton.svelte';
 	import IssueModal from '#lib/components/IssueModal.svelte';
 	import RedownloadModal from '#lib/components/RedownloadModal.svelte';
+	import LeavingActions from '#lib/components/LeavingActions.svelte';
 	import { can } from '#lib/session.svelte.ts';
 	import type { RequestBrief } from '#lib/types.ts';
 	import Img from '#lib/components/Img.svelte';
@@ -65,6 +66,7 @@
 			{#if t && (brief?.plex || brief?.status === 'available') && can('reportIssues')}<button class="btn-ghost act" onclick={() => (issueOpen = true)}><Icon name="issues" class="size-4" />Report issue</button>{/if}
 			{#if t && brief?.plex && can('redownload')}<button class="btn-ghost act" onclick={() => (redownloadOpen = true)}><Icon name="refresh" class="size-4" />Redownload</button>{/if}
 			{#if t?.trailer}<button class="btn-ghost act" onclick={() => (trailer = true)}><Icon name="play" class="size-4" />Trailer</button>{/if}
+			{#if t && brief?.plex}<LeavingActions type="series" id={t.id} title={t.title} />{/if}
 		{/snippet}
 	</DetailHeader>
 	<IssueModal bind:open={issueOpen} item={t} />

@@ -13,6 +13,7 @@ export const listHref = (key: string) => '/discover/' + key;
 export const ROW_INFO: Record<string, { title: string; about: string }> = {
 	'recently-added': { title: 'Recently Added', about: 'The newest titles in your Plex libraries.' },
 	'recent-requests': { title: 'Recent Requests', about: "The newest requests (everyone's, for people who can see them)." },
+	'leaving-soon': { title: 'Leaving Soon', about: 'Titles Maintainerr removes soon, soonest first (only with Maintainerr connected).' },
 	trending: { title: 'Trending', about: 'Movies and series trending this week.' },
 	'popular-movies': { title: 'Popular Movies', about: '' },
 	'upcoming-movies': { title: 'Upcoming Movies', about: 'Coming to cinemas in your region.' },
