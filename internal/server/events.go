@@ -71,12 +71,11 @@ func (s *Server) liveStream(w http.ResponseWriter, r *http.Request, u *store.Use
 // who can view or manage all requests.
 func (s *Server) PublishRequest(r store.Request) {
 	key := fmt.Sprintf("%s:%d", r.Type, r.TmdbID)
-	brief := map[string]any{"id": r.ID, "status": r.Status, "progress": r.Progress}
-	if r.Status == "deleted" {
-		brief = nil
-	} else if got, err := s.Library.Lookup([]string{key}); err == nil {
-		if it, ok := got[key]; ok {
-			brief["plex"] = it.URL
+	// The title as a whole (a series can have other requests still open), not just this request.
+	var brief any
+	if got, err := s.briefs([]string{key}); err == nil {
+		if b, ok := got[key]; ok {
+			brief = b
 		}
 	}
 	owner := r.UserID

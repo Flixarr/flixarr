@@ -30,6 +30,7 @@ type fakeArr struct {
 	epFile  bool
 	noFile  bool // in the library without a file
 	gone    bool // movie 42 was deleted from Radarr
+	files   int  // series 42: episodes with files in seasons 1 and 2 (when hasFile is off)
 }
 
 func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -74,7 +75,7 @@ func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case p == "movie/42":
 		json.NewEncoder(w).Encode(map[string]any{"id": 42, "hasFile": f.hasFile})
 	case p == "series/42":
-		have := 0
+		have := f.files
 		if f.hasFile {
 			have = 8
 		}
@@ -424,6 +425,8 @@ func TestRequestAlerts(t *testing.T) {
 }
 
 func TestEpisodeRequests(t *testing.T) {
+	EpisodesReady = true // switched off in the app for now; the code is kept working
+	defer func() { EpisodesReady = false }()
 	s, st, _, sonarr, admin, _ := setup(t)
 	ctx := context.Background()
 	r, err := s.Create(ctx, admin, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad", Episodes: [][2]int{{1, 1}, {2, 1}}})
@@ -514,4 +517,104 @@ func TestOpenRequestWhileGrabbed(t *testing.T) {
 			t.Fatalf("%s: asked twice: %v", status, err)
 		}
 	}
+}
+
+func TestSeriesMoreSeasons(t *testing.T) {
+	s, st, _, sonarr, admin, _ := setup(t)
+	ctx := context.Background()
+	r1, err := s.Create(ctx, admin, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad", Seasons: []int{1}})
+	if err != nil || r1.Status != "sent" {
+		t.Fatalf("season 1: %+v %v", r1, err)
+	}
+	if got := sonarr.added[0]["monitorNewItems"]; got != "none" {
+		t.Fatalf("picked seasons follow later seasons: %v", got)
+	}
+	// Season 1 again: nothing new to ask for.
+	if _, err := s.Create(ctx, admin, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad", Seasons: []int{1}}); err != ErrAlready {
+		t.Fatalf("season 1 twice: %v", err)
+	}
+	// Seasons 1 and 2: only season 2 is new, and it goes in its own request.
+	r2, err := s.Create(ctx, admin, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad", Seasons: []int{1, 2}})
+	if err != nil || len(r2.Seasons) != 1 || r2.Seasons[0] != 2 || r2.ID == r1.ID {
+		t.Fatalf("season 2: %+v %v", r2, err)
+	}
+	if c, _ := st.SeriesCoverage(1396); c.Whole || len(c.Seasons) != 2 {
+		t.Fatalf("coverage: %+v", c)
+	}
+	// The whole show on top: allowed once, then nothing more.
+	if _, err := s.Create(ctx, admin, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad"}); err != nil {
+		t.Fatalf("whole show: %v", err)
+	}
+	if _, err := s.Create(ctx, admin, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad", Seasons: []int{3}}); err != ErrAlready {
+		t.Fatalf("after the whole show: %v", err)
+	}
+	// A finished request keeps the title's state from hiding one still on its way.
+	r1.Status = "available"
+	st.UpdateRequest(r1)
+	if got, _ := st.RequestStatusFor([]string{"series:1396"}); got["series:1396"].Status == "available" {
+		t.Fatalf("status hides active requests: %+v", got)
+	}
+}
+
+func TestWholeShowFollowsNewSeasons(t *testing.T) {
+	s, _, _, sonarr, admin, _ := setup(t)
+	ctx := context.Background()
+	if _, err := s.Create(ctx, admin, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := sonarr.added[0]["monitorNewItems"]; got != "all" {
+		t.Fatalf("whole show: %v", got)
+	}
+	// Already in Sonarr: a whole-show request turns following on too.
+	s2, _, _, sonarr2, admin2, _ := setup(t)
+	sonarr2.inLib = true
+	if _, err := s2.Create(ctx, admin2, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad"}); err != nil {
+		t.Fatal(err)
+	}
+	if sonarr2.put["monitorNewItems"] != "all" {
+		t.Fatalf("existing series: %v", sonarr2.put["monitorNewItems"])
+	}
+}
+
+func TestEpisodesOffForNow(t *testing.T) {
+	s, _, _, _, admin, _ := setup(t)
+	if m := s.Modes(); m.Episodes {
+		t.Fatalf("episodes offered: %+v", m)
+	}
+	s.SetModes(TVModes{Seasons: true, Episodes: true, Default: "episodes"})
+	if m := s.Modes(); m.Episodes || m.Default != "seasons" {
+		t.Fatalf("saved episodes mode: %+v", m)
+	}
+	if _, err := s.Create(context.Background(), admin, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad", Episodes: [][2]int{{1, 1}}}); err == nil {
+		t.Fatal("episode request allowed")
+	}
+}
+
+func TestSeasonProgressCountsFinishedEpisodes(t *testing.T) {
+	s, st, _, sonarr, admin, _ := setup(t)
+	ctx := context.Background()
+	r, _ := s.Create(ctx, admin, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad", Seasons: []int{1}})
+	check := func(status string, progress int) {
+		t.Helper()
+		s.checked = nil
+		s.Refresh(ctx)
+		if r, _ = st.Request(r.ID); r.Status != status || r.Progress != progress {
+			t.Fatalf("want %s %d%%, got %s %d%%", status, progress, r.Status, r.Progress)
+		}
+	}
+	// Only another season downloading: nothing for this request yet.
+	sonarr.queue = `[{"seasonNumber":2,"size":1000,"sizeleft":500,"status":"downloading","trackedDownloadState":"downloading"}]`
+	check("sent", 0)
+	// One episode of 8 at half: 6%.
+	sonarr.queue = `[{"seasonNumber":1,"size":1000,"sizeleft":500,"status":"downloading","trackedDownloadState":"downloading"},{"seasonNumber":2,"size":1000,"sizeleft":0,"status":"downloading","trackedDownloadState":"downloading"}]`
+	check("downloading", 6)
+	// That one imported, nothing in the queue yet for the rest: still downloading (1 of 8), not back to Requested.
+	sonarr.queue, sonarr.files = "", 1
+	check("downloading", 12)
+	// Next one done and importing while 6 are still missing: not "Importing" for the whole season.
+	sonarr.queue = `[{"seasonNumber":1,"size":1000,"sizeleft":0,"status":"completed","trackedDownloadState":"importPending"}]`
+	check("downloading", 25)
+	// The last one being moved in: Importing.
+	sonarr.files = 7
+	check("importing", 100)
 }

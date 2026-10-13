@@ -6,7 +6,7 @@
 	import Toggle from '#lib/components/Toggle.svelte';
 
 	type Modes = { whole: boolean; seasons: boolean; episodes: boolean; default: 'whole' | 'seasons' | 'episodes' };
-	type Info = { approvalRequired: boolean; tvModes: Modes };
+	type Info = { approvalRequired: boolean; tvModes: Modes; episodesReady?: boolean };
 	let info = $state<Info | null>(null);
 	$effect(() => {
 		api<Info>('/settings/requests').then((d) => (info = d));
@@ -22,7 +22,7 @@
 	}
 	const MODES: [keyof Omit<Modes, 'default'>, string, string][] = [
 		['whole', 'Whole show', 'Every season, and new ones as they air.'],
-		['seasons', 'Pick seasons', 'Choose which seasons.'],
+		['seasons', 'Pick seasons', 'Choose which seasons. Seasons that air later are not added.'],
 		['episodes', 'Pick episodes', 'Choose single episodes, from any seasons.']
 	];
 	function setMode(k: keyof Omit<Modes, 'default'>, on: boolean) {
@@ -53,7 +53,7 @@
 	<div>
 		{@render heading('Series')}
 		<div class="card divide-y divide-gray-700/40 px-4">
-			{#each MODES as [k, label, about] (k)}
+			{#each MODES.filter(([k]) => k !== 'episodes' || info!.episodesReady) as [k, label, about] (k)}
 				<div class="py-3"><Toggle checked={info.tvModes[k]} {label} {about} onchange={(on) => setMode(k, on)} /></div>
 			{/each}
 			<div class="flex flex-wrap items-center justify-between gap-3 py-3">

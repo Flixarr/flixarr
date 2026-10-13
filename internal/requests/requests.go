@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -105,15 +106,31 @@ type TVModes struct {
 	Default  string `json:"default"` // whole | seasons | episodes
 }
 
-// Modes returns the series request modes (all on, whole show first, until changed).
+// EpisodesReady turns on requesting single episodes. Off until whole-show and season requests are
+// finished; the code stays so it can come back without a rework.
+var EpisodesReady = false
+
+// Modes returns the series request modes (whole show and seasons on, whole show first, until changed).
 func (s *Service) Modes() TVModes {
-	m := TVModes{Whole: true, Seasons: true, Episodes: true, Default: "whole"}
+	m := TVModes{Whole: true, Seasons: true, Episodes: EpisodesReady, Default: "whole"}
 	json.Unmarshal([]byte(s.Store.Setting(KeyTVModes, "")), &m)
+	if !EpisodesReady {
+		m.Episodes = false
+		if !m.Whole && !m.Seasons {
+			m.Whole = true
+		}
+		if m.Default == "episodes" || (m.Default == "whole" && !m.Whole) || (m.Default == "seasons" && !m.Seasons) {
+			m.Default = map[bool]string{true: "whole", false: "seasons"}[m.Whole]
+		}
+	}
 	return m
 }
 
 // SetModes saves the series request modes; at least one stays on, and the default is one that's on.
 func (s *Service) SetModes(m TVModes) (TVModes, error) {
+	if !EpisodesReady {
+		m.Episodes = false
+	}
 	if !m.Whole && !m.Seasons && !m.Episodes {
 		return m, errors.New("keep at least one way to request series")
 	}
@@ -156,6 +173,23 @@ func (s *Service) UsageFor(u *store.User, typ string) Usage {
 // ApprovalRequired reports whether requests from non-admins wait for an admin.
 func (s *Service) ApprovalRequired() bool { return s.Store.Setting(KeyApproval, "false") == "true" }
 
+// without returns the numbers in list that aren't in drop, sorted, without repeats.
+func without(list, drop []int) []int {
+	gone := map[int]bool{}
+	for _, n := range drop {
+		gone[n] = true
+	}
+	out := []int{}
+	for _, n := range list {
+		if n > 0 && !gone[n] {
+			gone[n] = true
+			out = append(out, n)
+		}
+	}
+	sort.Ints(out)
+	return out
+}
+
 func kindOf(typ string) string {
 	if typ == "series" {
 		return "sonarr"
@@ -184,10 +218,27 @@ func (s *Service) Create(ctx context.Context, u *store.User, in New) (store.Requ
 	if in.Type == "movie" && inPlex(s.Store, in.Type, in.TmdbID) {
 		return store.Request{}, ErrInPlex
 	}
-	if _, open, err := s.Store.OpenRequest(in.Type, in.TmdbID); err != nil {
-		return store.Request{}, err
-	} else if open {
-		return store.Request{}, ErrAlready
+	if in.Type == "movie" {
+		if _, open, err := s.Store.OpenRequest(in.Type, in.TmdbID); err != nil {
+			return store.Request{}, err
+		} else if open {
+			return store.Request{}, ErrAlready
+		}
+	} else {
+		// A series can be asked for again for seasons nobody has asked for yet, or for the whole show.
+		cov, err := s.Store.SeriesCoverage(in.TmdbID)
+		if err != nil {
+			return store.Request{}, err
+		}
+		if cov.Whole {
+			return store.Request{}, ErrAlready
+		}
+		if len(in.Seasons) > 0 {
+			in.Seasons = without(in.Seasons, cov.Seasons)
+			if len(in.Seasons) == 0 {
+				return store.Request{}, ErrAlready
+			}
+		}
 	}
 	v, ok, err := s.Store.FirstServer(kindOf(in.Type))
 	if err != nil {
@@ -383,6 +434,11 @@ func (s *Service) sendSeries(ctx context.Context, v store.Server, r *store.Reque
 	series["rootFolderPath"] = v.RootFolder
 	series["seasonFolder"] = v.SeasonFolders
 	series["monitored"] = true
+	// The whole show also follows seasons that air later; picked seasons don't.
+	series["monitorNewItems"] = "none"
+	if r.Mode == "all" {
+		series["monitorNewItems"] = "all"
+	}
 	series["seriesType"] = "standard"
 	if r.Anime {
 		series["seriesType"] = "anime"
@@ -421,10 +477,14 @@ func (s *Service) monitorSeasons(ctx context.Context, c *arr.Client, v store.Ser
 			}
 		}
 	}
-	if len(added) == 0 && sr["monitored"] == true {
+	follow := all && sr["monitorNewItems"] != "all" // the whole show: also seasons that air later
+	if len(added) == 0 && sr["monitored"] == true && !follow {
 		return nil // everything asked for is already monitored
 	}
 	sr["monitored"] = true
+	if all {
+		sr["monitorNewItems"] = "all"
+	}
 	if err := c.Put(ctx, fmt.Sprintf("series/%d", id), sr, nil); err != nil {
 		return fmt.Errorf("Sonarr didn't update the series: %w", err)
 	}
@@ -711,7 +771,7 @@ func (s *Service) follow(ctx context.Context, v store.Server, r *store.Request) 
 			s.filesDone(ctx, r, nil)
 			return nil
 		}
-		return s.queueProgress(ctx, c, fmt.Sprintf("queue/details?movieId=%d", r.ArrID), r)
+		return s.queueProgress(ctx, c, fmt.Sprintf("queue/details?movieId=%d", r.ArrID), r, nil, 0, 0)
 	}
 	if r.Mode == "episodes" {
 		eps, err := episodeList(ctx, c, r.ArrID, false)
@@ -739,7 +799,11 @@ func (s *Service) follow(ctx context.Context, v store.Server, r *store.Request) 
 			s.filesDone(ctx, r, have)
 			return nil
 		}
-		return s.queueProgress(ctx, c, fmt.Sprintf("queue/details?seriesId=%d", r.ArrID), r)
+		inSeasons := map[int]bool{}
+		for _, e := range r.Episodes {
+			inSeasons[e[0]] = true
+		}
+		return s.queueProgress(ctx, c, fmt.Sprintf("queue/details?seriesId=%d", r.ArrID), r, inSeasons, sum(have), seen)
 	}
 	var sr map[string]any
 	if err := c.Get(ctx, fmt.Sprintf("series/%d", r.ArrID), &sr); err != nil {
@@ -749,7 +813,7 @@ func (s *Service) follow(ctx context.Context, v store.Server, r *store.Request) 
 	for _, n := range r.Seasons {
 		want[n] = true
 	}
-	complete, have := true, map[int]int{}
+	complete, have, wanted := true, map[int]int{}, 0
 	if seasons, ok := sr["seasons"].([]any); ok {
 		for _, x := range seasons {
 			m, _ := x.(map[string]any)
@@ -763,6 +827,7 @@ func (s *Service) follow(ctx context.Context, v store.Server, r *store.Request) 
 				continue // nothing aired yet
 			}
 			have[n] = files
+			wanted += total
 			if files < total {
 				complete = false
 			}
@@ -772,27 +837,48 @@ func (s *Service) follow(ctx context.Context, v store.Server, r *store.Request) 
 		s.filesDone(ctx, r, have)
 		return nil
 	}
-	return s.queueProgress(ctx, c, fmt.Sprintf("queue/details?seriesId=%d", r.ArrID), r)
+	var only map[int]bool // the whole show: every season's downloads count
+	if r.Mode == "seasons" {
+		only = want
+	}
+	return s.queueProgress(ctx, c, fmt.Sprintf("queue/details?seriesId=%d", r.ArrID), r, only, sum(have), wanted)
 }
 
 // queueProgress reads the download queue: grabbed (waiting in the download client), downloading with the
-// average progress, or importing (downloaded, Radarr/Sonarr moving the files).
-func (s *Service) queueProgress(ctx context.Context, c *arr.Client, path string, r *store.Request) error {
-	var items []map[string]any
-	if err := c.Get(ctx, path, &items); err != nil {
+// progress, or importing (downloaded, Radarr/Sonarr moving the files). For a series, done of want episodes
+// already have files: Sonarr fetches a season episode by episode, so progress counts those as finished
+// and the request never drops back to Requested while some are already there. seasons (when set) keeps
+// only those seasons' downloads: another request for the same show has its own.
+func (s *Service) queueProgress(ctx context.Context, c *arr.Client, path string, r *store.Request, seasons map[int]bool, done, want int) error {
+	var all []map[string]any
+	if err := c.Get(ctx, path, &all); err != nil {
 		return err
 	}
+	items := all[:0]
+	for _, it := range all {
+		if seasons == nil || seasons[num(it["seasonNumber"])] {
+			items = append(items, it)
+		}
+	}
 	if len(items) == 0 {
+		if done > 0 && want > 0 {
+			r.Status, r.Progress = "downloading", min(done*100/want, 99) // the rest is still being looked for
+			return nil
+		}
 		if r.Status == "grabbed" || r.Status == "downloading" || r.Status == "importing" {
 			r.Status = "sent" // removed from the queue without files: searching again
 		}
 		r.Progress = 0
 		return nil
 	}
-	total, left, importing, moving := 0.0, 0.0, false, false
+	total, left, part, importing, moving := 0.0, 0.0, 0.0, false, false
 	for _, it := range items {
-		total += numf(it["size"])
-		left += numf(it["sizeleft"])
+		size, sizeLeft := numf(it["size"]), numf(it["sizeleft"])
+		total += size
+		left += sizeLeft
+		if size > 0 {
+			part += (size - sizeLeft) / size // one record per episode, even for a season pack
+		}
 		state, _ := it["trackedDownloadState"].(string)
 		status, _ := it["status"].(string)
 		if state == "importPending" || state == "importing" || state == "imported" || status == "completed" {
@@ -803,18 +889,28 @@ func (s *Service) queueProgress(ctx context.Context, c *arr.Client, path string,
 		}
 	}
 	r.Progress = 0
-	if total > 0 {
+	if want > 0 {
+		r.Progress = min(int((float64(done)+part)/float64(want)*100), 99)
+	} else if total > 0 {
 		r.Progress = int((total - left) / total * 100)
 	}
 	switch {
-	case importing && !moving:
+	case importing && !moving && (want == 0 || done+len(items) >= want): // the last ones are being moved in
 		r.Status, r.Progress = "importing", 100
-	case moving || r.Progress > 0:
+	case moving || r.Progress > 0 || done > 0:
 		r.Status = "downloading"
 	default:
 		r.Status = "grabbed" // queued, delayed or paused in the download client
 	}
 	return nil
+}
+
+func sum(m map[int]int) int {
+	n := 0
+	for _, v := range m {
+		n += v
+	}
+	return n
 }
 
 func num(v any) int {

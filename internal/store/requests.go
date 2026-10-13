@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"sort"
 	"strings"
 )
 
@@ -108,6 +109,45 @@ func (s *Store) OpenRequest(typ string, tmdbID int) (Request, bool, error) {
 	return r, err == nil, err
 }
 
+// OpenRequests lists every request still in play for a title, oldest first. A series can have several,
+// one per batch of seasons.
+func (s *Store) OpenRequests(typ string, tmdbID int) ([]Request, error) {
+	return s.queryRequests(`SELECT `+requestCols+` FROM requests r LEFT JOIN users u ON u.id = r.user_id
+		WHERE r.type = ? AND r.tmdb_id = ? AND r.status IN (`+inList(OpenStatuses)+`) ORDER BY r.id`, typ, tmdbID)
+}
+
+// Coverage is what a series' open requests already ask for: the whole show, or these seasons.
+type Coverage struct {
+	Whole   bool  `json:"whole"`
+	Seasons []int `json:"seasons"`
+}
+
+// SeriesCoverage adds up a series' open requests.
+func (s *Store) SeriesCoverage(tmdbID int) (Coverage, error) {
+	list, err := s.OpenRequests("series", tmdbID)
+	c := Coverage{Seasons: []int{}}
+	seen := map[int]bool{}
+	for _, r := range list {
+		if r.Mode == "all" {
+			c.Whole = true
+		}
+		for _, n := range r.Seasons {
+			if !seen[n] {
+				seen[n] = true
+				c.Seasons = append(c.Seasons, n)
+			}
+		}
+		for _, e := range r.Episodes { // episode requests count their seasons as asked for
+			if !seen[e[0]] {
+				seen[e[0]] = true
+				c.Seasons = append(c.Seasons, e[0])
+			}
+		}
+	}
+	sort.Ints(c.Seasons)
+	return c, err
+}
+
 // ActiveRequests lists requests that went to a Radarr/Sonarr and aren't available yet (the request follow loop watches them).
 func (s *Store) ActiveRequests() ([]Request, error) {
 	return s.queryRequests(`SELECT ` + requestCols + ` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.status IN ('sent', 'grabbed', 'downloading', 'importing') AND r.arr_id != 0`)
@@ -136,7 +176,7 @@ func (s *Store) RequestStatusFor(keys []string) (map[string]Request, error) {
 	if len(keys) == 0 {
 		return out, nil
 	}
-	rows, err := s.db.Query(`SELECT ` + requestCols + ` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.status IN ('pending', 'approved', 'sent', 'downloading', 'available') ORDER BY r.id`)
+	rows, err := s.db.Query(`SELECT ` + requestCols + ` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.status IN (` + inList(OpenStatuses) + `) ORDER BY r.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +191,8 @@ func (s *Store) RequestStatusFor(keys []string) (map[string]Request, error) {
 			return nil, err
 		}
 		k := r.Type + ":" + itoa(r.TmdbID)
-		if want[k] {
+		// Newest wins, except a series keeps showing a request still on its way over a finished one.
+		if prev, has := out[k]; want[k] && (!has || r.Status != "available" || prev.Status == "available") {
 			out[k] = r
 		}
 	}

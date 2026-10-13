@@ -41,17 +41,18 @@
 		return () => offs.forEach((off) => off());
 	});
 
-	// Series in Plex: offer Request more only while some season that has aired isn't fully there.
-	let plexSeasons = $state<Record<number, number> | null>(null);
+	// Series: offer Request more while some season that has aired is neither fully in Plex nor asked for.
+	let plexSeasons = $state<Record<number, number>>({});
 	const hasPlex = $derived(!!req?.plex);
 	$effect(() => {
-		plexSeasons = null;
+		plexSeasons = {};
 		if (item.type === 'series' && hasPlex) api<Record<number, number>>(`/plex/seasons/${item.id}`).then((d) => (plexSeasons = d)).catch(() => {});
 	});
-	const missingSeasons = $derived.by(() => {
-		if (item.type !== 'series' || !plexSeasons) return false;
+	const asked = $derived(req?.asked);
+	const moreSeasons = $derived.by(() => {
+		if (item.type !== 'series' || asked?.whole || (!asked && !hasPlex)) return false;
 		const today = new Date().toISOString().slice(0, 10);
-		return (item as Series).seasons.some((s) => s.n > 0 && s.episodes > 0 && (!s.air || s.air <= today) && (plexSeasons![s.n] ?? 0) < s.episodes);
+		return (item as Series).seasons.some((s) => s.n > 0 && s.episodes > 0 && (!s.air || s.air <= today) && (plexSeasons[s.n] ?? 0) < s.episodes && !(asked?.seasons ?? []).includes(s.n));
 	});
 
 	let blockOpen = $state(false);
@@ -86,20 +87,22 @@
 	</a>
 {/snippet}
 
+{#snippet more()}
+	<button class="btn-ghost act" onclick={() => (open = true)}><Icon name="plus" class="size-4" />Request more</button>
+{/snippet}
+
 {#if req?.plex}
 	<a href={req.plex} target="_blank" rel="noopener" class="btn-plex act"><PlexMark class="size-4" color="#111827" />Play on Plex</a>
 	{#if item.type === 'series'}
-		{#if req.status !== 'available'}
-			{@render pill(req)}
-		{:else if missingSeasons && can('requestTv')}
-			<button class="btn-ghost act" onclick={() => (open = true)}><Icon name="plus" class="size-4" />Request more</button>
-		{/if}
+		{#if req.status !== 'available'}{@render pill(req)}{/if}
+		{#if moreSeasons && can('requestTv')}{@render more()}{/if}
 	{/if}
 {:else if req?.blocked}
 	<span class="btn-ghost act cursor-default text-gray-400">Can't be requested</span>
 	{#if can('admin')}<button class="btn-ghost act" onclick={unblock}>Unblock</button>{/if}
 {:else if req && req.status !== 'declined' && req.status !== 'failed'}
 	{@render pill(req)}
+	{#if moreSeasons && can('requestTv')}{@render more()}{/if}
 {:else if req !== undefined && !can(item.type === 'series' ? 'requestTv' : 'requestMovies')}
 	<span class="btn-ghost act cursor-default text-gray-400">You can't request {item.type === 'series' ? 'series' : 'movies'}</span>
 {:else if req !== undefined}
@@ -113,4 +116,9 @@
 		<button class="btn px-6" onclick={block}>Block</button>
 	{/snippet}
 </Modal>
-<RequestModal bind:open {item} onrequested={(r) => { req = { id: r.id, status: r.status, progress: r.progress, plex: req?.plex }; remember(key, req); }} />
+<RequestModal bind:open {item} asked={req?.asked} onrequested={(r) => {
+	// The live update brings the title's full state (all its requests) right after; this is the stopgap.
+	const seasons = r.mode === 'all' ? [] : [...(req?.asked?.seasons ?? []), ...r.seasons];
+	req = { id: r.id, status: r.status, progress: r.progress, plex: req?.plex, asked: item.type === 'series' ? { whole: r.mode === 'all' || !!req?.asked?.whole, seasons } : undefined };
+	remember(key, req);
+}} />

@@ -71,21 +71,40 @@ func (s *Server) requestStatus(w http.ResponseWriter, r *http.Request, _ *store.
 			keys = append(keys, k)
 		}
 	}
-	got, err := s.Store.RequestStatusFor(keys)
+	out, err := s.briefs(keys)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return
 	}
-	type brief struct {
-		ID       int64  `json:"id"`
-		Status   string `json:"status"`
-		Progress int    `json:"progress"`
-		Plex     string `json:"plex,omitempty"` // opens it in Plex
-		Blocked  bool   `json:"blocked,omitempty"`
+	writeJSON(w, http.StatusOK, out)
+}
+
+// brief is where a title stands, for buttons and poster dots.
+type brief struct {
+	ID       int64  `json:"id"`
+	Status   string `json:"status"`
+	Progress int    `json:"progress"`
+	Plex     string `json:"plex,omitempty"` // opens it in Plex
+	Blocked  bool   `json:"blocked,omitempty"`
+	// Series: what open requests already ask for, so the page can offer the rest.
+	Asked *store.Coverage `json:"asked,omitempty"`
+}
+
+// briefs works out where each title stands ("movie:603" keys); titles with nothing to say are left out.
+func (s *Server) briefs(keys []string) (map[string]brief, error) {
+	got, err := s.Store.RequestStatusFor(keys)
+	if err != nil {
+		return nil, err
 	}
 	out := map[string]brief{}
 	for k, v := range got {
-		out[k] = brief{ID: v.ID, Status: v.Status, Progress: v.Progress}
+		b := brief{ID: v.ID, Status: v.Status, Progress: v.Progress}
+		if v.Type == "series" {
+			if c, err := s.Store.SeriesCoverage(v.TmdbID); err == nil {
+				b.Asked = &c
+			}
+		}
+		out[k] = b
 	}
 	for _, k := range keys {
 		typ, id, _ := strings.Cut(k, ":")
@@ -106,7 +125,7 @@ func (s *Server) requestStatus(w http.ResponseWriter, r *http.Request, _ *store.
 			out[k] = b
 		}
 	}
-	writeJSON(w, http.StatusOK, out)
+	return out, nil
 }
 
 func (s *Server) requestByID(w http.ResponseWriter, r *http.Request) (store.Request, bool) {
@@ -219,7 +238,7 @@ func (s *Server) requestSettings(w http.ResponseWriter, r *http.Request, _ *stor
 			}
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"approvalRequired": s.Requests.ApprovalRequired(), "tvModes": s.Requests.Modes()})
+	writeJSON(w, http.StatusOK, map[string]any{"approvalRequired": s.Requests.ApprovalRequired(), "tvModes": s.Requests.Modes(), "episodesReady": requests.EpisodesReady})
 }
 
 // requestOptions is what the request window needs: where it goes, the qualities to pick from

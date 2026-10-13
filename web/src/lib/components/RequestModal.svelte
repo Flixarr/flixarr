@@ -9,7 +9,7 @@
 	import Img from './Img.svelte';
 	import EpisodePicker from './EpisodePicker.svelte';
 
-	let { open = $bindable(false), item, onrequested }: { open?: boolean; item: Movie | Series; onrequested?: (r: Request) => void } = $props();
+	let { open = $bindable(false), item, asked, onrequested }: { open?: boolean; item: Movie | Series; asked?: { whole: boolean; seasons: number[] }; onrequested?: (r: Request) => void } = $props();
 
 	type Options = { connected: boolean; server: string; approval: boolean; usage: { limit: number; used: number }; defaultProfileId?: number; defaultProfileName?: string; profiles: { id: number; name: string }[];
 		tvModes: { whole: boolean; seasons: boolean; episodes: boolean; default: Mode } };
@@ -25,6 +25,8 @@
 	const series = $derived(item.type === 'series' ? (item as Series) : null);
 	const list = $derived(series ? series.seasons.filter((s) => s.n > 0) : []);
 	const complete = (n: number, eps: number) => (inPlex[n] ?? 0) >= eps && eps > 0;
+	const requested = (n: number) => !!asked?.seasons.includes(n);
+	const more = $derived(!!asked?.seasons.length); // some seasons already asked for: this asks for the rest
 	const anyInPlex = $derived(Object.keys(inPlex).length > 0);
 
 	$effect(() => {
@@ -39,6 +41,7 @@
 			opts = o;
 			profileId = o.defaultProfileId ?? 0;
 			mode = o.tvModes?.[o.tvModes.default] ? o.tvModes.default : (['whole', 'seasons', 'episodes'] as Mode[]).find((m) => o.tvModes?.[m]) ?? 'whole';
+			if (more && o.tvModes?.seasons) mode = 'seasons'; // asking for more: start on the seasons left
 		}).catch((e) => notify(e instanceof Error ? e.message : 'Could not load.', 'orange'));
 	});
 
@@ -108,20 +111,23 @@
 						</div>
 					{/if}
 					{#if mode === 'whole'}
-						<p class="text-xs text-gray-500">Every season, including new ones as they air.{anyInPlex ? ' Episodes you already have are skipped.' : ''}</p>
+						<p class="text-xs text-gray-500">Every season, including new ones as they air.{anyInPlex || more ? ' Episodes already there or on the way are skipped.' : ''}</p>
 					{:else if mode === 'seasons'}
 						<div class="max-h-64 divide-y divide-gray-700/40 overflow-y-auto rounded-lg border border-gray-700/50 bg-gray-900/40">
 							{#each list as s (s.n)}
 								{@const done = complete(s.n, s.episodes)}
-								<label class="flex items-center gap-3 px-3 py-2 text-sm {done ? 'opacity-60' : 'cursor-pointer hover:bg-white/5'}">
-									<input type="checkbox" class="accent-[var(--color-primary)]" disabled={done} checked={done || seasons.includes(s.n)} onchange={() => toggle(s.n)} />
+								{@const onWay = !done && requested(s.n)}
+								<label class="flex items-center gap-3 px-3 py-2 text-sm {done || onWay ? 'opacity-60' : 'cursor-pointer hover:bg-white/5'}">
+									<input type="checkbox" class="accent-[var(--color-primary)]" disabled={done || onWay} checked={done || onWay || seasons.includes(s.n)} onchange={() => toggle(s.n)} />
 									<span class="flex-1">{s.name}</span>
 									{#if done}<span class="text-xs text-green-400">In Plex</span>
+									{:else if onWay}<span class="text-xs text-blue-300">Requested</span>
 									{:else if inPlex[s.n]}<span class="text-xs text-green-300">{inPlex[s.n]} of {s.episodes} in Plex</span>
 									{:else}<span class="text-xs text-gray-500">{s.episodes} episode{s.episodes === 1 ? '' : 's'}</span>{/if}
 								</label>
 							{/each}
 						</div>
+						<p class="mt-2 text-xs text-gray-500">Only the seasons you pick. Seasons that air later are not added.</p>
 					{:else}
 						<EpisodePicker {series} bind:picked={episodes} done={inPlex} />
 						<p class="mt-2 text-xs text-gray-500">Open a season to pick its episodes, or tick the season for all of them.</p>
