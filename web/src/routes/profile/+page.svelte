@@ -63,6 +63,22 @@
 		}
 	}
 
+	// Local accounts change their own password.
+	let pw = $state({ current: '', next: '' });
+	let pwBusy = $state(false);
+	async function changePassword() {
+		pwBusy = true;
+		try {
+			await api('/me/password', { method: 'PUT', body: JSON.stringify({ current: pw.current, new: pw.next }) });
+			pw = { current: '', next: '' };
+			notify('Password changed. Other devices are signed out.');
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Could not change it.', 'orange');
+		} finally {
+			pwBusy = false;
+		}
+	}
+
 	type Watch = { on: boolean; allowed: boolean; signedIn: boolean };
 	let watch = $state<Watch | null>(null);
 	async function setWatch(on: boolean) {
@@ -87,7 +103,7 @@
 			<div class="min-w-0 flex-1">
 				<h1 class="text-2xl font-bold">{session.me.username}</h1>
 				<div class="flex flex-wrap items-center gap-2 text-sm text-gray-400">
-					<span class="rounded-md bg-primary/15 px-1.5 py-0.5 text-xs text-primary-light ring-1 ring-primary/40">{session.me.role}</span>{session.me.email}<span>· Plex account</span>
+					<span class="rounded-md bg-primary/15 px-1.5 py-0.5 text-xs text-primary-light ring-1 ring-primary/40">{session.me.role}</span>{session.me.email}<span>· {session.me.local ? 'Local account' : 'Plex account'}</span>
 				</div>
 			</div>
 			<button class="btn-ghost text-sm" onclick={out}><Icon name="out" class="size-4" />Sign out</button>
@@ -137,12 +153,23 @@
 			</section>
 		{/if}
 
-		{#if watch?.allowed}
+		{#if watch?.allowed && !session.me.local}
 			<section>
 				<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Plex Watchlist</div>
 				<div class="card px-4 py-3">
 					<Toggle checked={watch.on} disabled={!watch.signedIn && !watch.on} label="Request from my Plex Watchlist" about={watch.signedIn ? 'Everything on your Plex Watchlist gets requested (titles already in the library are skipped), then new additions within 15 minutes. Request limits and approval still apply.' : 'Sign out and back in with Plex once so Flixarr can read your Watchlist.'} onchange={setWatch} />
 				</div>
+			</section>
+		{/if}
+
+		{#if session.me.local}
+			<section>
+				<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Password</div>
+				<form class="card grid gap-3 px-4 py-3 tablet:grid-cols-[1fr_1fr_auto] tablet:items-end" onsubmit={(e) => { e.preventDefault(); changePassword(); }}>
+					<div><label for="pw-cur" class="block text-xs text-gray-400">Current password</label><input id="pw-cur" type="password" autocomplete="current-password" class="mt-1 w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/60" bind:value={pw.current} /></div>
+					<div><label for="pw-new" class="block text-xs text-gray-400">New password (8 or more characters)</label><input id="pw-new" type="password" autocomplete="new-password" class="mt-1 w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/60" bind:value={pw.next} /></div>
+					<button class="btn px-5" disabled={pwBusy || !pw.current || pw.next.length < 8}>{pwBusy ? 'Saving…' : 'Change'}</button>
+				</form>
 			</section>
 		{/if}
 

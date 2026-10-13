@@ -136,6 +136,45 @@
 		}
 	}
 	const fresh = $derived(friends?.filter((f) => !f.added) ?? []);
+
+	// Local accounts: username and password, for people without Plex.
+	let addOpen = $state(false);
+	let local = $state({ username: '', email: '', role: 'User', password: '' });
+	let newPassword = $state('');
+	function makePassword() {
+		const words = crypto.getRandomValues(new Uint32Array(4));
+		return Array.from(words, (n) => n.toString(36).slice(0, 5)).join('-');
+	}
+	function openAdd() {
+		local = { username: '', email: '', role: 'User', password: makePassword() };
+		addOpen = true;
+	}
+	async function addLocal() {
+		saving = true;
+		try {
+			const u = await api<User>('/users/local', { method: 'POST', body: JSON.stringify(local) });
+			addOpen = false;
+			notify(`Added ${u.username}. Give them the username and password; they can change the password in their Profile.`);
+			load();
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Could not add them.', 'orange');
+		} finally {
+			saving = false;
+		}
+	}
+	async function setPassword() {
+		saving = true;
+		try {
+			await api(`/users/${editing!.id}/password`, { method: 'PUT', body: JSON.stringify({ password: newPassword }) });
+			notify(`New password set for ${editing!.username}. They're signed out everywhere.`);
+			newPassword = '';
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Could not set it.', 'orange');
+		} finally {
+			saving = false;
+		}
+	}
+	const field = 'mt-1 w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/60';
 </script>
 
 <main class="mx-auto max-w-[1200px] px-4 pb-28 pt-20 laptop:px-10 laptop:pt-24">
@@ -144,7 +183,10 @@
 			<h1 class="text-2xl font-bold laptop:text-3xl">Users</h1>
 			<p class="text-sm text-gray-400">{users ? `${users.length} ${users.length === 1 ? 'person' : 'people'} can sign in to Flixarr.` : ''}</p>
 		</div>
-		<button class="btn-ghost text-sm" onclick={openImport}><Icon name="refresh" class="size-4" />Import Plex users</button>
+		<div class="flex gap-2">
+			<button class="btn-ghost text-sm" onclick={openAdd}><Icon name="plus" class="size-4" />Add local user</button>
+			<button class="btn-ghost text-sm" onclick={openImport}><Icon name="refresh" class="size-4" />Import Plex users</button>
+		</div>
 	</div>
 
 	{#if !users}
@@ -159,7 +201,7 @@
 					<Avatar user={u} class="size-10 text-sm" />
 					<div class="min-w-0 flex-1">
 						<div class="font-medium">{u.username}{#if u.id === session.me?.id}<span class="ml-2 text-xs font-normal text-gray-500">You</span>{/if}</div>
-						<div class="truncate text-xs text-gray-400">{u.email || 'Plex account'}{u.owner ? ' · Owner' : ''} · joined {fmtDate(u.createdAt, { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+						<div class="truncate text-xs text-gray-400">{u.email || (u.local ? 'Local account' : 'Plex account')}{u.local && u.email ? ' · Local account' : ''}{u.owner ? ' · Owner' : ''} · joined {fmtDate(u.createdAt, { month: 'short', day: 'numeric', year: 'numeric' })}</div>
 					</div>
 					<div class="hidden text-right text-xs text-gray-400 tablet:block">{u.requests} {u.requests === 1 ? 'request' : 'requests'}</div>
 					<span class="rounded-md px-1.5 py-0.5 text-[11px] ring-1 {ROLE_TONE[u.role] ?? ROLE_TONE.User}">{u.role}</span>
@@ -170,7 +212,7 @@
 	{/if}
 </main>
 
-<Modal bind:open={editOpen} title={editing?.username ?? ''} sub={editing?.email || 'Plex account'}>
+<Modal bind:open={editOpen} title={editing?.username ?? ''} sub={editing?.email || (editing?.local ? 'Local account' : 'Plex account')}>
 	{#if editing}
 		<div class="space-y-5 p-5">
 			<div class="space-y-2">
@@ -204,6 +246,17 @@
 				</div>
 				<p class="text-xs text-gray-500">{isAdmin ? 'Admins have no limits.' : 'Counted over the last 7 days. Declined and failed requests are not counted.'}</p>
 			</div>
+			{#if editing.local}
+				<div class="space-y-2">
+					<div class="text-sm font-medium">Password</div>
+					<div class="flex gap-2">
+						<input class="{field} mt-0" type="text" autocomplete="new-password" placeholder="New password (8 or more characters)" bind:value={newPassword} />
+						<button class="btn-ghost shrink-0 text-sm" onclick={() => (newPassword = makePassword())}>Make one</button>
+						<button class="btn shrink-0 px-4 text-sm" disabled={saving || newPassword.length < 8} onclick={setPassword}>Set</button>
+					</div>
+					<p class="text-xs text-gray-500">Setting a new password signs them out everywhere.</p>
+				</div>
+			{/if}
 		</div>
 	{/if}
 	{#snippet footer()}
@@ -212,6 +265,31 @@
 		{/if}
 		<button class="btn-ghost" onclick={() => (editOpen = false)}>Cancel</button>
 		<button class="btn px-6" disabled={saving} onclick={save}>{saving ? 'Saving…' : 'Save'}</button>
+	{/snippet}
+</Modal>
+
+<Modal bind:open={addOpen} title="Add local user" sub="For someone without a Plex account">
+	<div class="space-y-4 p-5">
+		<div><label for="lu-name" class="block text-sm">Username</label><input id="lu-name" class={field} autocomplete="off" bind:value={local.username} /></div>
+		<div><label for="lu-email" class="block text-sm">Email <span class="text-gray-500">(optional, for notifications)</span></label><input id="lu-email" type="email" class={field} bind:value={local.email} /></div>
+		<div>
+			<div class="text-sm">Role</div>
+			<div class="mt-1 grid grid-cols-2 gap-1 rounded-xl border border-gray-700/60 p-1 text-sm" role="radiogroup" aria-label="Role">
+				{#each ['User', 'Trusted'] as r (r)}
+					<button class="rounded-lg px-2 py-1.5 {local.role === r ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'}" role="radio" aria-checked={local.role === r} onclick={() => (local.role = r)}>{r}</button>
+				{/each}
+			</div>
+			<p class="mt-1 text-xs text-gray-500">Change their switches afterwards, like anyone else's.</p>
+		</div>
+		<div>
+			<label for="lu-pass" class="block text-sm">Password</label>
+			<div class="flex gap-2"><input id="lu-pass" type="text" autocomplete="new-password" class={field} bind:value={local.password} /><button class="btn-ghost mt-1 shrink-0 text-sm" onclick={() => (local.password = makePassword())}>Make one</button></div>
+			<p class="mt-1 text-xs text-gray-500">8 or more characters. Give it to them; they can change it in their Profile.</p>
+		</div>
+	</div>
+	{#snippet footer()}
+		<button class="btn-ghost" onclick={() => (addOpen = false)}>Cancel</button>
+		<button class="btn px-6" disabled={saving || !local.username.trim() || local.password.length < 8} onclick={addLocal}>{saving ? 'Adding…' : 'Add'}</button>
 	{/snippet}
 </Modal>
 

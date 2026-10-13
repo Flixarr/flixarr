@@ -138,6 +138,7 @@ type User struct {
 	Role     string   `json:"role"`  // Admin, Trusted, User or Custom: a label worked out from Perms
 	Perms    []string `json:"perms"` // see perms.go
 	Owner    bool     `json:"owner"` // the first admin; can't be removed or lose admin
+	Local    bool     `json:"local"` // a username-and-password account (no Plex)
 	// Request limits per 7 days (0 = unlimited; admins have none).
 	MovieLimit  int    `json:"movieLimit"`
 	SeasonLimit int    `json:"seasonLimit"`
@@ -163,6 +164,7 @@ func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 		return nil, err
 	}
 	u.Perms = splitPerms(perms)
+	u.Local = u.PlexID == 0
 	return u, nil
 }
 
@@ -184,6 +186,65 @@ func (s *Store) CreateUser(u User) (*User, error) {
 	}
 	id, _ := res.LastInsertId()
 	return scanUser(s.db.QueryRow(`SELECT `+userCols+` FROM users WHERE id = ?`, id))
+}
+
+// ErrNameTaken: a local account already has that username.
+var ErrNameTaken = errors.New("that username is taken")
+
+// CreateLocalUser adds a username-and-password account; hash comes from the password package.
+func (s *Store) CreateLocalUser(username, email, role, hash string) (*User, error) {
+	var n int
+	s.db.QueryRow(`SELECT COUNT(*) FROM users WHERE plex_id = 0 AND lower(username) = lower(?)`, username).Scan(&n)
+	if n > 0 {
+		return nil, ErrNameTaken
+	}
+	u, err := s.CreateUser(User{Username: username, Email: email, Role: role})
+	if err != nil {
+		return nil, err
+	}
+	return u, s.SetPassword(u.ID, hash)
+}
+
+// LocalLogin finds a local account by username (any case) and returns it with its password hash.
+func (s *Store) LocalLogin(username string) (*User, string, error) {
+	var hash string
+	var id int64
+	err := s.db.QueryRow(`SELECT id, password_hash FROM users WHERE plex_id = 0 AND lower(username) = lower(?)`, username).Scan(&id, &hash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, "", ErrNotFound
+	}
+	if err != nil {
+		return nil, "", err
+	}
+	u, err := scanUser(s.db.QueryRow(`SELECT `+userCols+` FROM users WHERE id = ?`, id))
+	return u, hash, err
+}
+
+// PasswordHash returns a user's stored password hash ("" for Plex accounts).
+func (s *Store) PasswordHash(id int64) string {
+	var h string
+	s.db.QueryRow(`SELECT password_hash FROM users WHERE id = ?`, id).Scan(&h)
+	return h
+}
+
+// SetPassword stores a new password hash and signs the account out everywhere.
+func (s *Store) SetPassword(id int64, hash string) error {
+	if _, err := s.db.Exec(`UPDATE users SET password_hash = ? WHERE id = ? AND plex_id = 0`, hash, id); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`DELETE FROM sessions WHERE user_id = ?`, id)
+	return err
+}
+
+// UpdateLocalProfile changes a local account's username and email (Plex accounts get theirs from plex.tv).
+func (s *Store) UpdateLocalProfile(id int64, username, email string) error {
+	var n int
+	s.db.QueryRow(`SELECT COUNT(*) FROM users WHERE plex_id = 0 AND lower(username) = lower(?) AND id != ?`, username, id).Scan(&n)
+	if n > 0 {
+		return ErrNameTaken
+	}
+	_, err := s.db.Exec(`UPDATE users SET username = ?, email = ? WHERE id = ? AND plex_id = 0`, username, email, id)
+	return err
 }
 
 // UpdatePlexProfile refreshes the name, email and avatar from plex.tv on each sign-in.

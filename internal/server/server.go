@@ -52,6 +52,7 @@ type Server struct {
 	BaseCtx context.Context
 
 	pinsMu sync.Mutex
+	fails  failures            // wrong local passwords, for the sign-in pause
 	pins   map[int64]time.Time // sign-in PINs this server created, so it only checks its own
 }
 
@@ -75,6 +76,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/auth/plex/pin", s.plexPin)
 	mux.HandleFunc("POST /api/auth/plex/check", s.plexCheck)
 	mux.HandleFunc("POST /api/auth/logout", s.logout)
+	mux.HandleFunc("POST /api/auth/local", s.localLogin)
+	mux.HandleFunc("PUT /api/me/password", s.auth(s.myPassword))
 	mux.HandleFunc("GET /api/meta/{path...}", s.auth(s.metaProxy))
 	mux.HandleFunc("GET /api/update", s.auth(s.admin(s.updateInfo)))
 	mux.HandleFunc("POST /api/update/check", s.auth(s.admin(s.updateCheck)))
@@ -132,6 +135,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/users", s.auth(s.admin(s.userList)))
 	mux.HandleFunc("PUT /api/users/{id}", s.auth(s.admin(s.userUpdate)))
 	mux.HandleFunc("DELETE /api/users/{id}", s.auth(s.admin(s.userDelete)))
+	mux.HandleFunc("POST /api/users/local", s.auth(s.admin(s.userAddLocal)))
+	mux.HandleFunc("PUT /api/users/{id}/password", s.auth(s.admin(s.userSetPassword)))
 	mux.HandleFunc("GET /api/users/plex", s.auth(s.admin(s.userPlexList)))
 	mux.HandleFunc("POST /api/users/plex", s.auth(s.admin(s.userPlexImport)))
 	mux.HandleFunc("GET /api/settings/general", s.auth(s.admin(s.generalSettings)))
