@@ -622,3 +622,32 @@ func TestSeasonProgressCountsFinishedEpisodes(t *testing.T) {
 	sonarr.files = 7
 	check("importing", 100)
 }
+
+func TestFix(t *testing.T) {
+	s, st, radarr, sonarr, admin, _ := setup(t)
+	ctx := context.Background()
+	r, _ := s.Create(ctx, admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix"})
+	radarr.cmds = nil
+	// In Radarr but not monitored: turned on, then searched.
+	r, done, err := s.Fix(ctx, r)
+	if err != nil || !strings.Contains(done, "monitored") || !strings.Contains(done, "Started a search") || len(radarr.cmds) != 1 {
+		t.Fatalf("fix: %q %v cmds %v", done, err, radarr.cmds)
+	}
+	// Gone from Radarr: added again.
+	radarr.gone = true
+	before := len(radarr.added)
+	if _, done, err = s.Fix(ctx, r); err != nil || !strings.Contains(done, "missing from Radarr") || len(radarr.added) != before+1 {
+		t.Fatalf("missing: %q %v", done, err)
+	}
+	// A whole-show request: monitoring for later seasons comes back too, and the show is searched.
+	sr, _ := s.Create(ctx, admin, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad"})
+	sonarr.cmds = nil
+	if _, done, err = s.Fix(ctx, sr); err != nil || !strings.Contains(done, "Started a search") || len(sonarr.cmds) != 1 || sonarr.cmds[0]["name"] != "SeriesSearch" {
+		t.Fatalf("series: %q %v %v", done, err, sonarr.cmds)
+	}
+	// Waiting for approval: nothing to fix.
+	st.SetSetting(KeyApproval, "true")
+	if _, _, err := s.Fix(ctx, store.Request{Status: "pending"}); err == nil {
+		t.Fatal("fixed a waiting request")
+	}
+}

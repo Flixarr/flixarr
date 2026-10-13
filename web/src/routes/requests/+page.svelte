@@ -70,6 +70,20 @@
 		}
 	}
 
+	// Fix: for a request stuck at Requested (never added to Radarr/Sonarr, not monitored, or never searched).
+	async function fix(r: Request) {
+		busy = r.id;
+		try {
+			const d = await api<{ request: Request; done: string }>(`/requests/${r.id}/fix`, { method: 'POST' });
+			list = list!.map((x) => (x.id === r.id ? d.request : x));
+			notify(d.done || 'Checked it and started a search.');
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Could not fix it.', 'orange');
+		} finally {
+			busy = 0;
+		}
+	}
+
 	async function remove() {
 		const r = removing!;
 		removeOpen = false;
@@ -137,6 +151,8 @@
 								<button class="btn-ghost px-3 py-1 text-xs" disabled={busy === r.id} onclick={() => { declining = r; reason = ''; declineOpen = true; }}>Decline</button>
 							{:else if admin && r.status === 'failed'}
 								<button class="btn-ghost px-3 py-1 text-xs" disabled={busy === r.id} onclick={() => act(r, 'retry')}>{busy === r.id ? 'Trying…' : 'Try again'}</button>
+							{:else if admin && (r.status === 'approved' || r.status === 'sent')}
+								<button class="btn-ghost px-3 py-1 text-xs" disabled={busy === r.id} onclick={() => fix(r)}>{busy === r.id ? 'Fixing…' : 'Fix'}</button>
 							{/if}
 							{#if admin || (r.status === 'pending' && r.userId === session.me?.id)}
 								<button class="px-2 text-xs text-gray-500 hover:text-red-300" onclick={() => { removing = r; removeOpen = true; }}>{r.status === 'pending' && !admin ? 'Cancel' : 'Remove'}</button>

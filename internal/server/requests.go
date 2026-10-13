@@ -197,6 +197,21 @@ func (s *Server) requestRetry(w http.ResponseWriter, r *http.Request, _ *store.U
 	writeJSON(w, http.StatusOK, s.Requests.Send(r.Context(), req))
 }
 
+// requestFix repairs a stuck request (missing from Radarr/Sonarr, not monitored, never searched) and says
+// what it did.
+func (s *Server) requestFix(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	req, ok := s.requestByID(w, r)
+	if !ok {
+		return
+	}
+	fixed, done, err := s.Requests.Fix(r.Context(), req)
+	if err != nil {
+		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"request": fixed, "done": done})
+}
+
 // requestDelete removes a request: your own while it's waiting, or any request for an admin.
 // Nothing is removed from Radarr/Sonarr.
 func (s *Server) requestDelete(w http.ResponseWriter, r *http.Request, u *store.User) {
