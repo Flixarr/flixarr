@@ -100,7 +100,25 @@ func probe(ctx context.Context, hc *http.Client, base, app string) bool {
 	page, _ := io.ReadAll(io.LimitReader(res.Body, 64<<10))
 	res.Body.Close()
 	m := titleRe.FindSubmatch(page)
-	return m != nil && strings.Contains(strings.ToLower(string(m[1])), strings.ToLower(app))
+	if m == nil {
+		return false
+	}
+	return titleFits(string(m[1]), app)
+}
+
+// titleFits: the page title names the app, or (a renamed instance, whose title is its own name) names no
+// other *arr app. It's only asked on the app's own default port, after an *arr-style /ping answered.
+func titleFits(title, app string) bool {
+	t := strings.ToLower(title)
+	if strings.Contains(t, strings.ToLower(app)) {
+		return true
+	}
+	for _, other := range []string{"radarr", "sonarr", "lidarr", "readarr", "prowlarr", "whisparr", "bazarr"} {
+		if strings.Contains(t, other) {
+			return false
+		}
+	}
+	return true
 }
 
 // candidates lists the hosts to try, best guesses first.
