@@ -18,6 +18,18 @@ import (
 // Kinds Flixarr connects to, with the app name each one reports.
 var Kinds = map[string]string{"radarr": "Radarr", "sonarr": "Sonarr"}
 
+// ErrNotFound: the server answered, but the movie or series asked for isn't on it (anymore).
+var ErrNotFound = errors.New("not on the server")
+
+// missingItem tells "no such movie/series" (a JSON problem reply with status 404) from a wrong address or
+// URL base, which gets an empty or non-JSON 404.
+func missingItem(body []byte) bool {
+	var p struct {
+		Status int `json:"status"`
+	}
+	return json.Unmarshal(body, &p) == nil && p.Status == http.StatusNotFound
+}
+
 // Status is what system/status reports.
 type Status struct {
 	AppName      string `json:"appName"`
@@ -127,6 +139,8 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 	switch {
 	case res.StatusCode == http.StatusUnauthorized:
 		return errors.New("the API key was refused")
+	case res.StatusCode == http.StatusNotFound && method == http.MethodGet && missingItem(body):
+		return ErrNotFound
 	case res.StatusCode == http.StatusNotFound && method == http.MethodGet:
 		return fmt.Errorf("this address doesn't answer like %s; check the address and any URL base", Kinds[c.Kind])
 	case res.StatusCode >= 300:

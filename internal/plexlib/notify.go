@@ -15,13 +15,16 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
 
 // Plex Media Server tells connected apps when its libraries change (/:/websockets/notifications; no
 // Plex Pass needed). Listen keeps that connection open and, when something is added, reads the newest
-// additions straight away: titles show as available within seconds instead of on the next scan.
+// additions straight away: titles show as available within seconds instead of on the next scan. When
+// something is deleted, it's dropped at once; and after any library scan (which is when Plex notices files
+// that are gone) a full read catches whatever the delete messages missed.
 
 // Live reports whether Plex's change messages are coming in right now.
 func (l *Library) Live() bool { return l.live.Load() }
@@ -86,6 +89,30 @@ func (l *Library) listenOnce(ctx context.Context, base, token string) error {
 			l.RecentScan(ctx)
 		})
 	}
+	var gone struct {
+		sync.Mutex
+		ids      []string
+		episodes bool
+		timer    *time.Timer
+	}
+	removed := func(ids []string, episodes bool) {
+		gone.Lock()
+		defer gone.Unlock()
+		gone.ids = append(gone.ids, ids...)
+		gone.episodes = gone.episodes || episodes
+		if gone.timer != nil {
+			return
+		}
+		gone.timer = time.AfterFunc(4*time.Second, func() { // a show's delete sends one message per episode
+			gone.Lock()
+			ids, episodes := gone.ids, gone.episodes
+			gone.ids, gone.episodes, gone.timer = nil, false, nil
+			gone.Unlock()
+			l.dropDeleted(ctx, base, token, ids, episodes)
+		})
+	}
+	// Messages may have been missed while disconnected: read everything once now.
+	l.reconcile(ctx)
 	for {
 		conn.SetReadDeadline(time.Now().Add(3 * time.Minute)) // Plex pings well within this
 		op, msg, err := readFrame(r, conn)
@@ -101,8 +128,107 @@ func (l *Library) listenOnce(ctx context.Context, base, token string) error {
 			if libraryAdded(msg) {
 				added()
 			}
+			if scanEnded(msg) {
+				l.reconcile(ctx)
+			}
+			if ids, episodes := libraryRemoved(msg); len(ids) > 0 || episodes {
+				removed(ids, episodes)
+			}
 		}
 	}
+}
+
+// fullEvery is the least time between full reads caused by Plex's own scans; one asked for sooner runs
+// when the gap is up, so the last change is never left out.
+const fullEvery = 10 * time.Minute
+
+// reconcile runs a full read of the libraries now, or once fullEvery has passed since the last one.
+func (l *Library) reconcile(ctx context.Context) {
+	if l.fullDue.Swap(true) {
+		return // one is already waiting
+	}
+	wait := time.Until(time.Unix(l.lastFull.Load(), 0).Add(fullEvery))
+	time.AfterFunc(max(wait, 5*time.Second), func() {
+		l.fullDue.Store(false)
+		if ctx.Err() == nil {
+			if _, err := l.FullScan(ctx); err != nil {
+				l.Log.Warn("plex full read", "err", err)
+			}
+		}
+	})
+}
+
+// dropDeleted forgets the movies and shows Plex says it deleted (checked first: a title that's still there
+// stays) and passes on that episodes of some show went.
+func (l *Library) dropDeleted(ctx context.Context, base, token string, ids []string, episodes bool) {
+	gone := []string{}
+	for _, id := range ids {
+		var out struct{}
+		if err := l.get(ctx, base, "/library/metadata/"+url.PathEscape(id), token, &out); errors.Is(err, errNotFound) {
+			gone = append(gone, id)
+		}
+	}
+	keys, err := l.Store.RemovePlexItems(gone)
+	if err != nil {
+		l.Log.Warn("plex removed", "err", err)
+	}
+	if (len(keys) > 0 || episodes) && l.OnRemoved != nil {
+		l.OnRemoved(keys, episodes)
+	}
+}
+
+// libraryRemoved reads a timeline message for deletes (state 9): the IDs of deleted movies and shows,
+// and whether seasons or episodes went.
+func libraryRemoved(msg []byte) (ids []string, episodes bool) {
+	var m struct {
+		NotificationContainer struct {
+			Type          string `json:"type"`
+			TimelineEntry []struct {
+				Type   int   `json:"type"`
+				State  int   `json:"state"`
+				ItemID int64 `json:"itemID"`
+			} `json:"TimelineEntry"`
+		} `json:"NotificationContainer"`
+	}
+	if json.Unmarshal(msg, &m) != nil || m.NotificationContainer.Type != "timeline" {
+		return nil, false
+	}
+	for _, e := range m.NotificationContainer.TimelineEntry {
+		if e.State != 9 {
+			continue
+		}
+		switch e.Type {
+		case 1, 2:
+			ids = append(ids, fmt.Sprint(e.ItemID))
+		case 3, 4:
+			episodes = true
+		}
+	}
+	return ids, episodes
+}
+
+// scanEnded: Plex finished scanning a library, which is when it notices files that are gone.
+func scanEnded(msg []byte) bool {
+	var m struct {
+		NotificationContainer struct {
+			Type                 string `json:"type"`
+			ActivityNotification []struct {
+				Event    string `json:"event"`
+				Activity struct {
+					Type string `json:"type"`
+				} `json:"Activity"`
+			} `json:"ActivityNotification"`
+		} `json:"NotificationContainer"`
+	}
+	if json.Unmarshal(msg, &m) != nil || m.NotificationContainer.Type != "activity" {
+		return false
+	}
+	for _, a := range m.NotificationContainer.ActivityNotification {
+		if a.Event == "ended" && a.Activity.Type == "library.update.section" {
+			return true
+		}
+	}
+	return false
 }
 
 // libraryAdded: a library scan finished (activity "library.update.section" ended), or a timeline message

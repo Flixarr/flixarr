@@ -23,14 +23,48 @@ func (s *Store) SavePlexItem(it PlexItem) (isNew bool, err error) {
 	return n == 0 && err == nil, err
 }
 
-// PrunePlexItems drops titles no scan has seen since the given time.
-func (s *Store) PrunePlexItems(since string) (int, error) {
-	res, err := s.db.Exec(`DELETE FROM plex_items WHERE seen_at < ?`, since)
-	if err != nil {
-		return 0, err
+// PrunePlexItems drops titles no scan has seen since the given time and returns their keys ("movie:603").
+func (s *Store) PrunePlexItems(since string) ([]string, error) {
+	return s.dropPlexItems(`seen_at < ?`, since)
+}
+
+// RemovePlexItems drops the titles Plex knows by these rating keys and returns their keys.
+func (s *Store) RemovePlexItems(ratingKeys []string) ([]string, error) {
+	out := []string{}
+	for _, k := range ratingKeys {
+		got, err := s.dropPlexItems(`rating_key = ?`, k)
+		if err != nil {
+			return out, err
+		}
+		out = append(out, got...)
 	}
-	n, _ := res.RowsAffected()
-	return int(n), nil
+	return out, nil
+}
+
+func (s *Store) dropPlexItems(where string, arg any) ([]string, error) {
+	rows, err := s.db.Query(`SELECT type, tmdb_id FROM plex_items WHERE `+where, arg)
+	if err != nil {
+		return nil, err
+	}
+	keys := []string{}
+	for rows.Next() {
+		var typ string
+		var id int
+		if err := rows.Scan(&typ, &id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		keys = append(keys, typ+":"+itoa(id))
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(keys) == 0 {
+		return keys, nil
+	}
+	_, err = s.db.Exec(`DELETE FROM plex_items WHERE `+where, arg)
+	return keys, err
 }
 
 // ClearPlexItems forgets everything from Plex.

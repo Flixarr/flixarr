@@ -31,6 +31,8 @@ const (
 	keyLastFull   = "plex_last_full"    // RFC3339
 )
 
+var errNotFound = errors.New("Plex answered 404 Not Found")
+
 // Library keeps the Plex connection and syncs its items.
 type Library struct {
 	Store     *store.Store
@@ -42,7 +44,12 @@ type Library struct {
 
 	// OnAdded is told about titles that just showed up in Plex ("movie:603" keys).
 	OnAdded func(keys []string)
-	live    atomic.Bool
+	// OnRemoved is told about titles that left Plex; episodes says episodes or seasons of some show did
+	// (Plex doesn't say which show).
+	OnRemoved func(keys []string, episodes bool)
+	live      atomic.Bool
+	lastFull  atomic.Int64 // unix time of the last full scan
+	fullDue   atomic.Bool  // a full read is scheduled
 }
 
 func (l *Library) client() *http.Client {
@@ -69,6 +76,9 @@ func (l *Library) get(ctx context.Context, base, path, token string, out any) er
 	defer res.Body.Close()
 	if res.StatusCode == http.StatusUnauthorized {
 		return errors.New("Plex refused the sign-in; sign in with Plex again")
+	}
+	if res.StatusCode == http.StatusNotFound {
+		return errNotFound
 	}
 	if res.StatusCode >= 300 {
 		return fmt.Errorf("Plex answered %s", res.Status)
@@ -284,7 +294,8 @@ type metadata struct {
 	Type      string `json:"type"`
 	Title     string `json:"title"`
 	AddedAt   int64  `json:"addedAt"`
-	PlexGUID  string `json:"guid"` // Plex's own ID; declared so it isn't mistaken for Guid below (json matches names case-insensitively)
+	DeletedAt int64  `json:"deletedAt"` // in Plex's trash: its files are gone, so it isn't playable
+	PlexGUID  string `json:"guid"`      // Plex's own ID; declared so it isn't mistaken for Guid below (json matches names case-insensitively)
 	Guid      []struct {
 		ID string `json:"id"`
 	} `json:"Guid"`
@@ -339,7 +350,7 @@ func (l *Library) FullScan(ctx context.Context) (string, error) {
 				return "", fmt.Errorf("%s: %w", sec.Title, err)
 			}
 			for _, m := range res.MediaContainer.Metadata {
-				if id := m.tmdb(); id > 0 {
+				if id := m.tmdb(); id > 0 && m.DeletedAt == 0 {
 					l.Store.SavePlexItem(store.PlexItem{Type: kindOf(sec.Type), TmdbID: id, RatingKey: m.RatingKey, Section: sec.Key, Title: m.Title, AddedAt: m.AddedAt, SeenAt: started})
 					total++
 				}
@@ -349,13 +360,17 @@ func (l *Library) FullScan(ctx context.Context) (string, error) {
 			}
 		}
 	}
-	// Anything not seen in this scan was removed from Plex (or its library was switched off).
+	// Anything not seen in this scan was removed from Plex, is in its trash, or its library was switched off.
 	removed, err := l.Store.PrunePlexItems(started)
 	if err != nil {
 		return "", err
 	}
+	l.lastFull.Store(time.Now().Unix())
 	l.Store.SetSetting(keyLastFull, time.Now().UTC().Format(time.RFC3339))
-	return fmt.Sprintf("%d titles in Plex (%d removed)", total, removed), nil
+	if len(removed) > 0 && l.OnRemoved != nil {
+		l.OnRemoved(removed, false)
+	}
+	return fmt.Sprintf("%d titles in Plex (%d removed)", total, len(removed)), nil
 }
 
 // RecentScan reads the newest additions to the chosen libraries; it's the "Plex: recently added" job.
@@ -385,7 +400,7 @@ func (l *Library) RecentScan(ctx context.Context) (string, error) {
 			return "", fmt.Errorf("%s: %w", sec.Title, err)
 		}
 		for _, m := range res.MediaContainer.Metadata {
-			if id := m.tmdb(); id > 0 {
+			if id := m.tmdb(); id > 0 && m.DeletedAt == 0 {
 				if isNew, _ := l.Store.SavePlexItem(store.PlexItem{Type: kindOf(sec.Type), TmdbID: id, RatingKey: m.RatingKey, Section: sec.Key, Title: m.Title, AddedAt: m.AddedAt, SeenAt: now}); isNew {
 					added++
 					keys = append(keys, fmt.Sprintf("%s:%d", kindOf(sec.Type), id))

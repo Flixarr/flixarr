@@ -129,7 +129,13 @@ func main() {
 		hub.Publish(live.Event{Type: "plex", Data: keys})
 		go reqs.FollowImporting(runCtx) // anything waiting for Plex: check now
 	}
-	go lib.Listen(runCtx) // Plex's own "added to the library" messages
+	lib.OnRemoved = func(keys []string, episodes bool) {
+		if len(keys) > 0 {
+			hub.Publish(live.Event{Type: "plex", Data: keys})
+		}
+		go reqs.Recheck(runCtx, keys, episodes) // available requests whose title left Plex
+	}
+	go lib.Listen(runCtx) // Plex's own "added to" and "deleted from the library" messages
 	// Follow active requests: each is checked when it's due (every 30 s while downloading or importing,
 	// every 2 minutes while waiting for a grab); webhooks and Plex messages check at once. Idle when nothing
 	// is active: one small database read every 5 seconds.

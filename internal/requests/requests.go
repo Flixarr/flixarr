@@ -604,6 +604,55 @@ func (s *Service) refresh(ctx context.Context, reqs []store.Request) error {
 	return nil
 }
 
+// removedNote starts the reason on a request whose title left Plex and Radarr/Sonarr.
+const removedNote = "Removed"
+
+// Recheck looks again at available requests whose title just left Plex ("movie:603" keys; episodes = some
+// show lost episodes or seasons). Files still in Radarr/Sonarr: importing again (Plex is asked to scan).
+// Gone from Radarr/Sonarr too: failed with the reason, so it can be requested again.
+func (s *Service) Recheck(ctx context.Context, keys []string, episodes bool) error {
+	reqs, err := s.Store.AvailableRequests(keys, episodes)
+	if err != nil || len(reqs) == 0 {
+		return err
+	}
+	named := map[string]bool{}
+	for _, k := range keys {
+		named[k] = true
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, r := range reqs {
+		if r.Type == "movie" && inPlex(s.Store, r.Type, r.TmdbID) {
+			continue
+		}
+		v, ok, _ := s.Store.FirstServer(kindOf(r.Type))
+		if !ok {
+			continue
+		}
+		before := r
+		if err := s.follow(ctx, v, &r); errors.Is(err, arr.ErrNotFound) {
+			r.Status, r.Progress = "failed", 0
+			r.Error = fmt.Sprintf("%s from Plex and %s. Request it again to get it back.", removedNote, arr.Kinds[kindOf(r.Type)])
+		} else if err != nil {
+			s.Log.Warn("recheck request", "title", r.Title, "err", err)
+			continue
+		}
+		if r.Status == before.Status && r.Progress == before.Progress {
+			continue
+		}
+		// Checked only because some show lost episodes: act only when Plex is missing what Sonarr has, not
+		// because new episodes aired since (Sonarr picks those up on its own).
+		if !named[r.Type+":"+fmt.Sprint(r.TmdbID)] && r.Status != "importing" && r.Status != "failed" {
+			continue
+		}
+		s.Log.Info("request no longer available", "title", r.Title, "status", r.Status)
+		s.Store.UpdateRequest(r)
+		s.Publish(r)
+		s.Alert(r)
+	}
+	return nil
+}
+
 // plexHas says whether Plex has what a request asked for. ok=false when no Plex server is connected.
 func (s *Service) plexHas(ctx context.Context, r *store.Request, sonarrHave map[int]int) (has, ok bool) {
 	if s.Plex == nil || !s.Plex.Connected() {

@@ -29,6 +29,7 @@ type fakeArr struct {
 	monitor map[string]any
 	epFile  bool
 	noFile  bool // in the library without a file
+	gone    bool // movie 42 was deleted from Radarr
 }
 
 func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -67,6 +68,9 @@ func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.added = append(f.added, body)
 		body["id"] = 42
 		json.NewEncoder(w).Encode(body)
+	case p == "movie/42" && f.gone:
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"title":"Not Found","status":404}`))
 	case p == "movie/42":
 		json.NewEncoder(w).Encode(map[string]any{"id": 42, "hasFile": f.hasFile})
 	case p == "series/42":
@@ -457,4 +461,57 @@ func TestMovieInRadarrWithoutFile(t *testing.T) {
 		t.Fatalf("monitor + search: put %v cmds %v", radarr.put, radarr.cmds)
 	}
 	_ = st
+}
+
+func TestRecheckAfterPlexRemoval(t *testing.T) {
+	s, st, radarr, _, admin, user := setup(t)
+	px := &fakePlex{st: st}
+	s.Plex = px
+	ctx := context.Background()
+	r, _ := s.Create(ctx, user, New{Type: "movie", TmdbID: 603, Title: "The Matrix"})
+	st.SavePlexItem(store.PlexItem{Type: "movie", TmdbID: 603, RatingKey: "9", Section: "1", SeenAt: "x"})
+	radarr.hasFile = true
+	s.Refresh(ctx)
+	if r, _ = st.Request(r.ID); r.Status != "available" {
+		t.Fatalf("setup: %+v", r)
+	}
+	// Still in Plex: nothing changes.
+	s.Recheck(ctx, []string{"movie:603"}, false)
+	if r, _ = st.Request(r.ID); r.Status != "available" {
+		t.Fatalf("still in Plex: %+v", r)
+	}
+	// Gone from Plex, file still in Radarr: importing again, and Plex is asked to scan.
+	st.RemovePlexItems([]string{"9"})
+	s.Recheck(ctx, []string{"movie:603"}, false)
+	if r, _ = st.Request(r.ID); r.Status != "importing" || px.rescans == 0 {
+		t.Fatalf("file still in Radarr: %+v (rescans %d)", r, px.rescans)
+	}
+	// Back to available, then deleted from Radarr too: failed with the reason, and it can be asked for again.
+	r.Status = "available"
+	st.UpdateRequest(r)
+	radarr.gone = true
+	s.Recheck(ctx, []string{"movie:603"}, false)
+	if r, _ = st.Request(r.ID); r.Status != "failed" || !strings.HasPrefix(r.Error, "Removed from Plex and Radarr") {
+		t.Fatalf("gone everywhere: %+v", r)
+	}
+	if a, _ := st.ActiveAlerts(user.ID, false); len(a) != 1 || a[0].Detail != "The Matrix was removed from Plex" {
+		t.Fatalf("alert: %+v", a)
+	}
+	radarr.gone, radarr.hasFile = false, false
+	if _, err := s.Create(ctx, admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix"}); err != nil {
+		t.Fatalf("request again: %v", err)
+	}
+}
+
+func TestOpenRequestWhileGrabbed(t *testing.T) {
+	s, st, _, _, admin, _ := setup(t)
+	ctx := context.Background()
+	r, _ := s.Create(ctx, admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix"})
+	for _, status := range []string{"grabbed", "importing"} {
+		r.Status = status
+		st.UpdateRequest(r)
+		if _, err := s.Create(ctx, admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix"}); err != ErrAlready {
+			t.Fatalf("%s: asked twice: %v", status, err)
+		}
+	}
 }

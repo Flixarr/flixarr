@@ -2,6 +2,7 @@ package requests
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Flixarr/flixarr/internal/store"
 )
@@ -23,6 +24,9 @@ func (s *Service) Alert(r store.Request) {
 		detail := fmt.Sprintf(f, r.Title)
 		if r.Status == "declined" && r.Error != "" {
 			detail += ": " + r.Error
+		}
+		if r.Status == "failed" && strings.HasPrefix(r.Error, removedNote+" from Plex") {
+			detail = r.Title + " was removed from Plex"
 		}
 		if n := s.activeCount(r.UserID); n > 0 && r.Status != "downloading" && r.Status != "grabbed" && r.Status != "importing" && r.Status != "sent" && r.Status != "approved" {
 			detail += fmt.Sprintf(" · %d more on the way", n)

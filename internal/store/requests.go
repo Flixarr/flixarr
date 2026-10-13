@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 )
 
 // Request is a movie or series someone asked for.
@@ -100,7 +101,7 @@ func (s *Store) Requests(userID int64, limit int) ([]Request, error) {
 // OpenRequest returns the request still in play for a title, if any.
 func (s *Store) OpenRequest(typ string, tmdbID int) (Request, bool, error) {
 	r, err := scanRequest(s.db.QueryRow(`SELECT `+requestCols+` FROM requests r LEFT JOIN users u ON u.id = r.user_id
-		WHERE r.type = ? AND r.tmdb_id = ? AND r.status IN ('pending', 'approved', 'sent', 'downloading', 'available') ORDER BY r.id DESC LIMIT 1`, typ, tmdbID))
+		WHERE r.type = ? AND r.tmdb_id = ? AND r.status IN (`+inList(OpenStatuses)+`) ORDER BY r.id DESC LIMIT 1`, typ, tmdbID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Request{}, false, nil
 	}
@@ -188,4 +189,33 @@ func (s *Store) DeleteRequest(id int64) error {
 // ActiveRequestsFor lists the active requests for one Radarr/Sonarr item (a webhook names it by its own ID).
 func (s *Store) ActiveRequestsFor(typ string, arrID int) ([]Request, error) {
 	return s.queryRequests(`SELECT `+requestCols+` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.type = ? AND r.arr_id = ? AND r.status IN ('sent', 'grabbed', 'downloading', 'importing')`, typ, arrID)
+}
+
+// AvailableRequests lists the available requests for these titles ("movie:603" keys); with series set it
+// also includes every available series request (episodes left Plex, and Plex doesn't say which show).
+func (s *Store) AvailableRequests(keys []string, series bool) ([]Request, error) {
+	all, err := s.queryRequests(`SELECT ` + requestCols + ` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.status = 'available' AND r.arr_id != 0`)
+	if err != nil {
+		return nil, err
+	}
+	want := map[string]bool{}
+	for _, k := range keys {
+		want[k] = true
+	}
+	out := []Request{}
+	for _, r := range all {
+		if want[r.Type+":"+itoa(r.TmdbID)] || (series && r.Type == "series") {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+// inList quotes fixed statuses for an IN (...) clause.
+func inList(list []string) string {
+	q := make([]string, len(list))
+	for i, v := range list {
+		q[i] = "'" + v + "'"
+	}
+	return strings.Join(q, ", ")
 }

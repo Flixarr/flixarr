@@ -31,3 +31,16 @@ func TestLibraryAddedAndFrames(t *testing.T) {
 		t.Fatalf("frame: %d %d %v", op, len(got), err)
 	}
 }
+
+func TestLibraryRemoved(t *testing.T) {
+	ids, eps := libraryRemoved([]byte(`{"NotificationContainer":{"type":"timeline","size":3,"TimelineEntry":[{"type":2,"state":9,"itemID":75103},{"type":4,"state":9,"itemID":75110},{"type":1,"state":5,"itemID":1}]}}`))
+	if len(ids) != 1 || ids[0] != "75103" || !eps {
+		t.Fatalf("got %v %v", ids, eps)
+	}
+	if ids, eps := libraryRemoved([]byte(`{"NotificationContainer":{"type":"timeline","TimelineEntry":[{"type":1,"state":5,"itemID":1}]}}`)); len(ids) != 0 || eps {
+		t.Fatalf("an add read as a delete: %v %v", ids, eps)
+	}
+	if !scanEnded([]byte(`{"NotificationContainer":{"type":"activity","ActivityNotification":[{"event":"ended","Activity":{"type":"library.update.section"}}]}}`)) {
+		t.Fatal("scan end missed")
+	}
+}
