@@ -27,6 +27,7 @@
 		request_failed: ['Failed', "Radarr or Sonarr couldn't add it."],
 		issue_reported: ['Issue reported', 'Someone reported a problem with a title.'],
 		issue_resolved: ['Issue resolved', 'A reported problem was fixed.'],
+		request_leaving: ['Leaving soon', 'A requested title leaves Plex within a week (Maintainerr). Goes to the person who asked.'],
 		server_problem: ['Radarr or Sonarr problem', "A server can't be reached, a download failed or is stuck, or it reports a health issue. Admins only."]
 	};
 	const SOON: string[] = [];

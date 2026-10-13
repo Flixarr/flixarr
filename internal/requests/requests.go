@@ -666,6 +666,48 @@ func (s *Service) refresh(ctx context.Context, reqs []store.Request) error {
 	return nil
 }
 
+// removedFromArr says whether a title was taken out of Radarr/Sonarr on purpose: gone entirely, or left
+// there unmonitored with no files (what "unmonitor and delete" clean-up tools do). Without this, such a
+// request would wait at Requested forever.
+func (s *Service) removedFromArr(ctx context.Context, v store.Server, r store.Request) (bool, error) {
+	c := client(v)
+	if r.Type == "movie" {
+		var m map[string]any
+		if err := c.Get(ctx, fmt.Sprintf("movie/%d", r.ArrID), &m); err != nil {
+			return errors.Is(err, arr.ErrNotFound), nil
+		}
+		has, _ := m["hasFile"].(bool)
+		on, _ := m["monitored"].(bool)
+		return !has && !on, nil
+	}
+	var sr map[string]any
+	if err := c.Get(ctx, fmt.Sprintf("series/%d", r.ArrID), &sr); err != nil {
+		return errors.Is(err, arr.ErrNotFound), nil
+	}
+	want := map[int]bool{}
+	for _, n := range r.Seasons {
+		want[n] = true
+	}
+	for _, e := range r.Episodes {
+		want[e[0]] = true
+	}
+	seasons, _ := sr["seasons"].([]any)
+	asked := false
+	for _, x := range seasons {
+		m, _ := x.(map[string]any)
+		n := num(m["seasonNumber"])
+		if n == 0 || (r.Mode != "all" && !want[n]) {
+			continue
+		}
+		st, _ := m["statistics"].(map[string]any)
+		if on, _ := m["monitored"].(bool); on || num(st["episodeFileCount"]) > 0 {
+			return false, nil // something asked for is still there or still wanted
+		}
+		asked = true
+	}
+	return asked, nil
+}
+
 // removedNote starts the reason on a request whose title left Plex and Radarr/Sonarr.
 const removedNote = "Removed"
 
@@ -692,9 +734,18 @@ func (s *Service) Recheck(ctx context.Context, keys []string, episodes bool) err
 			continue
 		}
 		before := r
-		if err := s.follow(ctx, v, &r); errors.Is(err, arr.ErrNotFound) {
+		gone, err := s.removedFromArr(ctx, v, r)
+		if err == nil && !gone {
+			err = s.follow(ctx, v, &r)
+			gone = errors.Is(err, arr.ErrNotFound)
+		}
+		if gone {
 			r.Status, r.Progress = "failed", 0
 			r.Error = fmt.Sprintf("%s from Plex and %s. Request it again to get it back.", removedNote, arr.Kinds[kindOf(r.Type)])
+			if l, ok := s.Store.WasLeaving(r.Type, r.TmdbID); ok {
+				// Maintainerr's doing: it reached the end of its time, not an error.
+				r.Status, r.Error = "expired", "Removed by Maintainerr ("+l.Collection+")."
+			}
 		} else if err != nil {
 			s.Log.Warn("recheck request", "title", r.Title, "err", err)
 			continue

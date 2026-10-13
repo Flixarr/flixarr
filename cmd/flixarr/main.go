@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -20,6 +21,7 @@ import (
 	"github.com/Flixarr/flixarr/internal/images"
 	"github.com/Flixarr/flixarr/internal/jobs"
 	"github.com/Flixarr/flixarr/internal/live"
+	"github.com/Flixarr/flixarr/internal/maintainerr"
 	"github.com/Flixarr/flixarr/internal/meta"
 	"github.com/Flixarr/flixarr/internal/notify"
 	"github.com/Flixarr/flixarr/internal/plex"
@@ -166,6 +168,28 @@ func main() {
 	runner.Add(&jobs.Job{ID: "watchlist", Name: "Plex Watchlist: sync", Default: "*/15 * * * *",
 		About: "Requests what people add to their Plex Watchlist, for those who switched it on in their Profile.",
 		Run:   wl.Run})
+	// Maintainerr: titles leaving Plex by its rules, kept on request, and new requests kept for a while.
+	maint := &maintainerr.Watcher{Store: st, Log: log}
+	maint.Changed = func(keys []string) { hub.Publish(live.Event{Type: "leaving", Data: keys}) }
+	maint.Leaving = func(r store.Request, at time.Time) {
+		notifier.Send(notifier.FromLeaving(r, at))
+		st.RaiseAlert(store.Alert{Key: fmt.Sprintf("leaving:user:%d", r.UserID), Audience: fmt.Sprintf("user:%d", r.UserID), Severity: "info",
+			Title: "Leaving soon", Detail: r.Title + " leaves Plex on " + at.Local().Format("Jan 2"), Link: fmt.Sprintf("/%s/%d", r.Type, r.TmdbID), Sig: fmt.Sprintf("r%d", r.ID)})
+	}
+	maint.AsksChanged = func(n int) {
+		if n == 0 {
+			st.ResolveAlert("keep:asks")
+			return
+		}
+		title := "1 title someone wants kept"
+		if n > 1 {
+			title = fmt.Sprintf("%d titles people want kept", n)
+		}
+		st.RaiseAlert(store.Alert{Key: "keep:asks", Audience: "admins", Severity: "info", Title: title, Detail: "Leaving Plex soon (Maintainerr)", Link: "/leaving", Sig: fmt.Sprint(n)})
+	}
+	runner.Add(&jobs.Job{ID: "maintainerr", Name: "Maintainerr: read collections", Default: "*/15 * * * *",
+		About: "Reads which titles Maintainerr is about to remove and when, keeps new requests out of its rules for a while, and tells people a week before their request leaves Plex. Maintainerr's webhook runs it right away too.",
+		Run:   maint.Sync})
 	backups := &backup.Manager{Store: st, DataDir: dataDir}
 	runner.Add(&jobs.Job{ID: "backup", Name: "Backup", Default: "0 2 * * *",
 		About: "Saves a copy of Flixarr's database (settings, users, requests, issues) in the data folder's backups folder, keeping the newest few.",
@@ -186,6 +210,7 @@ func main() {
 		Requests: reqs,
 		Library:  lib,
 		Notify:   notifier,
+		Maint:    maint,
 		Backups:  backups,
 		Live:     hub,
 		Web:      webui.FS(),

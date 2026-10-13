@@ -50,7 +50,7 @@
 	const EVENT_TEXT: Record<string, string> = {
 		request_submitted: 'Someone requests something', request_approved: 'My request is approved', request_declined: 'My request is declined',
 		request_available: 'My request is ready to watch', request_failed: "My request couldn't be added", issue_reported: 'Someone reports an issue',
-		issue_resolved: 'My issue is fixed', server_problem: 'Radarr or Sonarr has a problem'
+		issue_resolved: 'My issue is fixed', server_problem: 'Radarr or Sonarr has a problem', request_leaving: 'My request leaves Plex soon'
 	};
 	const CH: ['email' | 'push', string][] = [['email', 'Email'], ['push', 'Push']];
 	const shownCh = $derived(prefs ? CH.filter(([c]) => prefs!.channels[c]) : []);

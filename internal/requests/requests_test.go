@@ -651,3 +651,26 @@ func TestFix(t *testing.T) {
 		t.Fatal("fixed a waiting request")
 	}
 }
+
+func TestExpiredByMaintainerr(t *testing.T) {
+	s, st, radarr, _, _, user := setup(t)
+	ctx := context.Background()
+	r, _ := s.Create(ctx, user, New{Type: "movie", TmdbID: 603, Title: "The Matrix"})
+	r.Status = "available"
+	st.UpdateRequest(r)
+	// It was in a Maintainerr collection, then Maintainerr deleted it from Radarr.
+	st.SyncLeaving([]store.Leaving{{Type: "movie", TmdbID: 603, PlexID: "9", CollectionID: 3, Collection: "Movies leaving", LeaveAt: "2026-10-20T00:00:00Z"}}, "2026-10-13T00:00:00Z")
+	radarr.gone = true
+	s.Recheck(ctx, []string{"movie:603"}, false)
+	if r, _ = st.Request(r.ID); r.Status != "expired" || !strings.Contains(r.Error, "Maintainer") {
+		t.Fatalf("got %+v", r)
+	}
+	if a, _ := st.ActiveAlerts(user.ID, false); len(a) != 1 || a[0].Detail != "The Matrix left Plex" {
+		t.Fatalf("alert: %+v", a)
+	}
+	// Expired doesn't count against limits and can be asked for again.
+	radarr.gone = false
+	if _, err := s.Create(ctx, user, New{Type: "movie", TmdbID: 603, Title: "The Matrix"}); err != nil {
+		t.Fatalf("request again: %v", err)
+	}
+}

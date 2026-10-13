@@ -20,7 +20,7 @@ import (
 )
 
 // Events, in the order Settings shows them.
-var Events = []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved", "server_problem"}
+var Events = []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved", "server_problem", "request_leaving"}
 
 // Channels Flixarr can send through.
 var Channels = []string{"discord", "webhook", "email", "push"}
@@ -54,8 +54,8 @@ type Config struct {
 var defaults = map[string]Config{
 	"discord": {Events: []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved", "server_problem"}, BotName: "Flixarr", Poster: true},
 	"webhook": {Events: []string{"request_available", "request_failed"}, Method: "POST"},
-	"push":    {Events: []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved", "server_problem"}},
-	"email":   {Events: []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved", "server_problem"}, Port: 587, Security: "starttls", FromName: "Flixarr"},
+	"push":    {Events: []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved", "server_problem", "request_leaving"}},
+	"email":   {Events: []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved", "server_problem", "request_leaving"}, Port: 587, Security: "starttls", FromName: "Flixarr"},
 }
 
 // Notifier loads the channel settings and sends.
@@ -254,6 +254,7 @@ var eventText = map[string]struct {
 	"issue_reported":    {"Issue reported", 0xeab308},
 	"issue_resolved":    {"Issue resolved", 0x22c55e},
 	"server_problem":    {"Radarr or Sonarr problem", 0xef4444},
+	"request_leaving":   {"Leaving soon", 0xeab308},
 	"test":              {"Test notification", 0xf97316},
 }
 
@@ -333,6 +334,13 @@ func (n *Notifier) FromIssue(event string, i store.Issue) Message {
 	if base := n.Store.Setting("app_url", ""); base != "" {
 		m.Link = base + "/issues"
 	}
+	return m
+}
+
+// FromLeaving builds the heads-up for a requested title that Maintainerr removes soon.
+func (n *Notifier) FromLeaving(r store.Request, at time.Time) Message {
+	m := n.FromRequest("request_leaving", r)
+	m.Text = "Leaves Plex on " + at.Local().Format("Monday, January 2") + ". Watch it before then, or ask to keep it in Flixarr."
 	return m
 }
 

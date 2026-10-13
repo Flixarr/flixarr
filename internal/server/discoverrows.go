@@ -9,7 +9,7 @@ import (
 )
 
 // discoverRowKeys are the Discover rows, in their default order.
-var discoverRowKeys = []string{"recently-added", "recent-requests", "trending", "popular-movies", "upcoming-movies", "popular-series", "upcoming-series"}
+var discoverRowKeys = []string{"recently-added", "recent-requests", "leaving-soon", "trending", "popular-movies", "upcoming-movies", "popular-series", "upcoming-series"}
 
 type discoverRow struct {
 	Key string `json:"key"`

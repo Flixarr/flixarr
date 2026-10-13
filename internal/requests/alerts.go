@@ -15,7 +15,7 @@ func userAlertKey(userID int64) string { return fmt.Sprintf("requests:user:%d", 
 var alertText = map[string]string{
 	"approved": "%s was approved", "sent": "%s was sent to be downloaded", "grabbed": "%s was found and is about to download",
 	"downloading": "%s is downloading", "importing": "%s is being added to Plex", "available": "%s is ready to watch",
-	"failed": "%s couldn't be added", "declined": "%s was declined",
+	"failed": "%s couldn't be added", "declined": "%s was declined", "expired": "%s left Plex",
 }
 
 // Alert updates the requester's bell for a request that just changed status, and the admins' waiting count.

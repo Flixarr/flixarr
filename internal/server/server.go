@@ -18,6 +18,7 @@ import (
 	"github.com/Flixarr/flixarr/internal/images"
 	"github.com/Flixarr/flixarr/internal/jobs"
 	"github.com/Flixarr/flixarr/internal/live"
+	"github.com/Flixarr/flixarr/internal/maintainerr"
 	"github.com/Flixarr/flixarr/internal/meta"
 	"github.com/Flixarr/flixarr/internal/notify"
 	"github.com/Flixarr/flixarr/internal/plex"
@@ -44,6 +45,7 @@ type Server struct {
 	Requests *requests.Service
 	Library  *plexlib.Library
 	Notify   *notify.Notifier
+	Maint    *maintainerr.Watcher
 	Backups  *backup.Manager
 	Live     *live.Hub
 	Web      fs.FS // built web app (index + assets)
@@ -62,6 +64,14 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/status", s.status)
 	mux.HandleFunc("POST /api/webhook/{token}", s.webhook)
+	mux.HandleFunc("POST /api/webhook/maintainerr/{token}", s.maintainerrHook)
+	mux.HandleFunc("GET /api/maintainerr", s.auth(s.admin(s.maintainerrGet)))
+	mux.HandleFunc("PUT /api/maintainerr", s.auth(s.admin(s.maintainerrSet)))
+	mux.HandleFunc("DELETE /api/maintainerr", s.auth(s.admin(s.maintainerrRemove)))
+	mux.HandleFunc("POST /api/maintainerr/find", s.auth(s.admin(s.maintainerrFind)))
+	mux.HandleFunc("POST /api/maintainerr/webhook", s.auth(s.admin(s.maintainerrWebhook)))
+	mux.HandleFunc("GET /api/leaving", s.auth(s.leaving))
+	mux.HandleFunc("POST /api/leaving/{type}/{id}/{act}", s.auth(s.leavingAct))
 	mux.HandleFunc("GET /api/webhook", s.auth(s.admin(s.webhookInfo)))
 	mux.HandleFunc("GET /api/me", s.auth(s.me))
 	mux.HandleFunc("POST /api/setup/done", s.auth(s.admin(func(w http.ResponseWriter, r *http.Request, _ *store.User) {
