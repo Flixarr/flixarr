@@ -117,7 +117,7 @@ func (m *Monitor) syncAlert(v store.Server, snap arr.Snapshot) {
 	key := alertKey(v)
 	a := store.Alert{Key: key, Title: v.Name, Link: "/settings#services"}
 	if !snap.Connected {
-		a.Severity, a.Detail, a.Sig = "error", "Not reachable. "+snap.Error, "error:offline"
+		a.Severity, a.Detail, a.Sig = "error", "Not reachable. "+snap.Error, "offline"
 	} else {
 		stuck, failed := 0, 0
 		for _, q := range snap.Queue {
@@ -149,7 +149,7 @@ func (m *Monitor) syncAlert(v store.Server, snap arr.Snapshot) {
 			a.Severity = "error"
 		}
 		a.Detail = strings.Join(parts, " · ")
-		a.Sig = a.Severity + ":" + strings.Join(kinds, ",")
+		a.Sig = strings.Join(kinds, ",") // a new kind of problem turns it unread; one clearing doesn't
 	}
 	if err := m.Store.RaiseAlert(a); err != nil {
 		m.Log.Warn("alert", "err", err)

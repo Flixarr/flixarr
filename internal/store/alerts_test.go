@@ -45,8 +45,46 @@ func TestAlerts(t *testing.T) {
 	if l, _ := st.ActiveAlerts(1, true); len(l) != 0 {
 		t.Fatal("resolved alert still active")
 	}
-	raise("1 download needs attention", "warning:downloads") // comes back: a new alert
+	raise("1 download needs attention", "warning:downloads") // comes back unread: it was never seen
 	if l, _ := st.ActiveAlerts(1, true); len(l) != 1 || !l[0].Unread {
 		t.Fatalf("returning alert: %+v", l)
+	}
+	raise("13 downloads need attention", "warning:downloads,health")
+	st.MarkAlertsSeen(1)
+	time.Sleep(1100 * time.Millisecond)
+	// A problem clearing while another stays: quieter, stays read.
+	raise("13 downloads need attention", "warning:downloads")
+	if l, _ := st.ActiveAlerts(1, true); l[0].Unread {
+		t.Fatal("quieter alert turned unread")
+	}
+	// Clears and comes back soon after: the same alert, still read.
+	st.ResolveAlert("arr:2")
+	raise("2 downloads need attention", "warning:downloads")
+	if l, _ := st.ActiveAlerts(1, true); len(l) != 1 || l[0].Unread {
+		t.Fatalf("flapping alert turned unread: %+v", l)
+	}
+	// Counts: only a bigger one turns it unread.
+	count := func(n string) {
+		st.RaiseAlert(Alert{Key: "requests:pending", Severity: "info", Title: n + " waiting", Sig: n})
+	}
+	count("3")
+	st.MarkAlertsSeen(1)
+	time.Sleep(1100 * time.Millisecond)
+	count("2")
+	unread := func() bool {
+		l, _ := st.ActiveAlerts(1, true)
+		for _, a := range l {
+			if a.Key == "requests:pending" {
+				return a.Unread
+			}
+		}
+		return false
+	}
+	if unread() {
+		t.Fatal("count going down turned it unread")
+	}
+	count("3")
+	if !unread() {
+		t.Fatal("count going up should be unread")
 	}
 }

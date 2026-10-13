@@ -36,9 +36,19 @@ func (s *Service) Alert(r store.Request) {
 			sev = "warning"
 		}
 		s.Store.RaiseAlert(store.Alert{Key: userAlertKey(r.UserID), Audience: fmt.Sprintf("user:%d", r.UserID), Severity: sev,
-			Title: "Your requests", Detail: detail, Link: "/requests", Sig: fmt.Sprintf("%d:%s", r.ID, r.Status)})
+			Title: "Your requests", Detail: detail, Link: "/requests", Sig: fmt.Sprintf("%d:%s", r.ID, alertStep(r.Status))})
 	}
 	s.alertWaiting()
+}
+
+// alertStep groups the in-between statuses: moving along (grabbed, downloading, importing) updates the
+// bell's text without turning it red; approved, ready, failed and declined do.
+func alertStep(status string) string {
+	switch status {
+	case "sent", "grabbed", "downloading", "importing":
+		return "moving"
+	}
+	return status
 }
 
 func (s *Service) activeCount(userID int64) int {

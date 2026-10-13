@@ -3,11 +3,14 @@ package store
 import (
 	"database/sql"
 	"errors"
+	"strconv"
+	"strings"
+	"time"
 )
 
-// Alert is one entry in the bell. Sig changes only when the alert gets meaningfully different
-// (e.g. a failure joins a warning), which marks it unread again; small changes like a count
-// going from 14 to 13 just update the text.
+// Alert is one entry in the bell. It turns unread again only when its Sig gets "louder" (see louder):
+// something new needs attention. Anything quieter (a count going down, a problem clearing while others
+// stay, new wording) updates it in place without turning the bell red.
 type Alert struct {
 	ID        int64  `json:"id"`
 	Key       string `json:"key"`
@@ -22,6 +25,10 @@ type Alert struct {
 	Unread    bool   `json:"unread"`
 }
 
+// reopenWithin: a problem that clears and comes back this soon reopens its old alert (keeping whether it
+// was seen) instead of starting a new, unread one.
+const reopenWithin = 30 * time.Minute
+
 // RaiseAlert creates the active alert for a key, or updates it.
 func (s *Store) RaiseAlert(a Alert) error {
 	if a.Audience == "" {
@@ -32,6 +39,14 @@ func (s *Store) RaiseAlert(a Alert) error {
 	var sig string
 	err := s.db.QueryRow(`SELECT id, sig FROM alerts WHERE key = ? AND resolved_at IS NULL`, a.Key).Scan(&id, &sig)
 	if errors.Is(err, sql.ErrNoRows) {
+		// Back soon after it cleared: the same alert again.
+		err = s.db.QueryRow(`SELECT id, sig FROM alerts WHERE key = ? AND resolved_at > ? ORDER BY id DESC LIMIT 1`,
+			a.Key, time.Now().Add(-reopenWithin).UTC().Format(time.RFC3339)).Scan(&id, &sig)
+		if err == nil {
+			_, err = s.db.Exec(`UPDATE alerts SET resolved_at = NULL WHERE id = ?`, id)
+		}
+	}
+	if errors.Is(err, sql.ErrNoRows) {
 		_, err = s.db.Exec(`INSERT INTO alerts (key, audience, severity, title, detail, link, sig, started_at, changed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			a.Key, a.Audience, a.Severity, a.Title, a.Detail, a.Link, a.Sig, t, t)
 		s.alertChanged(a.Audience)
@@ -40,20 +55,39 @@ func (s *Store) RaiseAlert(a Alert) error {
 	if err != nil {
 		return err
 	}
-	var res sql.Result
-	if sig != a.Sig {
-		res, err = s.db.Exec(`UPDATE alerts SET severity = ?, title = ?, detail = ?, link = ?, sig = ?, changed_at = ? WHERE id = ?`, a.Severity, a.Title, a.Detail, a.Link, a.Sig, t, id)
+	if louder(sig, a.Sig) {
+		_, err = s.db.Exec(`UPDATE alerts SET severity = ?, title = ?, detail = ?, link = ?, sig = ?, changed_at = ? WHERE id = ?`, a.Severity, a.Title, a.Detail, a.Link, a.Sig, t, id)
 	} else {
-		// Same alert, maybe new wording: only tell browsers if something actually changed.
-		res, err = s.db.Exec(`UPDATE alerts SET severity = ?, title = ?, detail = ?, link = ? WHERE id = ? AND (severity != ? OR title != ? OR detail != ? OR link != ?)`,
-			a.Severity, a.Title, a.Detail, a.Link, id, a.Severity, a.Title, a.Detail, a.Link)
+		// Quieter or the same: new wording and sig, seen state kept.
+		_, err = s.db.Exec(`UPDATE alerts SET severity = ?, title = ?, detail = ?, link = ?, sig = ? WHERE id = ?`, a.Severity, a.Title, a.Detail, a.Link, a.Sig, id)
 	}
 	if err == nil {
-		if n, _ := res.RowsAffected(); n > 0 {
-			s.alertChanged(a.Audience)
-		}
+		s.alertChanged(a.Audience) // reopened or reworded: browsers redraw (unread only if louder)
 	}
 	return err
+}
+
+// louder says whether an alert's new sig needs attention again. Numbers (a waiting count): only a bigger
+// one. Otherwise sigs are comma lists of what's wrong: louder when the new one names something the old didn't.
+func louder(old, new string) bool {
+	if old == new {
+		return false
+	}
+	if o, err1 := strconv.Atoi(old); err1 == nil {
+		if n, err2 := strconv.Atoi(new); err2 == nil {
+			return n > o
+		}
+	}
+	had := map[string]bool{}
+	for _, k := range strings.Split(old, ",") {
+		had[k] = true
+	}
+	for _, k := range strings.Split(new, ",") {
+		if k != "" && !had[k] {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Store) alertChanged(audience string) {
