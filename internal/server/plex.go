@@ -96,6 +96,17 @@ func (s *Server) plexScan(w http.ResponseWriter, r *http.Request, _ *store.User)
 }
 
 // plexSeasons: episodes in Plex per season of a series, for the series page and the request window.
+// plexEpisodes is which episodes of a series are in Plex, by season (the report window offers only those).
+func (s *Server) plexEpisodes(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	id, _ := strconv.Atoi(r.PathValue("tmdbId"))
+	got, err := s.Library.Episodes(r.Context(), id)
+	if err != nil {
+		s.Log.Warn("plex episodes", "err", err)
+		got = map[int][]int{}
+	}
+	writeJSON(w, http.StatusOK, got)
+}
+
 func (s *Server) plexSeasons(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	id, _ := strconv.Atoi(r.PathValue("tmdbId"))
 	got, err := s.Library.Seasons(r.Context(), id)

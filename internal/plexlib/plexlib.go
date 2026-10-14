@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -517,6 +518,39 @@ func (l *Library) Seasons(ctx context.Context, tmdbID int) (map[int]int, error) 
 	}
 	for _, s := range res.MediaContainer.Metadata {
 		out[s.Index] = s.LeafCount
+	}
+	return out, nil
+}
+
+// Episodes lists the episodes of a series that are in Plex, by season (specials left out). Empty when
+// the series isn't in Plex.
+func (l *Library) Episodes(ctx context.Context, tmdbID int) (map[int][]int, error) {
+	out := map[int][]int{}
+	items, err := l.Store.PlexItemsFor([]string{fmt.Sprintf("series:%d", tmdbID)})
+	if err != nil || len(items) == 0 {
+		return out, err
+	}
+	base, tok, ok := l.conn()
+	if !ok {
+		return out, nil
+	}
+	for _, it := range items {
+		var res struct {
+			MediaContainer struct {
+				Metadata []struct {
+					Season  int `json:"parentIndex"`
+					Episode int `json:"index"`
+				} `json:"Metadata"`
+			} `json:"MediaContainer"`
+		}
+		if err := l.get(ctx, base, "/library/metadata/"+url.PathEscape(it.RatingKey)+"/allLeaves", tok, &res); err != nil {
+			return out, err
+		}
+		for _, e := range res.MediaContainer.Metadata {
+			if e.Season > 0 && !slices.Contains(out[e.Season], e.Episode) {
+				out[e.Season] = append(out[e.Season], e.Episode)
+			}
+		}
 	}
 	return out, nil
 }

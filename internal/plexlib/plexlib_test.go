@@ -48,6 +48,8 @@ func (f *fakePlex) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		md = append(md, map[string]any{"ratingKey": "999", "title": "No TMDB"})
 		json.NewEncoder(w).Encode(map[string]any{"MediaContainer": map[string]any{"totalSize": len(md), "Metadata": md}})
+	case r.URL.Path == "/library/metadata/7/allLeaves":
+		fmt.Fprint(w, `{"MediaContainer":{"Metadata":[{"parentIndex":0,"index":1},{"parentIndex":1,"index":1},{"parentIndex":1,"index":3},{"parentIndex":2,"index":1}]}}`)
 	case r.URL.Path == "/library/sections/2/all":
 		fmt.Fprint(w, `{"MediaContainer":{"totalSize":1,"Metadata":[{"ratingKey":"7","title":"Breaking Bad","guid":"plex://show/y","Guid":[{"id":"tmdb://1396"}]}]}}`)
 	default:
@@ -100,6 +102,9 @@ func TestConnectScanLookup(t *testing.T) {
 	got, _ := l.Lookup([]string{"movie:603", "series:1396", "movie:1"})
 	if len(got) != 2 || !strings.Contains(got["movie:603"].URL, "server/abc/details?key=%2Flibrary%2Fmetadata%2F100") {
 		t.Fatalf("lookup: %+v", got)
+	}
+	if eps, err := l.Episodes(ctx, 1396); err != nil || len(eps) != 2 || len(eps[1]) != 2 || eps[1][1] != 3 || eps[0] != nil {
+		t.Fatalf("episodes in Plex: %v %v", eps, err)
 	}
 	if clean, _ := l.SetWebURL("plex.example.com/web/"); clean != "https://plex.example.com" {
 		t.Fatalf("own address: %q", clean)

@@ -49,6 +49,9 @@
 		meta<Season>(`series/${t.id}/season/${n}`, {}, show).then(show).catch(() => (episodes[n] = 'error'));
 	}
 	let brief = $state<RequestBrief | null | undefined>(undefined);
+	// Report issue: on what's in the library, or on a request that hasn't arrived ("Didn't download").
+	const inLib = $derived(!!brief?.plex || brief?.status === 'available');
+	const waiting = $derived(!!brief && ['approved', 'sent', 'grabbed', 'downloading', 'importing', 'failed'].includes(brief.status));
 	let issueOpen = $state(false);
 	let adminOpen = $state(false);
 </script>
@@ -63,13 +66,13 @@
 		{/snippet}
 		{#snippet actions()}
 			{#if t}<RequestButton item={t} bind:req={brief} />{/if}
-			{#if t && (brief?.plex || brief?.status === 'available') && can('reportIssues')}<button class="btn-ghost act" onclick={() => (issueOpen = true)}><Icon name="issues" class="size-4" />Report issue</button>{/if}
+			{#if t && (inLib || waiting) && can('reportIssues')}<button class="btn-ghost act" onclick={() => (issueOpen = true)}><Icon name="issues" class="size-4" />Report issue</button>{/if}
 			{#if t && can('manageRequests')}<button class="btn-ghost act" onclick={() => (adminOpen = true)}><Icon name="settings" class="size-4" />Admin</button>{/if}
 			{#if t?.trailer}<button class="btn-ghost act" onclick={() => (trailer = true)}><Icon name="play" class="size-4" />Trailer</button>{/if}
 			{#if t && brief?.plex}<LeavingActions type="series" id={t.id} title={t.title} />{/if}
 		{/snippet}
 	</DetailHeader>
-	<IssueModal bind:open={issueOpen} item={t} />
+	<IssueModal bind:open={issueOpen} item={t} inLibrary={inLib} {waiting} />
 	{#if t && can('manageRequests')}<AdminPanel bind:open={adminOpen} item={t} />{/if}
 
 	<main class="relative z-10 mx-auto max-w-[1600px] space-y-9 pt-9 laptop:px-10">

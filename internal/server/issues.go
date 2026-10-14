@@ -18,6 +18,23 @@ var issueKinds = map[string][]string{
 	"Audio":     {"Too quiet", "Out of sync", "Wrong language", "No audio"},
 	"Subtitles": {"Missing", "Out of sync", "Wrong language"},
 	"Other":     {},
+	// Not about a file: a request that never arrived. The one kind allowed on titles not in the library.
+	"Didn't download": {"Never started", "Got stuck"},
+}
+
+// downloadKind is the issue kind for a request that never arrived.
+const downloadKind = "Didn't download"
+
+// waitingFor: someone asked for the title and it hasn't (all) arrived: a request that's on its way or failed.
+func (s *Server) waitingFor(typ string, id int) bool {
+	reqs, _ := s.Store.RequestsForTitle(typ, id)
+	for _, r := range reqs {
+		switch r.Status {
+		case "approved", "sent", "grabbed", "downloading", "importing", "failed":
+			return true
+		}
+	}
+	return false
 }
 
 // inLibrary: issues are about the actual file, so only titles in Plex (or with an available request).
@@ -67,7 +84,10 @@ func (s *Server) issueCreate(w http.ResponseWriter, r *http.Request, u *store.Us
 	case (in.Type != "movie" && in.Type != "series") || in.TmdbID <= 0 || strings.TrimSpace(in.Title) == "":
 		writeErr(w, http.StatusBadRequest, "Missing title.")
 		return
-	case !s.inLibrary(in.Type, in.TmdbID):
+	case in.Kind == downloadKind && !s.waitingFor(in.Type, in.TmdbID):
+		writeErr(w, http.StatusConflict, "Nobody is waiting for it to download.")
+		return
+	case in.Kind != downloadKind && !s.inLibrary(in.Type, in.TmdbID):
 		writeErr(w, http.StatusConflict, "Issues can only be reported on titles in the library.")
 		return
 	}
