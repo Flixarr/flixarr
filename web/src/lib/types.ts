@@ -129,7 +129,7 @@ export interface ArrInfo {
 export interface Request {
 	id: number; type: 'movie' | 'series'; tmdbId: number; title: string; year: string; poster: string; backdrop: string;
 	userId: number; userName: string; status: 'pending' | 'approved' | 'declined' | 'sent' | 'grabbed' | 'downloading' | 'importing' | 'available' | 'failed' | 'expired';
-	serverId: number; arrId: number; profileId: number; profileName: string; mode: 'all' | 'seasons' | 'episodes'; seasons: number[]; episodes: [number, number][]; progress: number; error: string; anime: boolean;
+	serverId: number; arrId: number; profileId: number; profileName: string; mode: 'all' | 'seasons' | 'episodes'; seasons: number[]; episodes: [number, number][]; progress: number; error: string; anime: boolean; source?: string;
 	createdAt: string; updatedAt: string;
 }
 export type RequestBrief = { id: number; status: Request['status'] | 'blocked'; progress: number; plex?: string; blocked?: boolean; asked?: { whole: boolean; seasons: number[] } };
