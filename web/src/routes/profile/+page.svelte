@@ -119,7 +119,7 @@
 			<div class="min-w-0 flex-1">
 				<h1 class="text-2xl font-bold">{session.me.username}</h1>
 				<div class="flex flex-wrap items-center gap-2 text-sm text-gray-400">
-					<span class="rounded-md bg-primary/15 px-1.5 py-0.5 text-xs text-primary-light ring-1 ring-primary/40">{session.me.role}</span>{session.me.email}<span>· {session.me.local ? 'Local account' : 'Plex account'}</span>
+					<span class="rounded-md bg-primary/15 px-1.5 py-0.5 text-xs text-primary-light ring-1 ring-primary/40">{session.me.role}</span><span>{[session.me.email, session.me.local ? 'Local account' : 'Plex account'].filter(Boolean).join(' · ')}</span>
 				</div>
 			</div>
 			<button class="btn-ghost text-sm" onclick={out}><Icon name="out" class="size-4" />Sign out</button>

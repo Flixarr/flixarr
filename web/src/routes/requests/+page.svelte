@@ -115,7 +115,7 @@
 		<input class="w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/60 tablet:w-64" placeholder="Search titles or people" bind:value={query} />
 		<Select bind:value={sort} class="w-44" options={[{ value: 'new', label: 'Newest first' }, { value: 'old', label: 'Oldest first' }, { value: 'title', label: 'Title A to Z' }, { value: 'status', label: 'By status' }]} />
 	</div>
-	<div class="mt-3 flex gap-2 overflow-x-auto pb-1 text-sm">
+	<div class="no-scrollbar mt-3 flex gap-2 overflow-x-auto pb-1 text-sm">
 		{#each GROUPS as [k, l] (k)}
 			{@const n = k === 'all' ? scoped.length : count(k)}
 			<button class="shrink-0 rounded-full border px-3 py-1 {group === k ? 'border-primary bg-primary/15 text-white' : 'border-gray-700 text-gray-300 hover:text-white'} {k === 'attention' && n ? 'ring-1 ring-red-500/40' : ''}" onclick={() => (group = k)}>{l} <span class="text-gray-500">{n}</span></button>
