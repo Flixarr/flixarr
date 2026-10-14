@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { api, fmtDate } from '#lib/api.ts';
+	import { api, fmtDate, meta } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import { session, can } from '#lib/session.svelte.ts';
 	import type { UpdateStatus } from '#lib/types.ts';
@@ -43,6 +43,13 @@
 	const hash = $derived(page.url.hash.slice(1));
 	const tab = $derived(SECTIONS.some(([k]) => k === hash) ? hash : 'about');
 	const label = $derived(SECTIONS.find(([k]) => k === tab)?.[1]);
+
+	// Everyone who worked on Flixarr on GitHub (through the Flixarr API, cached there for hours).
+	type Contributor = { login: string; avatar: string; url: string; contributions: number };
+	let contributors = $state<Contributor[]>([]);
+	$effect(() => {
+		if (tab === 'about' && !contributors.length) meta<{ contributors: Contributor[] }>('contributors').then((d) => (contributors = d.contributors)).catch(() => {});
+	});
 
 	let upd = $state<UpdateStatus | null>(null);
 	let payload = $state<Record<string, string> | null>(null);
@@ -182,6 +189,19 @@
 								<img src="/credits/marc-hershey.png" alt="Marc Hershey" class="size-14 shrink-0 rounded-full ring-2 ring-primary/60" />
 								<span class="flex-1"><span class="block text-xs text-gray-500">Made by</span><span class="block font-semibold group-hover:text-primary-light">Marc Hershey</span><span class="block text-xs text-gray-400">github.com/marchershey</span></span>
 							</a>
+							{#if contributors.length}
+								<div class="py-4">
+									<div class="mb-3 text-xs text-gray-500">Contributors on GitHub</div>
+									<div class="flex flex-wrap gap-2">
+										{#each contributors as c (c.login)}
+											<a href={c.url} target="_blank" rel="noopener" class="flex items-center gap-2 rounded-full border border-gray-700/40 bg-gray-900/40 py-1 pl-1 pr-3 text-sm transition hover:border-gray-600">
+												<img src={c.avatar} alt="" class="size-7 rounded-full" loading="lazy" />
+												<span>{c.login}</span><span class="text-xs text-gray-500">{c.contributions} commit{c.contributions === 1 ? '' : 's'}</span>
+											</a>
+										{/each}
+									</div>
+								</div>
+							{/if}
 							<div class="py-4">
 								<div class="mb-3 text-xs text-gray-500">Built with</div>
 								<div class="grid gap-2 phone:grid-cols-2 laptop:grid-cols-3">
