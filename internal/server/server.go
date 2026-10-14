@@ -74,6 +74,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/leaving/{type}/{id}/{act}", s.auth(s.leavingAct))
 	mux.HandleFunc("GET /api/webhook", s.auth(s.admin(s.webhookInfo)))
 	mux.HandleFunc("GET /api/me", s.auth(s.me))
+	mux.HandleFunc("GET /api/me/locale", s.auth(s.myLocale))
+	mux.HandleFunc("PUT /api/me/locale", s.auth(s.myLocale))
 	mux.HandleFunc("POST /api/setup/done", s.auth(s.admin(func(w http.ResponseWriter, r *http.Request, _ *store.User) {
 		s.Store.SetSetting("setup_done", "true")
 		w.WriteHeader(http.StatusNoContent)
@@ -411,8 +413,9 @@ func (s *Server) metaProxy(w http.ResponseWriter, r *http.Request, _ *store.User
 			q.Set(k, v)
 		}
 	}
-	q.Set("region", s.Store.Setting("region", "US"))
-	q.Set("language", s.Store.Setting("language", "en-US"))
+	region, language := s.locale(r)
+	q.Set("region", region)
+	q.Set("language", language)
 	body, status, err := s.Meta.Get(r.Context(), r.PathValue("path"), q)
 	if err != nil {
 		s.Log.Warn("Flixarr API", "err", err)

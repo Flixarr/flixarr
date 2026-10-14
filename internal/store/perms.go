@@ -80,10 +80,11 @@ func (s *Store) Users() ([]UserRow, error) {
 		var row UserRow
 		var perms string
 		u := &row.User
-		if err := rows.Scan(&u.ID, &u.PlexID, &u.Username, &u.Email, &u.Avatar, &u.Role, &perms, &u.CreatedAt, &u.Owner, &u.MovieLimit, &u.SeasonLimit, &row.Requests); err != nil {
+		if err := rows.Scan(&u.ID, &u.PlexID, &u.Username, &u.Email, &u.Avatar, &u.Role, &perms, &u.CreatedAt, &u.Owner, &u.MovieLimit, &u.SeasonLimit, &u.Region, &u.Language, &row.Requests); err != nil {
 			return nil, err
 		}
 		u.Perms = splitPerms(perms)
+		u.Local = u.PlexID == 0
 		out = append(out, row)
 	}
 	return out, rows.Err()

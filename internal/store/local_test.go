@@ -40,3 +40,20 @@ func TestLocalAccounts(t *testing.T) {
 		t.Fatal("hashes")
 	}
 }
+
+func TestUserLocale(t *testing.T) {
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	s, _ := Open(dir, box)
+	t.Cleanup(func() { s.Close() })
+	u, _ := s.CreateUser(User{PlexID: 1, Username: "eryn", Role: "User"})
+	s.SetUserLocale(u.ID, "GB", "en-GB")
+	tok, _ := s.CreateSession(u.ID)
+	got, err := s.SessionUser(tok)
+	if err != nil || got.Region != "GB" || got.Language != "en-GB" {
+		t.Fatalf("signed-in user: %+v %v", got, err)
+	}
+	if rows, _ := s.Users(); len(rows) != 1 || rows[0].Region != "GB" {
+		t.Fatalf("users page: %+v", rows)
+	}
+}

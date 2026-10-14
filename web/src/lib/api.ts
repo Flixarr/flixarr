@@ -41,6 +41,11 @@ function remember(key: string, data: unknown, json: string) {
 	if (recent.size > MAX_ENTRIES) recent.delete(recent.keys().next().value!);
 }
 
+// forgetMeta drops the saved lookups (after changing your region or language, so pages load in the new one).
+export function forgetMeta() {
+	recent.clear();
+}
+
 /**
  * Flixarr API lookup through this server, e.g. meta('movie/752').
  * With a saved copy it resolves instantly; if the background check finds newer data, onFresh gets it.

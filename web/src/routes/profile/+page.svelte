@@ -5,7 +5,9 @@
 	import Icon from '#lib/components/Icon.svelte';
 	import Row from '#lib/components/Row.svelte';
 	import Poster from '#lib/components/Poster.svelte';
-	import { api } from '#lib/api.ts';
+	import { api, forgetMeta } from '#lib/api.ts';
+	import Select from '#lib/components/Select.svelte';
+	import { REGIONS, LANGUAGES } from '#lib/locales.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import Toggle from '#lib/components/Toggle.svelte';
 	import { pushSupported, needsHomeScreen, subscribed, subscribe, unsubscribe } from '#lib/push.ts';
@@ -22,6 +24,7 @@
 		api<Watch>('/me/watchlist').then((d) => (watch = d)).catch(() => {});
 		api<{ on: boolean }>('/push').then((d) => (pushOn = d.on)).catch(() => {});
 		api<Prefs>('/me/notifications').then((d) => (prefs = d)).catch(() => {});
+		api<Locale>('/me/locale').then((d) => (locale = d)).catch(() => {});
 		subscribed().then((v) => (device = v));
 	});
 
@@ -76,6 +79,20 @@
 			notify(e instanceof Error ? e.message : 'Could not change it.', 'orange');
 		} finally {
 			pwBusy = false;
+		}
+	}
+
+	// Your own region and language ("" = the server's).
+	type Locale = { region: string; language: string; serverRegion: string; serverLanguage: string };
+	let locale = $state<Locale | null>(null);
+	const nameOf = (list: [string, string][], code: string) => list.find(([c]) => c === code)?.[1] ?? code;
+	async function setLocale(change: Partial<Locale>) {
+		try {
+			locale = await api<Locale>('/me/locale', { method: 'PUT', body: JSON.stringify({ region: locale!.region, language: locale!.language, ...change }) });
+			forgetMeta();
+			notify('Saved. Pages you open from now on use it.');
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
 		}
 	}
 
@@ -149,6 +166,22 @@
 							{#if prefs.events.some((ev) => shownCh.some(([ch]) => !prefs!.sent[ch].includes(ev)))}<p class="mt-2 text-xs text-gray-500">Greyed out: not sent by this server at all (an admin sets that in Settings, Notifications).</p>{/if}
 						</div>
 					{/if}
+				</div>
+			</section>
+		{/if}
+
+		{#if locale}
+			<section>
+				<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Region and language</div>
+				<div class="card grid gap-3 px-4 py-3 tablet:grid-cols-2">
+					<div>
+						<label for="my-region" class="block text-xs text-gray-400">Region <span class="text-gray-500">(release dates, age ratings, what's upcoming)</span></label>
+						<Select id="my-region" search value={locale.region} options={[{ value: '', label: `Same as the server (${nameOf(REGIONS, locale.serverRegion)})` }, ...REGIONS.map(([v, l]) => ({ value: v, label: l }))]} onchange={(v) => setLocale({ region: v })} />
+					</div>
+					<div>
+						<label for="my-language" class="block text-xs text-gray-400">Language <span class="text-gray-500">(titles and descriptions)</span></label>
+						<Select id="my-language" search value={locale.language} options={[{ value: '', label: `Same as the server (${nameOf(LANGUAGES, locale.serverLanguage)})` }, ...LANGUAGES.map(([v, l]) => ({ value: v, label: l }))]} onchange={(v) => setLocale({ language: v })} />
+					</div>
 				</div>
 			</section>
 		{/if}

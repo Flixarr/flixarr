@@ -41,8 +41,9 @@ type titleRef struct {
 // cards fills poster rows from the Flixarr API's detail pages (cached after the first time), a few at a time.
 func (s *Server) cards(r *http.Request, refs []titleRef) []*card {
 	q := url.Values{}
-	q.Set("region", s.Store.Setting("region", "US"))
-	q.Set("language", s.Store.Setting("language", "en-US"))
+	region, language := s.locale(r)
+	q.Set("region", region)
+	q.Set("language", language)
 	out := make([]*card, len(refs))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 4) // gentle on the API's per-install throttle

@@ -139,6 +139,9 @@ type User struct {
 	Perms    []string `json:"perms"` // see perms.go
 	Owner    bool     `json:"owner"` // the first admin; can't be removed or lose admin
 	Local    bool     `json:"local"` // a username-and-password account (no Plex)
+	// Their own region and language for titles, dates and "upcoming" ("" = the server's).
+	Region   string `json:"region"`
+	Language string `json:"language"`
 	// Request limits per 7 days (0 = unlimited; admins have none).
 	MovieLimit  int    `json:"movieLimit"`
 	SeasonLimit int    `json:"seasonLimit"`
@@ -152,12 +155,12 @@ func (s *Store) UserCount() (int, error) {
 	return n, err
 }
 
-const userCols = `id, plex_id, username, email, avatar, role, perms, created_at, id = (SELECT MIN(id) FROM users), movie_limit, season_limit`
+const userCols = `id, plex_id, username, email, avatar, role, perms, created_at, id = (SELECT MIN(id) FROM users), movie_limit, season_limit, region, language`
 
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	u := &User{}
 	var perms string
-	if err := row.Scan(&u.ID, &u.PlexID, &u.Username, &u.Email, &u.Avatar, &u.Role, &perms, &u.CreatedAt, &u.Owner, &u.MovieLimit, &u.SeasonLimit); err != nil {
+	if err := row.Scan(&u.ID, &u.PlexID, &u.Username, &u.Email, &u.Avatar, &u.Role, &perms, &u.CreatedAt, &u.Owner, &u.MovieLimit, &u.SeasonLimit, &u.Region, &u.Language); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -236,6 +239,12 @@ func (s *Store) SetPassword(id int64, hash string) error {
 	return err
 }
 
+// SetUserLocale saves a person's own region and language ("" = the server's).
+func (s *Store) SetUserLocale(id int64, region, language string) error {
+	_, err := s.db.Exec(`UPDATE users SET region = ?, language = ? WHERE id = ?`, region, language, id)
+	return err
+}
+
 // UpdatePlexProfile refreshes the name, email and avatar from plex.tv on each sign-in.
 func (s *Store) UpdatePlexProfile(id int64, username, email, avatar string) error {
 	_, err := s.db.Exec(`UPDATE users SET username = ?, email = ?, avatar = ? WHERE id = ?`, username, email, avatar, id)
@@ -263,7 +272,7 @@ func (s *Store) CreateSession(userID int64) (string, error) {
 
 // SessionUser returns the user for a session token, if the session is still valid.
 func (s *Store) SessionUser(token string) (*User, error) {
-	row := s.db.QueryRow(`SELECT u.id, u.plex_id, u.username, u.email, u.avatar, u.role, u.perms, u.created_at, u.id = (SELECT MIN(id) FROM users), u.movie_limit, u.season_limit
+	row := s.db.QueryRow(`SELECT u.id, u.plex_id, u.username, u.email, u.avatar, u.role, u.perms, u.created_at, u.id = (SELECT MIN(id) FROM users), u.movie_limit, u.season_limit, u.region, u.language
 		FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ?`, hashToken(token), now())
 	return scanUser(row)
 }
