@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Flixarr/flixarr/internal/arr"
+	"github.com/Flixarr/flixarr/internal/requests"
 	"github.com/Flixarr/flixarr/internal/store"
 )
 
@@ -89,14 +89,6 @@ func (s *Server) titleFix(w http.ResponseWriter, r *http.Request, _ *store.User)
 	writeJSON(w, http.StatusOK, map[string]any{"done": done})
 }
 
-// arrName is Radarr for movies, Sonarr for series.
-func arrName(typ string) string {
-	if typ == "series" {
-		return arr.Kinds["sonarr"]
-	}
-	return arr.Kinds["radarr"]
-}
-
 // titleRemove is Remove from Radarr / Sonarr: the title and its files go; requests for it end.
 func (s *Server) titleRemove(w http.ResponseWriter, r *http.Request, u *store.User) {
 	typ, id, ok := titleParams(r)
@@ -110,11 +102,11 @@ func (s *Server) titleRemove(w http.ResponseWriter, r *http.Request, u *store.Us
 		return
 	}
 	if !in {
-		writeErr(w, http.StatusConflict, "It isn't in "+arrName(typ)+".")
+		writeErr(w, http.StatusConflict, "It isn't in "+requests.ArrName(typ)+".")
 		return
 	}
 	s.Log.Info("title removed", "type", typ, "tmdb", id, "by", u.Username)
-	writeJSON(w, http.StatusOK, map[string]any{"done": "Removed it and its files from " + arrName(typ) + "."})
+	writeJSON(w, http.StatusOK, map[string]any{"done": "Removed it and its files from " + requests.ArrName(typ) + "."})
 }
 
 // titleClear is Clear data: Flixarr forgets the title (requests, issues, Plex and Maintainerr rows).
@@ -151,11 +143,11 @@ func (s *Server) titleDelete(w http.ResponseWriter, r *http.Request, u *store.Us
 		}
 		done = append(done, "Maintainerr no longer keeps it.")
 	}
-	if in, err := s.Requests.RemoveFromArr(ctx, typ, id); err != nil && !strings.Contains(err.Error(), "isn't connected") {
+	if in, err := s.Requests.RemoveFromArr(ctx, typ, id); err != nil && !requests.IsNotConnected(err) {
 		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
 		return
 	} else if in {
-		done = append(done, "Removed it and its files from "+arrName(typ)+".")
+		done = append(done, "Removed it and its files from "+requests.ArrName(typ)+".")
 	}
 	if gone, err := s.Library.Delete(ctx, typ, id); err != nil {
 		writeErr(w, http.StatusConflict, strings.Join(append(done, capitalize(err.Error())+"."), " "))

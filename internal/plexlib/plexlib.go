@@ -34,6 +34,7 @@ const (
 )
 
 var errNotFound = errors.New("Plex answered 404 Not Found")
+var errForbidden = errors.New("Plex answered 403 Forbidden")
 
 // Library keeps the Plex connection and syncs its items.
 type Library struct {
@@ -85,6 +86,9 @@ func (l *Library) do(ctx context.Context, method, base, path, token string, out 
 	}
 	if res.StatusCode == http.StatusNotFound {
 		return errNotFound
+	}
+	if res.StatusCode == http.StatusForbidden {
+		return errForbidden
 	}
 	if res.StatusCode >= 300 {
 		return fmt.Errorf("Plex answered %s", res.Status)
@@ -464,7 +468,7 @@ func (l *Library) Delete(ctx context.Context, typ string, tmdbID int) (deleted b
 	switch {
 	case errors.Is(err, errNotFound):
 		return false, nil
-	case err != nil && strings.Contains(err.Error(), "403"):
+	case errors.Is(err, errForbidden):
 		return false, errors.New("Plex doesn't allow deleting; turn on Allow media deletion in Plex's settings (Library)")
 	}
 	return err == nil, err

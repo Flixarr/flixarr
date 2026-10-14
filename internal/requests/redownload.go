@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
 	"slices"
 	"strings"
 
@@ -66,16 +65,16 @@ func (s *Service) Redownload(ctx context.Context, typ string, tmdbID int, season
 }
 
 func (s *Service) redownloadMovie(ctx context.Context, c *arr.Client, tmdbID int) (string, int, error) {
-	var have []map[string]any
-	if err := c.Get(ctx, fmt.Sprintf("movie?tmdbId=%d", tmdbID), &have); err != nil {
+	m, err := inArr(ctx, c, "movie", tmdbID)
+	if err != nil {
 		return "", 0, err
 	}
-	if len(have) == 0 {
+	if m == nil {
 		return "", 0, errors.New("it isn't in Radarr")
 	}
-	id := num(have[0]["id"])
-	file, _ := have[0]["movieFile"].(map[string]any)
-	if b, _ := have[0]["hasFile"].(bool); !b || file == nil {
+	id := num(m["id"])
+	file, _ := m["movieFile"].(map[string]any)
+	if b, _ := m["hasFile"].(bool); !b || file == nil {
 		return "", 0, errors.New("Radarr has no file for it")
 	}
 	var hist []map[string]any
@@ -106,14 +105,14 @@ func (s *Service) redownloadMovie(ctx context.Context, c *arr.Client, tmdbID int
 }
 
 func (s *Service) redownloadSeries(ctx context.Context, c *arr.Client, v store.Server, tmdbID int, seasons []int) (string, int, error) {
-	var found []map[string]any
-	if err := c.Get(ctx, "series/lookup?term="+url.QueryEscape(fmt.Sprintf("tmdb:%d", tmdbID)), &found); err != nil {
+	sr, err := inArr(ctx, c, "series", tmdbID)
+	if err != nil {
 		return "", 0, err
 	}
-	if len(found) == 0 || num(found[0]["id"]) == 0 {
+	if sr == nil {
 		return "", 0, errors.New("it isn't in Sonarr")
 	}
-	id := num(found[0]["id"])
+	id := num(sr["id"])
 	eps, err := episodeList(ctx, c, id, false)
 	if err != nil {
 		return "", 0, err

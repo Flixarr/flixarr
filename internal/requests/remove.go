@@ -9,40 +9,59 @@ import (
 	"github.com/Flixarr/flixarr/internal/arr"
 )
 
-// RemoveFromArr takes a title out of Radarr/Sonarr with its files (Seerr's "Remove from Radarr"). It
-// isn't added to their import exclusions, so it can be requested again. Requests for it end as failed
-// with the same reason a removal found later gets. inArr=false: it wasn't there (nothing changed).
-func (s *Service) RemoveFromArr(ctx context.Context, typ string, tmdbID int) (inArr bool, err error) {
-	v, ok, err := s.Store.FirstServer(kindOf(typ))
-	if err != nil {
-		return false, err
-	}
-	if !ok {
-		return false, fmt.Errorf("%s isn't connected", arr.Kinds[kindOf(typ)])
-	}
-	c := client(v)
+// notConnected: no Radarr (or Sonarr) is set up for this kind of title. Reads "Radarr isn't connected".
+type notConnected string
+
+func (n notConnected) Error() string { return string(n) + " isn't connected" }
+
+// IsNotConnected says whether err is notConnected.
+func IsNotConnected(err error) bool {
+	var nc notConnected
+	return errors.As(err, &nc)
+}
+
+// ArrName is Radarr for movies, Sonarr for series.
+func ArrName(typ string) string { return arr.Kinds[kindOf(typ)] }
+
+// inArr is the title as Radarr/Sonarr have it, or nil when it isn't there. (A series lookup also finds
+// shows Sonarr doesn't have; those have id 0.)
+func inArr(ctx context.Context, c *arr.Client, typ string, tmdbID int) (map[string]any, error) {
 	var found []map[string]any
+	var err error
 	if typ == "movie" {
 		err = c.Get(ctx, fmt.Sprintf("movie?tmdbId=%d", tmdbID), &found)
 	} else {
 		err = c.Get(ctx, "series/lookup?term="+url.QueryEscape(fmt.Sprintf("tmdb:%d", tmdbID)), &found)
 	}
+	if err != nil || len(found) == 0 || num(found[0]["id"]) == 0 {
+		return nil, err
+	}
+	return found[0], nil
+}
+
+// RemoveFromArr takes a title out of Radarr/Sonarr with its files (Seerr's "Remove from Radarr"). It
+// isn't added to their import exclusions, so it can be requested again. Requests for it end as failed
+// with the same reason a removal found later gets. found=false: it wasn't there (nothing changed).
+func (s *Service) RemoveFromArr(ctx context.Context, typ string, tmdbID int) (found bool, err error) {
+	v, ok, err := s.Store.FirstServer(kindOf(typ))
 	if err != nil {
 		return false, err
 	}
-	id := 0
-	if len(found) > 0 {
-		id = num(found[0]["id"]) // a series lookup also finds shows Sonarr doesn't have (id 0)
+	if !ok {
+		return false, notConnected(ArrName(typ))
 	}
-	if id == 0 {
-		return false, nil
+	c := client(v)
+	item, err := inArr(ctx, c, typ, tmdbID)
+	if err != nil || item == nil {
+		return false, err
 	}
+	id := num(item["id"])
 	path := fmt.Sprintf("movie/%d?deleteFiles=true&addImportExclusion=false", id)
 	if typ == "series" {
 		path = fmt.Sprintf("series/%d?deleteFiles=true&addImportListExclusion=false", id)
 	}
 	if err := c.Delete(ctx, path); err != nil && !errors.Is(err, arr.ErrNotFound) {
-		return true, fmt.Errorf("%s didn't remove it: %w", arr.Kinds[kindOf(typ)], err)
+		return true, fmt.Errorf("%s didn't remove it: %w", ArrName(typ), err)
 	}
 	s.mu.Lock()
 	reqs, _ := s.Store.RequestsForTitle(typ, tmdbID)
@@ -50,7 +69,7 @@ func (s *Service) RemoveFromArr(ctx context.Context, typ string, tmdbID int) (in
 		switch r.Status {
 		case "sent", "grabbed", "downloading", "importing", "available":
 			r.Status, r.Progress = "failed", 0
-			r.Error = fmt.Sprintf("%s from %s. Request it again to get it back.", removedNote, arr.Kinds[kindOf(typ)])
+			r.Error = fmt.Sprintf("%s from %s. Request it again to get it back.", removedNote, ArrName(typ))
 			s.Store.UpdateRequest(r)
 			s.Publish(r)
 		}

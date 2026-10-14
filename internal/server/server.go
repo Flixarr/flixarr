@@ -353,7 +353,7 @@ func (s *Server) plexCheck(w http.ResponseWriter, r *http.Request) {
 				writeErr(w, http.StatusForbidden, "Your Plex account doesn't have access to this Flixarr yet. Ask the admin to add you.")
 				return
 			}
-		} else if err == nil && s.signIn() == "local" && !u.Can("admin") {
+		} else if err == nil && s.signIn() == "local" && !u.Can("admin") && !u.Owner {
 			writeErr(w, http.StatusForbidden, "Sign in with the username and password the admin gave you.")
 			return
 		} else if err == nil {

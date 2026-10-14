@@ -115,15 +115,13 @@ func (s *Service) LiveFor(ctx context.Context, typ string, tmdbID, arrID int, se
 			err = c.Get(ctx, fmt.Sprintf("movie/%d", arrID), &m)
 		}
 		if err != nil {
-			var have []map[string]any
-			if e := c.Get(ctx, fmt.Sprintf("movie?tmdbId=%d", tmdbID), &have); e != nil {
-				l.Error = e.Error()
+			var e error
+			if m, e = inArr(ctx, c, "movie", tmdbID); e != nil || m == nil {
+				if e != nil {
+					l.Error = e.Error()
+				}
 				return l
 			}
-			if len(have) == 0 {
-				return l
-			}
-			m = have[0]
 		}
 		l.InArr = true
 		l.Monitored, _ = m["monitored"].(bool)
@@ -152,15 +150,14 @@ func (s *Service) LiveFor(ctx context.Context, typ string, tmdbID, arrID int, se
 		err = c.Get(ctx, fmt.Sprintf("series/%d", arrID), &sr)
 	}
 	if err != nil {
-		var found []map[string]any
-		if e := c.Get(ctx, "series/lookup?term="+url.QueryEscape(fmt.Sprintf("tmdb:%d", tmdbID)), &found); e != nil {
-			l.Error = e.Error()
+		found, e := inArr(ctx, c, "series", tmdbID)
+		if e != nil || found == nil {
+			if e != nil {
+				l.Error = e.Error()
+			}
 			return l
 		}
-		if len(found) == 0 || num(found[0]["id"]) == 0 {
-			return l
-		}
-		if e := c.Get(ctx, fmt.Sprintf("series/%d", num(found[0]["id"])), &sr); e != nil {
+		if e := c.Get(ctx, fmt.Sprintf("series/%d", num(found["id"])), &sr); e != nil {
 			l.Error = e.Error()
 			return l
 		}
@@ -360,27 +357,27 @@ func (s *Service) FixTitle(ctx context.Context, typ string, tmdbID int) (string,
 	}
 	c := client(v)
 	if typ == "movie" {
-		var have []map[string]any
-		if err := c.Get(ctx, fmt.Sprintf("movie?tmdbId=%d", tmdbID), &have); err != nil {
+		m, err := inArr(ctx, c, "movie", tmdbID)
+		if err != nil {
 			return "", err
 		}
-		if len(have) == 0 {
+		if m == nil {
 			return "", errors.New("it isn't in Radarr; request it instead")
 		}
-		r := store.Request{Type: "movie", TmdbID: tmdbID, ArrID: num(have[0]["id"])}
+		r := store.Request{Type: "movie", TmdbID: tmdbID, ArrID: num(m["id"])}
 		notes, err := s.fixMovie(ctx, v, &r)
 		return strings.Join(notes, " "), err
 	}
-	var found []map[string]any
-	if err := c.Get(ctx, "series/lookup?term="+url.QueryEscape(fmt.Sprintf("tmdb:%d", tmdbID)), &found); err != nil {
+	found, err := inArr(ctx, c, "series", tmdbID)
+	if err != nil {
 		return "", err
 	}
-	if len(found) == 0 || num(found[0]["id"]) == 0 {
+	if found == nil {
 		return "", errors.New("it isn't in Sonarr; request it instead")
 	}
 	// Nobody asked for particular seasons: leave which seasons are monitored as they are; make sure the
 	// series itself is, and search for what's monitored.
-	id := num(found[0]["id"])
+	id := num(found["id"])
 	var notes []string
 	var sr map[string]any
 	if err := c.Get(ctx, fmt.Sprintf("series/%d", id), &sr); err != nil {
