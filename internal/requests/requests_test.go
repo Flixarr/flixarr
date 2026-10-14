@@ -89,6 +89,9 @@ func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case p == "series/77" && r.Method == http.MethodGet:
 		json.NewEncoder(w).Encode(map[string]any{"id": 77, "monitored": true, "seasons": []any{
 			map[string]any{"seasonNumber": 0, "monitored": false}, map[string]any{"seasonNumber": 1, "monitored": true}, map[string]any{"seasonNumber": 2, "monitored": false}, map[string]any{"seasonNumber": 3, "monitored": false}}})
+	case p == "movie/77" && r.Method == http.MethodGet:
+		json.NewEncoder(w).Encode(map[string]any{"id": 77, "tmdbId": 603, "hasFile": !f.noFile, "monitored": false, "titleSlug": "the-matrix-1999",
+			"movieFile": map[string]any{"size": 1000, "sceneName": "The.Matrix.1999.1080p", "quality": map[string]any{"quality": map[string]any{"name": "Bluray-1080p"}}}})
 	case p == "movie/77" && r.Method == http.MethodPut:
 		b, _ := io.ReadAll(r.Body)
 		json.Unmarshal(b, &f.put)
@@ -720,5 +723,33 @@ func TestRemoveFromArr(t *testing.T) {
 	got, _ := st.Request(r.ID)
 	if got.Status != "failed" || !strings.HasPrefix(got.Error, "Removed from Radarr") {
 		t.Fatalf("request after: %+v", got)
+	}
+}
+
+func TestFixTitleNobodyRequested(t *testing.T) {
+	s, _, radarr, _, _, _ := setup(t)
+	ctx := context.Background()
+	if _, err := s.FixTitle(ctx, "movie", 603); err == nil || !strings.Contains(err.Error(), "isn't in Radarr") {
+		t.Fatalf("not in Radarr: %v", err)
+	}
+	radarr.inLib = true
+	done, err := s.FixTitle(ctx, "movie", 603)
+	if err != nil || radarr.put["monitored"] != true || len(radarr.cmds) == 0 {
+		t.Fatalf("fix: %q %v put %v cmds %v", done, err, radarr.put, radarr.cmds)
+	}
+}
+
+func TestLiveForHidesReleaseNamesFromUsers(t *testing.T) {
+	s, _, radarr, _, _, _ := setup(t)
+	ctx := context.Background()
+	radarr.inLib = true
+	radarr.queue = `[{"size":1000,"sizeleft":250,"status":"downloading","title":"The.Matrix.1999.2160p"}]`
+	user := s.LiveFor(ctx, "movie", 603, 77, nil, false)
+	admin := s.LiveFor(ctx, "movie", 603, 77, nil, true)
+	if !user.InArr || !user.HasFile || user.File == nil || user.File.Release != "" || user.Link != "" || len(user.Queue) != 1 || user.Queue[0].Release != "" || user.Queue[0].Percent != 75 {
+		t.Fatalf("for users: %+v", user)
+	}
+	if admin.File.Release != "The.Matrix.1999.1080p" || admin.Queue[0].Release != "The.Matrix.1999.2160p" || !strings.HasSuffix(admin.Link, "/movie/the-matrix-1999") {
+		t.Fatalf("for admins: %+v %+v", admin, admin.File)
 	}
 }
