@@ -19,6 +19,7 @@ type Request struct {
 	Backdrop    string   `json:"backdrop"`
 	UserID      int64    `json:"userId"`
 	UserName    string   `json:"userName"`
+	UserAvatar  string   `json:"userAvatar"`
 	Status      string   `json:"status"`
 	ServerID    int64    `json:"serverId"`
 	ArrID       int      `json:"arrId"`
@@ -40,12 +41,12 @@ type Request struct {
 // OpenStatuses are the statuses of a request still in play (one per title at a time).
 var OpenStatuses = []string{"pending", "approved", "sent", "grabbed", "downloading", "importing", "available"}
 
-const requestCols = `r.id, r.type, r.tmdb_id, r.title, r.year, r.poster, r.backdrop, r.user_id, COALESCE(u.username, ''), r.status, COALESCE(r.server_id, 0), r.arr_id, r.profile_id, r.profile_name, r.mode, r.seasons, r.progress, r.error, r.anime, r.created_at, r.updated_at, r.episodes, r.source`
+const requestCols = `r.id, r.type, r.tmdb_id, r.title, r.year, r.poster, r.backdrop, r.user_id, COALESCE(u.username, ''), r.status, COALESCE(r.server_id, 0), r.arr_id, r.profile_id, r.profile_name, r.mode, r.seasons, r.progress, r.error, r.anime, r.created_at, r.updated_at, r.episodes, r.source, COALESCE(u.avatar, '')`
 
 func scanRequest(row interface{ Scan(...any) error }) (Request, error) {
 	var r Request
 	var seasons, episodes string
-	err := row.Scan(&r.ID, &r.Type, &r.TmdbID, &r.Title, &r.Year, &r.Poster, &r.Backdrop, &r.UserID, &r.UserName, &r.Status, &r.ServerID, &r.ArrID, &r.ProfileID, &r.ProfileName, &r.Mode, &seasons, &r.Progress, &r.Error, &r.Anime, &r.CreatedAt, &r.UpdatedAt, &episodes, &r.Source)
+	err := row.Scan(&r.ID, &r.Type, &r.TmdbID, &r.Title, &r.Year, &r.Poster, &r.Backdrop, &r.UserID, &r.UserName, &r.Status, &r.ServerID, &r.ArrID, &r.ProfileID, &r.ProfileName, &r.Mode, &seasons, &r.Progress, &r.Error, &r.Anime, &r.CreatedAt, &r.UpdatedAt, &episodes, &r.Source, &r.UserAvatar)
 	if err == nil {
 		r.Seasons, r.Episodes = []int{}, [][2]int{}
 		json.Unmarshal([]byte(seasons), &r.Seasons)

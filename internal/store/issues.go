@@ -147,9 +147,21 @@ func (s *Store) OpenIssueCount() int {
 	return n
 }
 
-// OpenIssuesFor is how many issues are open on one title.
-func (s *Store) OpenIssuesFor(typ string, tmdbID int) int {
-	var n int
-	s.db.QueryRow(`SELECT COUNT(*) FROM issues WHERE status = 'open' AND type = ? AND tmdb_id = ?`, typ, tmdbID).Scan(&n)
-	return n
+// OpenIssuesForTitle lists a title's open issues, newest first.
+func (s *Store) OpenIssuesForTitle(typ string, tmdbID int) ([]Issue, error) {
+	rows, err := s.db.Query(`SELECT `+issueCols+` FROM issues i LEFT JOIN users u ON u.id = i.user_id
+		WHERE i.type = ? AND i.tmdb_id = ? AND i.status = 'open' ORDER BY i.id DESC`, typ, tmdbID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Issue{}
+	for rows.Next() {
+		i, err := scanIssue(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, i)
+	}
+	return out, rows.Err()
 }

@@ -41,6 +41,7 @@ func (s *Server) titleAdmin(w http.ResponseWriter, r *http.Request, _ *store.Use
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return
 	}
+	issues, _ := s.Store.OpenIssuesForTitle(typ, id)
 	key := typ + ":" + strconv.Itoa(id)
 	plex := ""
 	if got, err := s.Library.Lookup([]string{key}); err == nil {
@@ -51,7 +52,7 @@ func (s *Server) titleAdmin(w http.ResponseWriter, r *http.Request, _ *store.Use
 		"requests": reqs,
 		"blocked":  s.Store.IsBlocked(typ, id),
 		"plex":     plex,
-		"issues":   s.Store.OpenIssuesFor(typ, id),
+		"issues":   issues,
 	})
 }
 

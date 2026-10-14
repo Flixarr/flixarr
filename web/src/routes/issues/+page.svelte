@@ -30,6 +30,12 @@
 	async function load() {
 		try {
 			list = (await api<{ issues: Issue[] }>('/issues')).issues;
+			// ?open=<id> (from a title's admin panel) opens that issue.
+			const want = Number(new URLSearchParams(location.search).get('open'));
+			if (want) {
+				const hit = list.find((i) => i.id === want);
+				if (hit) openIssue(hit);
+			}
 		} catch (e) {
 			notify(e instanceof Error ? e.message : 'Could not load issues.', 'orange');
 		}
