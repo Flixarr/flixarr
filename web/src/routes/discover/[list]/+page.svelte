@@ -5,14 +5,20 @@
 	import { restoreScroll } from '#lib/scroll.ts';
 	import { page } from '$app/state';
 	import { snapshot } from '$app/navigation';
-	import { meta } from '#lib/api.ts';
+	import { api, meta } from '#lib/api.ts';
 	import { infinite } from '#lib/infinite.ts';
-	import { LISTS } from '#lib/lists.ts';
+	import { LISTS, isCustom, rowSource, rowTitle, type DiscoverRow } from '#lib/lists.ts';
 	import type { Card, Page } from '#lib/types.ts';
 	import Poster from '#lib/components/Poster.svelte';
 	import LoadingMore from '#lib/components/LoadingMore.svelte';
 
-	const list = $derived(LISTS.find((l) => l.key === page.params.list));
+	// A built-in list, or a custom row from Settings → Discover (looked up by its key).
+	let customs = $state<DiscoverRow[]>([]);
+	$effect(() => {
+		if (page.params.list?.startsWith('custom-') && !customs.length) api<DiscoverRow[]>('/discover/rows').then((r) => (customs = r.filter(isCustom)));
+	});
+	const row = $derived<DiscoverRow | undefined>(LISTS.some((l) => l.key === page.params.list) ? { key: page.params.list!, on: true } : customs.find((r) => r.key === page.params.list));
+	const list = $derived(row ? { key: row.key, title: rowTitle(row), ...rowSource(row) } : undefined);
 	let items = $state<Card[]>([]);
 	let pageN = $state(0);
 	let total = $state(1);
@@ -28,7 +34,7 @@
 		if (!reset && p > total) return false;
 		busy = true;
 		try {
-			const d = await meta<Page<Card>>('lists/' + list.key, { page: p });
+			const d = await meta<Page<Card>>(list.path, { ...list.params, page: p });
 			if (g !== gen) return false;
 			items = reset ? d.results : [...items, ...d.results.filter((x) => !items.some((y) => y.id === x.id && y.type === x.type))];
 			pageN = d.page;
@@ -71,7 +77,7 @@
 
 <main class="mx-auto max-w-[1600px] space-y-6 pb-28 pt-20 laptop:px-10 laptop:pt-24">
 	{#if !list}
-		<p class="px-4 pt-10 text-center text-gray-400">That list doesn't exist.</p>
+		{#if !page.params.list?.startsWith('custom-') || customs.length}<p class="px-4 pt-10 text-center text-gray-400">That list doesn't exist.</p>{/if}
 	{:else}
 		<div class="px-4 laptop:px-0"><h1 class="text-2xl font-bold laptop:text-3xl">{list.title}</h1></div>
 		{#if error && !items.length}<p class="px-4 text-center text-gray-400">{error}</p>{/if}
