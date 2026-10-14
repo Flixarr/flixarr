@@ -109,13 +109,34 @@ func (s *Store) ResolveAlert(key string) error {
 	return err
 }
 
-// ActiveAlerts lists the open alerts a user can see, newest change first, with their unread state.
-func (s *Store) ActiveAlerts(userID int64, admin bool) ([]Alert, error) {
+// CanAll and CanNone are permission checks for callers without a user (tests, internal cleanups).
+var (
+	CanAll  = func(string) bool { return true }
+	CanNone = func(string) bool { return false }
+)
+
+// SeenBy reports whether an alert's audience includes a user: "everyone", "admins", "user:<id>", or
+// "can:<permission>" (everyone with that permission; admins have them all).
+func SeenBy(audience string, userID int64, can func(string) bool) bool {
+	switch {
+	case audience == "everyone":
+		return true
+	case audience == "admins":
+		return can("admin")
+	case strings.HasPrefix(audience, "can:"):
+		return can(strings.TrimPrefix(audience, "can:"))
+	}
+	return audience == "user:"+strconv.FormatInt(userID, 10)
+}
+
+// ActiveAlerts lists the open alerts a user can see (can = the user's permission check), newest change
+// first, with their unread state.
+func (s *Store) ActiveAlerts(userID int64, can func(string) bool) ([]Alert, error) {
 	rows, err := s.db.Query(`SELECT a.id, a.key, a.severity, a.title, a.detail, a.link, a.started_at, a.changed_at,
-			(s.seen_at IS NULL OR s.seen_at < a.changed_at)
+			(s.seen_at IS NULL OR s.seen_at < a.changed_at), a.audience
 		FROM alerts a LEFT JOIN alert_seen s ON s.alert_id = a.id AND s.user_id = ?
-		WHERE a.resolved_at IS NULL AND (a.audience = 'everyone' OR (a.audience = 'admins' AND ?) OR a.audience = 'user:' || ?)
-		ORDER BY a.changed_at DESC`, userID, admin, userID)
+		WHERE a.resolved_at IS NULL
+		ORDER BY a.changed_at DESC`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -123,10 +144,13 @@ func (s *Store) ActiveAlerts(userID int64, admin bool) ([]Alert, error) {
 	out := []Alert{}
 	for rows.Next() {
 		var a Alert
-		if err := rows.Scan(&a.ID, &a.Key, &a.Severity, &a.Title, &a.Detail, &a.Link, &a.StartedAt, &a.ChangedAt, &a.Unread); err != nil {
+		var audience string
+		if err := rows.Scan(&a.ID, &a.Key, &a.Severity, &a.Title, &a.Detail, &a.Link, &a.StartedAt, &a.ChangedAt, &a.Unread, &audience); err != nil {
 			return nil, err
 		}
-		out = append(out, a)
+		if SeenBy(audience, userID, can) {
+			out = append(out, a)
+		}
 	}
 	return out, rows.Err()
 }

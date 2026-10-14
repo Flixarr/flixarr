@@ -185,7 +185,7 @@ func main() {
 		if n > 1 {
 			title = fmt.Sprintf("%d titles people want kept", n)
 		}
-		st.RaiseAlert(store.Alert{Key: "keep:asks", Audience: "admins", Severity: "info", Title: title, Detail: "Leaving Plex soon (Maintainerr)", Link: "/leaving", Sig: fmt.Sprint(n)})
+		st.RaiseAlert(store.Alert{Key: "keep:asks", Audience: "can:manageRequests", Severity: "info", Title: title, Detail: "Leaving Plex soon (Maintainerr)", Link: "/leaving", Sig: fmt.Sprint(n)})
 	}
 	runner.Add(&jobs.Job{ID: "maintainerr", Name: "Maintainerr: read collections", Default: "*/15 * * * *",
 		About: "Reads which titles Maintainerr is about to remove and when, keeps new requests out of its rules for a while, and tells people a week before their request leaves Plex. Maintainerr's webhook runs it right away too.",

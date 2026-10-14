@@ -80,14 +80,14 @@ func (s *Service) alertWaiting() {
 	if n > 1 {
 		title = fmt.Sprintf("%d requests waiting", n)
 	}
-	s.Store.RaiseAlert(store.Alert{Key: "requests:pending", Audience: "admins", Severity: "info", Title: title,
+	s.Store.RaiseAlert(store.Alert{Key: "requests:pending", Audience: "can:manageRequests", Severity: "info", Title: title,
 		Detail: "Approve or decline on the Requests page", Link: "/requests", Sig: fmt.Sprint(n)})
 }
 
 // SeenAlerts clears a person's request alert when they open the bell again after already seeing it,
 // and nothing of theirs is still on its way.
 func (s *Service) SeenAlerts(userID int64) {
-	list, _ := s.Store.ActiveAlerts(userID, false)
+	list, _ := s.Store.ActiveAlerts(userID, store.CanNone)
 	for _, a := range list {
 		if a.Key == userAlertKey(userID) && !a.Unread && s.activeCount(userID) == 0 {
 			s.Store.ResolveAlert(a.Key)

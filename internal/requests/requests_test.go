@@ -402,24 +402,24 @@ func TestRequestAlerts(t *testing.T) {
 	ctx := context.Background()
 	st.SetSetting(KeyApproval, "true")
 	r, _ := s.Create(ctx, user, New{Type: "movie", TmdbID: 603, Title: "The Matrix"})
-	if a, _ := st.ActiveAlerts(admin.ID, true); len(a) != 1 || a[0].Title != "1 request waiting" {
+	if a, _ := st.ActiveAlerts(admin.ID, store.CanAll); len(a) != 1 || a[0].Title != "1 request waiting" {
 		t.Fatalf("admin alerts: %+v", a)
 	}
 	r.Status = "available"
 	st.UpdateRequest(r)
 	s.Alert(r)
-	got, _ := st.ActiveAlerts(user.ID, false)
+	got, _ := st.ActiveAlerts(user.ID, store.CanNone)
 	if len(got) != 1 || got[0].Detail != "The Matrix is ready to watch" || !got[0].Unread {
 		t.Fatalf("user alerts: %+v", got)
 	}
-	if a, _ := st.ActiveAlerts(admin.ID, true); len(a) != 0 {
+	if a, _ := st.ActiveAlerts(admin.ID, store.CanAll); len(a) != 0 {
 		t.Fatalf("admin should see nothing now: %+v", a)
 	}
 	// First look marks it seen; the next look clears it.
 	s.SeenAlerts(user.ID)
 	st.MarkAlertsSeen(user.ID)
 	s.SeenAlerts(user.ID)
-	if got, _ = st.ActiveAlerts(user.ID, false); len(got) != 0 {
+	if got, _ = st.ActiveAlerts(user.ID, store.CanNone); len(got) != 0 {
 		t.Fatalf("not cleared: %+v", got)
 	}
 }
@@ -497,7 +497,7 @@ func TestRecheckAfterPlexRemoval(t *testing.T) {
 	if r, _ = st.Request(r.ID); r.Status != "failed" || !strings.HasPrefix(r.Error, "Removed from Plex and Radarr") {
 		t.Fatalf("gone everywhere: %+v", r)
 	}
-	if a, _ := st.ActiveAlerts(user.ID, false); len(a) != 1 || a[0].Detail != "The Matrix was removed from Plex" {
+	if a, _ := st.ActiveAlerts(user.ID, store.CanNone); len(a) != 1 || a[0].Detail != "The Matrix was removed from Plex" {
 		t.Fatalf("alert: %+v", a)
 	}
 	radarr.gone, radarr.hasFile = false, false
@@ -665,7 +665,7 @@ func TestExpiredByMaintainerr(t *testing.T) {
 	if r, _ = st.Request(r.ID); r.Status != "expired" || !strings.Contains(r.Error, "Maintainer") {
 		t.Fatalf("got %+v", r)
 	}
-	if a, _ := st.ActiveAlerts(user.ID, false); len(a) != 1 || a[0].Detail != "The Matrix left Plex" {
+	if a, _ := st.ActiveAlerts(user.ID, store.CanNone); len(a) != 1 || a[0].Detail != "The Matrix left Plex" {
 		t.Fatalf("alert: %+v", a)
 	}
 	// Expired doesn't count against limits and can be asked for again.

@@ -197,7 +197,7 @@ func (s *Server) syncIssueAlerts(changed *store.Issue) {
 		if n > 1 {
 			title = fmt.Sprintf("%d open issues", n)
 		}
-		s.Store.RaiseAlert(store.Alert{Key: "issues:open", Audience: "admins", Severity: "warning", Title: title,
+		s.Store.RaiseAlert(store.Alert{Key: "issues:open", Audience: "can:manageIssues", Severity: "warning", Title: title,
 			Detail: "Reported problems on titles in your library", Link: "/issues", Sig: fmt.Sprint(n)})
 	}
 	if changed != nil && changed.Status == "resolved" {
