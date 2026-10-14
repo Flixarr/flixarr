@@ -1,12 +1,15 @@
-<p align="center"><b>Flixarr</b></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/logo-dark.png">
+    <img src=".github/logo-light.png" alt="Flixarr" width="420">
+  </picture>
+</p>
 
-<p align="center"><img src=".github/screenshot.jpg" alt="The Flixarr Discover page" width="900"></p>
-
-Flixarr is a self-hosted app for requesting movies and series for your Plex server: browse what's trending, request it, and track it until it's ready to watch.
+**Flixarr** is a free and open source app for requesting movies and series for your Plex server. It works with your existing Radarr and Sonarr: browse what's trending, request it, and follow it until it's ready to watch.
 
 > **Early development.** Flixarr is being built in the open and isn't ready for general use yet.
 
-## What works so far
+## Current features
 
 - **Discover**: a rotating spotlight, trending, popular and upcoming rows, and Recently Added and Recent Requests from your own server. Admins can reorder or hide rows.
 - **Movie, series, person and collection pages**, search, and browse by genre with endless scrolling.
@@ -21,7 +24,7 @@ Flixarr is a self-hosted app for requesting movies and series for your Plex serv
 - **Maintainerr support** (optional): a Leaving Soon row with leaving dates, a heads up before a title goes, and Keep or ask to keep.
 - **Backups** with restore, a Jobs page, cache settings, and an installable app for your phone.
 
-## Running it
+## Getting started
 
 ```yaml
 services:
