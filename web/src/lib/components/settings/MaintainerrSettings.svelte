@@ -5,6 +5,7 @@
 	import { notify } from '#lib/toast.svelte.ts';
 	import Select from '#lib/components/Select.svelte';
 	import Icon from '#lib/components/Icon.svelte';
+	import Modal from '#lib/components/Modal.svelte';
 
 	type Stat = { id: number; title: string; type: string; active: boolean; deleteAfterDays: number; leaving: number; handled: number; handledBytes: number };
 	type Info = { connected: boolean; url?: string; keySet?: boolean; version?: string; error?: string; webhook?: boolean; protectDays: number; stats: Stat[]; leaving?: number; keeps?: number };
@@ -14,6 +15,31 @@
 	let base = $state('');
 	let busy = $state('');
 	let found = $state<string[] | null>(null);
+	// The Add / Edit window, like Radarr and Sonarr's: nothing is saved until Save.
+	let open = $state(false);
+	let tested = $state('');
+	let error = $state('');
+	let confirmRemove = $state(false);
+	function edit() {
+		url = info?.url ?? '';
+		apiKey = '';
+		tested = '';
+		error = '';
+		found = null;
+		open = true;
+	}
+	async function test() {
+		busy = 'test';
+		error = '';
+		try {
+			tested = (await api<{ version: string }>('/maintainerr/test', { method: 'POST', body: JSON.stringify({ url: url.trim(), apiKey: apiKey.trim() }) })).version;
+		} catch (e) {
+			tested = '';
+			error = e instanceof Error ? e.message : 'Test failed.';
+		} finally {
+			busy = '';
+		}
+	}
 	const input = 'mt-1 w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/60';
 
 	async function load() {
@@ -30,6 +56,7 @@
 		try {
 			info = await api<Info>('/maintainerr', { method: 'PUT', body: JSON.stringify({ url: url.trim(), apiKey: apiKey.trim() }) });
 			apiKey = '';
+			open = false;
 			notify(`Connected to Maintainerr ${info.version ?? ''}. Reading its collections now.`);
 			setTimeout(() => load().catch(() => {}), 3000);
 		} catch (e) {
@@ -42,8 +69,10 @@
 		busy = 'find';
 		try {
 			found = (await api<{ found: string[] }>('/maintainerr/find', { method: 'POST' })).found;
-			if (found.length) url = found[0];
-			else notify("Didn't find it. Type its address (it usually runs on port 6246).", 'orange');
+			if (found.length) {
+				url = found[0];
+				test();
+			}
 		} finally {
 			busy = '';
 		}
@@ -69,6 +98,7 @@
 		}
 	}
 	async function disconnect() {
+		confirmRemove = false;
 		await api('/maintainerr', { method: 'DELETE' });
 		await load();
 		notify('Maintainerr is disconnected. Titles Flixarr kept stay kept in Maintainerr.');
@@ -84,19 +114,9 @@
 		<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Maintainerr</div>
 		<p class="-mt-1 mb-3 text-xs text-gray-500">Optional. If Maintainerr removes titles by rules, Flixarr shows what's leaving and when, lets people ask to keep a title, and keeps new requests safe for a while.</p>
 		{#if !info.connected}
-			<div class="card space-y-3 p-4">
-				<div>
-					<label for="mt-url" class="block text-sm">Address</label>
-					<div class="flex gap-2"><input id="mt-url" class={input} bind:value={url} placeholder="http://192.168.1.10:6246" autocomplete="off" spellcheck="false" />
-						<button class="btn-ghost mt-1 shrink-0 text-sm" disabled={!!busy} onclick={find}>{busy === 'find' ? 'Looking…' : 'Find automatically'}</button></div>
-					{#if found && found.length > 1}<p class="mt-1 text-xs text-gray-500">Also found: {found.slice(1).join(', ')}</p>{/if}
-				</div>
-				<div>
-					<label for="mt-key" class="block text-sm">API key <span class="text-gray-500">(only if your Maintainerr asks for one)</span></label>
-					<input id="mt-key" class={input} type="password" bind:value={apiKey} autocomplete="off" />
-				</div>
-				<div class="flex justify-end"><button class="btn px-6" disabled={!!busy || !url.trim()} onclick={connect}>{busy === 'connect' ? 'Checking…' : 'Connect'}</button></div>
-			</div>
+			<button class="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-gray-700 p-6 text-sm text-gray-400 transition hover:border-gray-500 hover:text-white" onclick={edit}>
+				<Icon name="plus" class="size-4" />Add Maintainerr
+			</button>
 		{:else}
 			<div class="card divide-y divide-gray-700/40">
 				<div class="flex items-center gap-3 p-4">
@@ -133,8 +153,43 @@
 					<label for="mt-base" class="block text-xs text-gray-400">Flixarr's address, as Maintainerr sees it</label>
 					<input id="mt-base" class="{input} mt-0" bind:value={base} placeholder="http://192.168.1.10:7575" autocomplete="off" spellcheck="false" />
 				</div>
-				<div class="flex justify-end px-4 py-3"><button class="btn-ghost text-sm text-red-300" onclick={disconnect}>Disconnect</button></div>
+				<button class="flex w-full items-center justify-center gap-1.5 py-2.5 text-xs text-gray-300 hover:bg-white/5 hover:text-white" onclick={edit}><Icon name="settings" class="size-3.5" />Edit connection</button>
 			</div>
 		{/if}
 	</div>
 {/if}
+
+<Modal bind:open title={info?.connected ? 'Edit Maintainerr' : 'Add Maintainerr'} sub="Removes titles from Plex by rules you set in Maintainerr.">
+	<div class="space-y-4 p-5">
+		<div>
+			<label for="mt-url" class="block text-sm">Address</label>
+			<div class="relative">
+				<input id="mt-url" class="{input} pr-20" bind:value={url} oninput={() => ((tested = ''), (error = ''))} placeholder="http://192.168.1.10:6246" autocomplete="off" spellcheck="false" />
+				<button class="absolute right-2 top-1/2 mt-0.5 -translate-y-1/2 px-2 text-xs text-gray-400 hover:text-white disabled:opacity-50" disabled={!!busy} onclick={find}>{busy === 'find' ? 'Looking…' : 'Find it'}</button>
+			</div>
+			{#if found && found.length > 1}
+				<div class="mt-2 flex flex-wrap gap-2">{#each found as f (f)}<button class="rounded-full border px-3 py-1 text-xs {url === f ? 'border-primary bg-primary/15 text-white' : 'border-gray-700 text-gray-300 hover:text-white'}" onclick={() => ((url = f), test())}>{f}</button>{/each}</div>
+			{:else if found && !found.length}<p class="mt-1 text-xs text-yellow-400">No Maintainerr found nearby. Enter its address (it usually runs on port 6246).</p>{/if}
+		</div>
+		<div>
+			<label for="mt-key" class="block text-sm">API key <span class="text-gray-500">(optional, only if your Maintainerr asks for one)</span></label>
+			<input id="mt-key" class={input} type="password" bind:value={apiKey} oninput={() => (tested = '')} placeholder={info?.keySet ? 'Saved' : ''} autocomplete="off" />
+		</div>
+		<button class="btn-ghost w-full py-2 text-sm" disabled={!!busy || !url.trim()} onclick={test}>{busy === 'test' ? 'Testing…' : 'Test'}</button>
+		{#if tested}<p class="flex items-center gap-2 text-sm text-green-400"><span class="size-2 rounded-full bg-green-500"></span>Connected · Maintainerr {tested}</p>{/if}
+		{#if error}<p class="text-sm text-red-300">{error}</p>{/if}
+	</div>
+	{#snippet footer()}
+		{#if info?.connected}<button class="btn-ghost mr-auto text-red-300" onclick={() => ((open = false), (confirmRemove = true))}>Remove</button>{/if}
+		<button class="btn-ghost" onclick={() => (open = false)}>Cancel</button>
+		<button class="btn px-6" disabled={!!busy || !tested} onclick={connect}>{busy === 'connect' ? 'Saving…' : 'Save'}</button>
+	{/snippet}
+</Modal>
+
+<Modal bind:open={confirmRemove} title="Remove Maintainerr?" sub="The connection is deleted from Flixarr.">
+	<p class="p-5 text-sm text-gray-300">Nothing changes inside Maintainerr, and titles Flixarr kept stay kept there. Flixarr stops showing what's leaving.</p>
+	{#snippet footer()}
+		<button class="btn-ghost" onclick={() => ((confirmRemove = false), edit())}>Cancel</button>
+		<button class="btn px-6" onclick={disconnect}>Remove</button>
+	{/snippet}
+</Modal>

@@ -69,6 +69,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/maintainerr", s.auth(s.admin(s.maintainerrSet)))
 	mux.HandleFunc("DELETE /api/maintainerr", s.auth(s.admin(s.maintainerrRemove)))
 	mux.HandleFunc("POST /api/maintainerr/find", s.auth(s.admin(s.maintainerrFind)))
+	mux.HandleFunc("POST /api/maintainerr/test", s.auth(s.admin(s.maintainerrTest)))
 	mux.HandleFunc("POST /api/maintainerr/webhook", s.auth(s.admin(s.maintainerrWebhook)))
 	mux.HandleFunc("GET /api/leaving", s.auth(s.leaving))
 	mux.HandleFunc("POST /api/leaving/{type}/{id}/{act}", s.auth(s.leavingAct))
