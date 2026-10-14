@@ -146,3 +146,10 @@ func (s *Store) OpenIssueCount() int {
 	s.db.QueryRow(`SELECT COUNT(*) FROM issues WHERE status = 'open'`).Scan(&n)
 	return n
 }
+
+// OpenIssuesFor is how many issues are open on one title.
+func (s *Store) OpenIssuesFor(typ string, tmdbID int) int {
+	var n int
+	s.db.QueryRow(`SELECT COUNT(*) FROM issues WHERE status = 'open' AND type = ? AND tmdb_id = ?`, typ, tmdbID).Scan(&n)
+	return n
+}

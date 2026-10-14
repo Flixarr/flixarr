@@ -28,7 +28,7 @@
 	async function send() {
 		sending = true;
 		try {
-			const d = await api<{ done: string }>('/redownload', { method: 'POST', body: JSON.stringify({ type: item.type, tmdbId: item.id, seasons: series ? picked : [] }) });
+			const d = await api<{ done: string }>('/redownload', { method: 'POST', body: JSON.stringify({ type: item.type, tmdbId: item.id, seasons: series ? picked : [], title: item.title, year: item.year, poster: item.poster ?? '' }) });
 			open = false;
 			notify(d.done);
 		} catch (e) {

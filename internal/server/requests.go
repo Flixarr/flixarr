@@ -218,12 +218,15 @@ func (s *Server) redownload(w http.ResponseWriter, r *http.Request, u *store.Use
 		Type    string `json:"type"`
 		TmdbID  int    `json:"tmdbId"`
 		Seasons []int  `json:"seasons"`
+		Title   string `json:"title"`
+		Year    string `json:"year"`
+		Poster  string `json:"poster"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil || (in.Type != "movie" && in.Type != "series") || in.TmdbID <= 0 {
 		writeErr(w, http.StatusBadRequest, "Bad request.")
 		return
 	}
-	done, err := s.Requests.Redownload(r.Context(), in.Type, in.TmdbID, in.Seasons)
+	done, err := s.Requests.Redownload(r.Context(), in.Type, in.TmdbID, in.Seasons, requests.For{UserID: u.ID, Title: in.Title, Year: in.Year, Poster: in.Poster})
 	if err != nil {
 		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
 		return

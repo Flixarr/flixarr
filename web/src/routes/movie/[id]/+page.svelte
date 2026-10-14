@@ -12,7 +12,7 @@
 	import Icon from '#lib/components/Icon.svelte';
 	import RequestButton from '#lib/components/RequestButton.svelte';
 	import IssueModal from '#lib/components/IssueModal.svelte';
-	import RedownloadModal from '#lib/components/RedownloadModal.svelte';
+	import AdminPanel from '#lib/components/AdminPanel.svelte';
 	import LeavingActions from '#lib/components/LeavingActions.svelte';
 	import { can } from '#lib/session.svelte.ts';
 	import type { RequestBrief } from '#lib/types.ts';
@@ -34,7 +34,7 @@
 	});
 	let brief = $state<RequestBrief | null | undefined>(undefined);
 	let issueOpen = $state(false);
-	let redownloadOpen = $state(false);
+	let adminOpen = $state(false);
 </script>
 
 {#if error}
@@ -48,13 +48,13 @@
 		{#snippet actions()}
 			{#if m}<RequestButton item={m} bind:req={brief} />{/if}
 			{#if m && (brief?.plex || brief?.status === 'available') && can('reportIssues')}<button class="btn-ghost act" onclick={() => (issueOpen = true)}><Icon name="issues" class="size-4" />Report issue</button>{/if}
-			{#if m && brief?.plex && can('redownload')}<button class="btn-ghost act" onclick={() => (redownloadOpen = true)}><Icon name="refresh" class="size-4" />Redownload</button>{/if}
+			{#if m && can('manageRequests')}<button class="btn-ghost act" onclick={() => (adminOpen = true)}><Icon name="settings" class="size-4" />Admin</button>{/if}
 			{#if m?.trailer}<button class="btn-ghost act" onclick={() => (trailer = true)}><Icon name="play" class="size-4" />Trailer</button>{/if}
 			{#if m && brief?.plex}<LeavingActions type="movie" id={m.id} title={m.title} />{/if}
 		{/snippet}
 	</DetailHeader>
 	<IssueModal bind:open={issueOpen} item={m} />
-	{#if m}<RedownloadModal bind:open={redownloadOpen} item={m} />{/if}
+	{#if m && can('manageRequests')}<AdminPanel bind:open={adminOpen} item={m} />{/if}
 
 	<main class="relative z-10 mx-auto max-w-[1600px] space-y-9 pt-9 laptop:px-10">
 		<div class="grid gap-9 laptop:grid-cols-[1fr_340px]">
