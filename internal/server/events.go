@@ -80,10 +80,6 @@ func (s *Server) PublishRequest(r store.Request) {
 		}
 	}
 	owner := r.UserID
-	manages := func(u *store.User) bool { return u.Can("viewRequests") || u.Can("manageRequests") }
-	// People who manage requests get it as stored; the requester (if not one of them) in plain words.
-	s.Live.Publish(live.Event{Type: "request", Data: map[string]any{"key": key, "brief": brief, "request": r},
-		For: func(u *store.User) bool { return u.Can("manageRequests") }})
 	s.Live.Publish(live.Event{Type: "request", Data: map[string]any{"key": key, "brief": brief, "request": requests.ForViewer(r, false)},
-		For: func(u *store.User) bool { return !u.Can("manageRequests") && (u.ID == owner || manages(u)) }})
+		For: func(u *store.User) bool { return u.ID == owner || u.Can("viewRequests") || u.Can("manageRequests") }})
 }

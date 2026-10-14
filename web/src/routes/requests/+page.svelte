@@ -11,7 +11,7 @@
 	import PlexMark from '#lib/components/PlexMark.svelte';
 	import RequestDetail from '#lib/components/RequestDetail.svelte';
 	import { statusOf } from '#lib/availability.svelte.ts';
-	import { simple, text, TONE, NEUTRAL, SIMPLE_STEPS } from '#lib/requeststatus.ts';
+	import { simple, SIMPLE_STEPS } from '#lib/requeststatus.ts';
 	import { on } from '#lib/live.svelte.ts';
 
 	let list = $state<Request[] | null>(null);
@@ -76,8 +76,7 @@
 
 	const what = (r: Request) =>
 		r.type !== 'series' ? '' : r.mode === 'all' ? 'Whole show' : r.mode === 'episodes' ? `${r.episodes.length} episodes` : r.seasons.length === 1 ? `Season ${r.seasons[0]}` : `Seasons ${r.seasons.join(', ')}`;
-	// People who manage requests see the exact status; everyone else the short one.
-	const status = (r: Request) => (admin ? { label: text(r.status, r.progress), tone: TONE[r.status] ?? NEUTRAL } : simple(r.status, r.progress));
+	const status = (r: Request) => simple(r.status, r.progress);
 
 	async function approve(r: Request) {
 		busy = r.id;
@@ -101,7 +100,7 @@
 	<div class="flex flex-wrap items-end justify-between gap-3">
 		<div>
 			<h1 class="text-2xl font-bold laptop:text-3xl">Requests</h1>
-			<p class="text-sm text-gray-400">{approval ? 'New requests wait for an admin to approve them.' : admin ? 'Requests are sent straight to Radarr and Sonarr.' : 'Requests start right away.'} Tap one for its details.</p>
+			<p class="text-sm text-gray-400">{approval ? 'New requests wait for an admin to approve them.' : 'Requests start right away.'} Tap one for its details.</p>
 		</div>
 		{#if everyone}
 			<div class="inline-flex gap-1 rounded-lg border border-gray-700/60 bg-gray-800/70 p-0.5 text-sm" role="radiogroup" aria-label="Whose requests">

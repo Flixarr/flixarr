@@ -7,12 +7,12 @@
 	import { can, session } from '#lib/session.svelte.ts';
 	import { on } from '#lib/live.svelte.ts';
 	import type { Request } from '#lib/types.ts';
-	import { simple, text, TONE, NEUTRAL, SIMPLE_STEPS, EVENT_TEXT } from '#lib/requeststatus.ts';
+	import { simple, text, SIMPLE_STEPS, EVENT_TEXT } from '#lib/requeststatus.ts';
 	import Modal from './Modal.svelte';
 	import Img from './Img.svelte';
 	import Icon from './Icon.svelte';
 
-	type Download = { season?: number; episode?: number; percent: number; timeLeft?: string; state: string; size: number; release?: string; problem?: string };
+	type Download = { season?: number; episode?: number; percent: number; timeLeft?: string; state: string; size: number; release?: string; problem?: string; detail?: string };
 	type Live = { inArr: boolean; monitored: boolean; hasFile: boolean; file?: { quality?: string; size: number; release?: string; path?: string }; queue: Download[]; seasons?: { number: number; have: number; total: number; inPlex: number }[]; link?: string; server: string; error?: string };
 	type Detail = { request: Request; events: { status: string; note: string; at: string }[]; live: Live; hint?: string };
 
@@ -47,7 +47,7 @@
 	});
 
 	const r = $derived(d?.request);
-	const st = $derived(r ? (admin ? { label: text(r.status, r.progress), tone: TONE[r.status] ?? NEUTRAL, step: -1 } : simple(r.status, r.progress)) : null);
+	const st = $derived(r ? simple(r.status, r.progress) : null);
 	const ustep = $derived(r ? simple(r.status, r.progress)?.step ?? -1 : -1);
 	const size = (b: number) => (b >= 1e12 ? `${(b / 1e12).toFixed(1)} TB` : b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.round(b / 1e6)} MB`);
 	const left = (t?: string) => {
@@ -114,6 +114,7 @@
 	{#if d && r}
 		<div class="space-y-5 p-5 pt-0 text-sm">
 			{#if d.hint}<p class="rounded-lg px-3 py-2 ring-1 {r.status === 'failed' ? 'bg-red-500/10 text-red-200 ring-red-500/30' : 'bg-gray-800/60 text-gray-300 ring-gray-700/60'}">{d.hint}</p>{/if}
+			{#if admin && (r.detail || r.status !== 'available')}<p class="text-[11px] text-gray-500">Details: {text(r.status, r.progress)}{r.detail ? ` · ${r.detail}` : ''}</p>{/if}
 
 			{#if ustep >= 0}
 				<div class="grid grid-cols-3 gap-1.5">
@@ -137,6 +138,7 @@
 							</div>
 							<div class="mt-1.5 h-1 overflow-hidden rounded-full bg-gray-700/60"><div class="h-full rounded-full {q.state === 'warning' || q.state === 'failed' ? 'bg-yellow-500' : 'bg-blue-500'}" style="width:{q.percent}%"></div></div>
 							{#if q.problem}<p class="mt-1.5 text-xs text-yellow-200">{q.problem}</p>{/if}
+							{#if q.detail}<p class="mt-1 text-[11px] text-gray-500">Details: {q.detail}</p>{/if}
 							{#if admin && q.release}<p class="mt-1 truncate text-[11px] text-gray-500">{q.release}</p>{/if}
 						</div>
 					{/each}
@@ -172,7 +174,7 @@
 					{#each d.events as e, i (i)}
 						<li class="relative">
 							<span class="absolute -left-[21px] top-1 size-2.5 rounded-full ring-2 ring-gray-900 {e.status === 'failed' ? 'bg-red-500' : e.status === 'available' ? 'bg-green-500' : e.status === 'declined' || e.status === 'expired' ? 'bg-gray-500' : 'bg-primary'}"></span>
-							<div class="text-xs text-gray-200">{EVENT_TEXT[e.status] ?? e.status}{e.note && (e.status === 'approved' || e.status === 'declined') && admin ? ` by ${e.note}` : ''}</div>
+							<div class="text-xs text-gray-200">{EVENT_TEXT[e.status] ?? e.status}{e.note && (e.status === 'approved' || e.status === 'declined') ? ` by ${e.note}` : ''}</div>
 							<div class="text-[11px] text-gray-500">{fmtDate(e.at, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
 							{#if e.note && (e.status === 'failed' || e.status === 'expired')}<div class="text-[11px] text-gray-400">{e.note}</div>{/if}
 						</li>
@@ -189,7 +191,7 @@
 			{/if}
 			{#if removing}
 				<div class="space-y-2 rounded-lg bg-gray-800/50 p-3 text-xs text-gray-300">
-					<p>{admin ? `The request is removed from Flixarr. Anything already in ${d.live.server || 'Radarr or Sonarr'} stays there.` : 'Your request is cancelled.'}</p>
+					<p>The request is removed. Anything already downloaded stays.</p>
 					<div class="flex justify-end gap-2"><button class="btn-ghost px-3 py-1 text-xs" onclick={() => (removing = false)}>Keep it</button><button class="btn px-3 py-1 text-xs" disabled={!!busy} onclick={remove}>Remove</button></div>
 				</div>
 			{/if}

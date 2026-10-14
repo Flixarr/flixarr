@@ -24,7 +24,8 @@ type Download struct {
 	State    string `json:"state"`              // downloading, queued, importing, warning, failed
 	Size     int64  `json:"size"`
 	Release  string `json:"release,omitempty"` // admins only
-	Problem  string `json:"problem,omitempty"` // admins see Radarr / Sonarr's words; others a plain line
+	Problem  string `json:"problem,omitempty"` // in plain words
+	Detail   string `json:"detail,omitempty"`  // what Radarr / Sonarr said (admins only)
 }
 
 // SeasonState is a requested season: episodes with files vs episodes out, and episodes in Plex.
@@ -78,16 +79,11 @@ func (s *Service) Detail(ctx context.Context, r store.Request, admin bool) Detai
 		}
 	}
 	d.Live = s.LiveFor(ctx, r.Type, r.TmdbID, r.ArrID, seasons, admin)
-	d.Hint = hintFor(r, d.Live, admin)
-	if !admin {
-		d.Request = ForViewer(r, false)
-		for i := range d.Events {
-			switch d.Events[i].Status {
-			case "failed", "expired":
-				d.Events[i].Note = PlainError(store.Request{Status: d.Events[i].Status, Error: d.Events[i].Note})
-			case "approved", "declined":
-				d.Events[i].Note = "" // who decided is for admins
-			}
+	d.Hint = hintFor(r, d.Live)
+	d.Request = ForViewer(r, admin)
+	for i := range d.Events {
+		if st := d.Events[i].Status; st == "failed" || st == "expired" {
+			d.Events[i].Note = PlainError(store.Request{Status: st, Error: d.Events[i].Note})
 		}
 	}
 	return d
@@ -262,10 +258,9 @@ func queue(ctx context.Context, c *arr.Client, path string, seasons map[int]bool
 			d.State = "queued"
 		}
 		if d.State == "failed" || d.State == "warning" {
+			d.Problem = "Hit a problem. Someone who manages requests can sort it out."
 			if admin {
-				d.Problem = statusMessages(it)
-			} else {
-				d.Problem = "Hit a problem. Someone who manages requests can sort it out."
+				d.Detail = statusMessages(it)
 			}
 		}
 		if admin {
@@ -303,15 +298,10 @@ func statusMessages(it map[string]any) string {
 	return strings.Join(parts, " ")
 }
 
-// hintFor says what's going on with a request, in plain words. People who manage requests get the detail
-// (which app, what to do about it); everyone else what it means for them.
-func hintFor(r store.Request, l Live, admin bool) string {
-	app := arr.Kinds[kindOf(r.Type)]
+// hintFor says what's going on with a request, in plain words (the same for everyone).
+func hintFor(r store.Request, l Live) string {
 	switch r.Status {
 	case "pending":
-		if admin {
-			return "Waiting for approval. Approve or decline it below."
-		}
 		return "Waiting for someone who manages requests to approve it."
 	case "declined":
 		if r.Error != "" {
@@ -319,18 +309,12 @@ func hintFor(r store.Request, l Live, admin bool) string {
 		}
 		return "Declined."
 	case "failed", "expired":
-		if admin {
-			return r.Error
-		}
 		return PlainError(r)
 	case "available":
 		return ""
 	}
 	if l.Error != "" {
-		if admin {
-			return "Couldn't ask " + app + " right now: " + l.Error
-		}
-		return "Can't check on it right now. It'll update on its own."
+		return "Can't check on it right now. It updates on its own."
 	}
 	for _, d := range l.Queue {
 		if d.Problem != "" {
@@ -338,18 +322,9 @@ func hintFor(r store.Request, l Live, admin bool) string {
 		}
 	}
 	switch {
-	case !l.InArr:
-		if admin {
-			return "It isn't in " + app + ". Use Fix to add it back."
-		}
+	case !l.InArr || !l.Monitored && len(l.Queue) == 0 && (r.Status == "sent" || r.Status == "approved"):
 		return "Something went wrong with this request. Someone who manages requests can sort it out."
 	case len(l.Queue) == 0 && (r.Status == "sent" || r.Status == "approved"):
-		if !l.Monitored && admin {
-			return app + " isn't looking for it (not monitored). Use Fix."
-		}
-		if admin {
-			return "No download found yet. " + app + " keeps looking and grabs one when it turns up."
-		}
 		return "Still looking for a download. It starts as soon as one turns up."
 	case r.Status == "grabbed":
 		return "Found a download. It starts in a moment."
@@ -441,11 +416,13 @@ func PlainError(r store.Request) string {
 	return ""
 }
 
-// ForViewer is a request as a viewer may see it: as stored for people who manage requests, with the
-// reason in plain words for everyone else.
+// ForViewer is a request as shown: the reason in plain words for everyone, and for people who manage
+// requests the stored reason as Detail.
 func ForViewer(r store.Request, admin bool) store.Request {
-	if !admin {
-		r.Error = PlainError(r)
+	raw := r.Error
+	r.Error = PlainError(r)
+	if admin && raw != r.Error {
+		r.Detail = raw
 	}
 	return r
 }

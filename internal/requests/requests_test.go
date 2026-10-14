@@ -680,8 +680,8 @@ func TestPlainWordsForUsers(t *testing.T) {
 	if got := ForViewer(removed, false).Error; strings.Contains(got, "Sonarr") || !strings.Contains(got, "Removed from Plex") {
 		t.Fatalf("removed: %q", got)
 	}
-	if got := ForViewer(removed, true).Error; got != removed.Error {
-		t.Fatalf("admins keep the detail: %q", got)
+	if got := ForViewer(removed, true); got.Error != ForViewer(removed, false).Error || got.Detail != removed.Error {
+		t.Fatalf("admins: same words plus the detail: %+v", got)
 	}
 	failed := store.Request{Status: "failed", Error: "Radarr didn't add it: the API key was refused"}
 	if got := PlainError(failed); strings.Contains(got, "Radarr") || strings.Contains(got, "API") {
@@ -694,7 +694,7 @@ func TestPlainWordsForUsers(t *testing.T) {
 		t.Fatalf("declined keeps the admin's words: %q", got)
 	}
 	for _, l := range []Live{{Error: "couldn't reach it"}, {InArr: false}, {InArr: true, Monitored: false}} {
-		if h := hintFor(store.Request{Type: "movie", Status: "sent"}, l, false); strings.Contains(h, "Radarr") || strings.Contains(h, "Fix") {
+		if h := hintFor(store.Request{Type: "movie", Status: "sent"}, l); strings.Contains(h, "Radarr") || strings.Contains(h, "Fix") {
 			t.Fatalf("hint for a user: %q", h)
 		}
 	}

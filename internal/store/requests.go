@@ -34,6 +34,7 @@ type Request struct {
 	CreatedAt   string   `json:"createdAt"`
 	UpdatedAt   string   `json:"updatedAt"`
 	Source      string   `json:"source"` // "" (someone asked) or "redownload"
+	Detail      string   `json:"detail,omitempty"` // the stored reason as Radarr / Sonarr gave it (people who manage requests); not a column
 }
 
 // OpenStatuses are the statuses of a request still in play (one per title at a time).
