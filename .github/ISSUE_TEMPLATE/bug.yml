@@ -1,7 +1,7 @@
 name: Bug report
 description: Something in Flixarr isn't working right.
 type: Bug
-labels: [bug, needs triage]
+labels: [needs triage]
 body:
   - type: markdown
     attributes:
