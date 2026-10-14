@@ -155,6 +155,13 @@ func (s *Store) ActiveAlerts(userID int64, can func(string) bool) ([]Alert, erro
 	return out, rows.Err()
 }
 
+// MarkAlertSeen marks one alert as seen by a user (the person who caused the change already knows).
+func (s *Store) MarkAlertSeen(userID int64, key string) error {
+	_, err := s.db.Exec(`INSERT INTO alert_seen (user_id, alert_id, seen_at) SELECT ?, id, ? FROM alerts WHERE key = ? AND resolved_at IS NULL
+		ON CONFLICT(user_id, alert_id) DO UPDATE SET seen_at = excluded.seen_at`, userID, now(), key)
+	return err
+}
+
 // MarkAlertsSeen marks every open alert as seen by a user.
 func (s *Store) MarkAlertsSeen(userID int64) error {
 	_, err := s.db.Exec(`INSERT INTO alert_seen (user_id, alert_id, seen_at) SELECT ?, id, ? FROM alerts WHERE resolved_at IS NULL

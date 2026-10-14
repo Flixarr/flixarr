@@ -95,7 +95,7 @@
 											<span class="min-w-0 flex-1">
 												<span class="flex items-center gap-2 text-sm font-medium">{a.title}<span class="size-1.5 rounded-full {a.severity === 'error' ? 'bg-red-500' : a.severity === 'info' ? 'bg-green-400' : 'bg-yellow-400'}"></span></span>
 												<span class="block text-xs {a.severity === 'error' ? 'text-red-300' : a.severity === 'info' ? 'text-gray-300' : 'text-yellow-300'}">{a.detail}</span>
-												<span class="mt-0.5 block text-[11px] text-gray-500">Since {since(a.startedAt)}</span>
+												<span class="mt-0.5 block text-[11px] text-gray-500">{a.changedAt && a.changedAt !== a.startedAt ? `Updated ${since(a.changedAt)}` : `Since ${since(a.startedAt)}`}</span>
 											</span>
 										</a>
 									{/each}
