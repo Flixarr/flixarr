@@ -19,6 +19,22 @@ func (s *Server) plexStatus(w http.ResponseWriter, r *http.Request, _ *store.Use
 	writeJSON(w, http.StatusOK, st)
 }
 
+// plexWeb sets where Play on Plex and Open in Plex go: {url}, blank for app.plex.tv.
+func (s *Server) plexWeb(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	var in struct {
+		URL string `json:"url"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil {
+		writeErr(w, http.StatusBadRequest, "Bad request.")
+		return
+	}
+	if _, err := s.Library.SetWebURL(in.URL); err != nil {
+		writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
+		return
+	}
+	s.plexStatus(w, r, nil)
+}
+
 func (s *Server) plexServers(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	list, err := s.Library.Servers(r.Context())
 	if err != nil {

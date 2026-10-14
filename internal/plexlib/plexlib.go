@@ -29,6 +29,7 @@ const (
 	keyToken      = "plex_server_token" // the server's access token (encrypted)
 	keyLibraries  = "plex_libraries"    // JSON list of section keys to sync
 	keyLastFull   = "plex_last_full"    // RFC3339
+	keyWebURL     = "plex_web_url"      // Play on Plex / Open in Plex go here; blank = app.plex.tv
 )
 
 var errNotFound = errors.New("Plex answered 404 Not Found")
@@ -215,6 +216,7 @@ type Status struct {
 	URL       string    `json:"url,omitempty"`
 	Sections  []Section `json:"sections"`
 	LastFull  string    `json:"lastFull,omitempty"`
+	WebURL    string    `json:"webUrl"` // blank = app.plex.tv
 	Error     string    `json:"error,omitempty"`
 }
 
@@ -277,7 +279,7 @@ func (l *Library) SetSections(keys []string) error {
 
 // Status reports the connection and libraries.
 func (l *Library) Status(ctx context.Context) (Status, error) {
-	st := Status{Sections: []Section{}}
+	st := Status{Sections: []Section{}, WebURL: l.Store.Setting(keyWebURL, "")}
 	if _, _, ok := l.conn(); !ok {
 		return st, nil
 	}
@@ -433,9 +435,13 @@ func (l *Library) Lookup(keys []string) (map[string]Item, error) {
 		return nil, err
 	}
 	machine := l.Store.Setting(keyServerID, "")
+	web := "https://app.plex.tv/desktop"
+	if own := l.Store.Setting(keyWebURL, ""); own != "" {
+		web = own + "/web/index.html"
+	}
 	out := map[string]Item{}
 	for k, it := range items {
-		out[k] = Item{RatingKey: it.RatingKey, URL: fmt.Sprintf("https://app.plex.tv/desktop/#!/server/%s/details?key=%s", machine, url.QueryEscape("/library/metadata/"+it.RatingKey))}
+		out[k] = Item{RatingKey: it.RatingKey, URL: fmt.Sprintf("%s#!/server/%s/details?key=%s", web, machine, url.QueryEscape("/library/metadata/"+it.RatingKey))}
 	}
 	return out, nil
 }
@@ -461,6 +467,27 @@ func (l *Library) Delete(ctx context.Context, typ string, tmdbID int) (deleted b
 		return false, errors.New("Plex doesn't allow deleting; turn on Allow media deletion in Plex's settings (Library)")
 	}
 	return err == nil, err
+}
+
+// SetWebURL sets where Play on Plex and Open in Plex go: blank for app.plex.tv, or the address Plex's
+// web app is reached on (like https://plex.example.com; a /web ending is fine).
+func (l *Library) SetWebURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", l.Store.SetSetting(keyWebURL, "")
+	}
+	if !strings.Contains(raw, "://") {
+		raw = "https://" + raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", errors.New("that address doesn't look right; it should be like https://plex.example.com")
+	}
+	p := strings.TrimRight(u.Path, "/")
+	p = strings.TrimSuffix(strings.TrimSuffix(p, "/index.html"), "/web")
+	u.Path, u.RawQuery, u.Fragment = p, "", ""
+	clean := strings.TrimRight(u.String(), "/")
+	return clean, l.Store.SetSetting(keyWebURL, clean)
 }
 
 // Seasons says how many episodes of each season of a series are in Plex (season 0 = specials).

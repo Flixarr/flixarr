@@ -8,7 +8,7 @@
 	import PlexMark from '#lib/components/PlexMark.svelte';
 
 	type Section = { key: string; type: 'movie' | 'show'; title: string; enabled: boolean; items: number };
-	type Status = { connected: boolean; id?: string; name?: string; url?: string; sections: Section[]; lastFull?: string; error?: string };
+	type Status = { connected: boolean; id?: string; name?: string; url?: string; sections: Section[]; lastFull?: string; webUrl: string; error?: string };
 	type Server = { id: string; name: string; owned: boolean; connections: { uri: string; local: boolean; relay: boolean }[] };
 
 	let st = $state<Status | null>(null);
@@ -17,10 +17,28 @@
 	let busy = $state('');
 	let error = $state('');
 	let forgetOpen = $state(false);
+	// Where Play on Plex and Open in Plex go: app.plex.tv, or the address your own Plex web app is on.
+	let own = $state(false);
+	let web = $state('');
+	async function saveWeb(url: string) {
+		busy = 'web';
+		try {
+			st = await api<Status>('/plex/web', { method: 'PUT', body: JSON.stringify({ url }) });
+			own = !!st.webUrl;
+			web = st.webUrl;
+			notify(st.webUrl ? `Plex links open on ${st.webUrl}.` : 'Plex links open on app.plex.tv.');
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+		} finally {
+			busy = '';
+		}
+	}
 
 	async function load() {
 		try {
 			st = await api<Status>('/plex');
+			own = !!st.webUrl;
+			web = st.webUrl;
 			if (!st.connected) findServers();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Could not load Plex settings.';
@@ -127,6 +145,22 @@
 				<p class="mt-2 text-xs text-gray-500">Titles in these libraries show as available, and can't be requested again. New additions show up within 5 minutes; removals with the nightly full scan.</p>
 			</div>
 		{/if}
+		<div>
+			{@render heading('Open titles in')}
+			<div class="card space-y-3 p-4 text-sm">
+				<div class="inline-flex gap-1 rounded-lg border border-gray-700/60 bg-gray-800/70 p-0.5" role="radiogroup" aria-label="Open titles in">
+					<button class="rounded-md px-3 py-1 {!own ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'}" role="radio" aria-checked={!own} onclick={() => (st?.webUrl ? saveWeb('') : (own = false))}>app.plex.tv</button>
+					<button class="rounded-md px-3 py-1 {own ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'}" role="radio" aria-checked={own} onclick={() => (own = true)}>Your own address</button>
+				</div>
+				{#if own}
+					<form class="flex gap-2" onsubmit={(e) => (e.preventDefault(), saveWeb(web))}>
+						<input class="min-w-0 flex-1 rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary/60" placeholder="https://plex.example.com" autocapitalize="off" bind:value={web} />
+						<button class="btn shrink-0 px-4 py-1.5 text-xs" disabled={busy === 'web' || !web.trim() || web === st.webUrl}>{busy === 'web' ? 'Saving…' : 'Save'}</button>
+					</form>
+				{/if}
+				<p class="text-xs text-gray-500">Where Play on Plex and Open in Plex go. Use your own address when people reach Plex's web app there (for example through a reverse proxy).</p>
+			</div>
+		</div>
 		<button class="text-xs text-gray-500 hover:text-red-300" onclick={() => (forgetOpen = true)}>Disconnect this server</button>
 	{:else}
 		<div>

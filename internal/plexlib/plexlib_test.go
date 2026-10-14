@@ -101,6 +101,16 @@ func TestConnectScanLookup(t *testing.T) {
 	if len(got) != 2 || !strings.Contains(got["movie:603"].URL, "server/abc/details?key=%2Flibrary%2Fmetadata%2F100") {
 		t.Fatalf("lookup: %+v", got)
 	}
+	if clean, _ := l.SetWebURL("plex.example.com/web/"); clean != "https://plex.example.com" {
+		t.Fatalf("own address: %q", clean)
+	}
+	if got, _ = l.Lookup([]string{"movie:603"}); !strings.HasPrefix(got["movie:603"].URL, "https://plex.example.com/web/index.html#!/server/abc/details") {
+		t.Fatalf("own address link: %s", got["movie:603"].URL)
+	}
+	if _, err := l.SetWebURL("ftp://x"); err == nil {
+		t.Fatal("ftp accepted")
+	}
+	l.SetWebURL("")
 	// Removed from Plex: gone after the next full scan.
 	f.movies = []string{"603"}
 	if msg, _ = l.FullScan(ctx); !strings.Contains(msg, "1 removed") {
