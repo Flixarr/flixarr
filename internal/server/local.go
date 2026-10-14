@@ -104,6 +104,10 @@ func (s *Server) localLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "Enter your username and password.")
 		return
 	}
+	if s.signIn() == "plex" {
+		writeErr(w, http.StatusForbidden, "Sign in with Plex.")
+		return
+	}
 	name := strings.ToLower(strings.TrimSpace(in.Username))
 	byName, byIP := "name:"+name, "ip:"+clientIP(r)
 	if s.fails.locked(byName, byIP) {

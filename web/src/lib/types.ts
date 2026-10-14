@@ -72,6 +72,7 @@ export interface Status {
 	version: { version: string; build: string; full: string; commit: string; channel: string };
 	update: UpdateStatus;
 	imageCache: boolean;
+	signIn?: 'both' | 'plex' | 'local';
 }
 
 export interface CacheKind { kind: 'titles' | 'people' | 'lists' | 'searches'; count: number; bytes: number }

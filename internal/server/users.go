@@ -14,6 +14,17 @@ import (
 // KeyPlexSignIn: "true" = anyone the Plex server is shared with can sign in (as a User).
 const KeyPlexSignIn = "users_plex_signin"
 
+// KeySignIn is how people sign in: "both" (default), "plex" or "local" (username and password). With
+// "local", admins can still sign in with Plex (the owner's account is a Plex one).
+const KeySignIn = "sign_in"
+
+func (s *Server) signIn() string {
+	if m := s.Store.Setting(KeySignIn, "both"); m == "plex" || m == "local" {
+		return m
+	}
+	return "both"
+}
+
 func (s *Server) plexSignInOpen() bool { return s.Store.Setting(KeyPlexSignIn, "true") == "true" }
 
 // KeyDefaultRole is the role new people get (signing in, or imported): User or Trusted.
@@ -160,17 +171,21 @@ func (s *Server) userSettings(w http.ResponseWriter, r *http.Request, _ *store.U
 		var in struct {
 			PlexSignIn  bool   `json:"plexSignIn"`
 			DefaultRole string `json:"defaultRole"`
+			SignIn      string `json:"signIn"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in); err != nil {
 			writeErr(w, http.StatusBadRequest, "Bad request.")
 			return
 		}
 		s.Store.SetSetting(KeyPlexSignIn, strconv.FormatBool(in.PlexSignIn))
+		if in.SignIn == "both" || in.SignIn == "plex" || in.SignIn == "local" {
+			s.Store.SetSetting(KeySignIn, in.SignIn)
+		}
 		if in.DefaultRole == "User" || in.DefaultRole == "Trusted" {
 			s.Store.SetSetting(KeyDefaultRole, in.DefaultRole)
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"plexSignIn": s.plexSignInOpen(), "defaultRole": s.defaultRole()})
+	writeJSON(w, http.StatusOK, map[string]any{"plexSignIn": s.plexSignInOpen(), "defaultRole": s.defaultRole(), "signIn": s.signIn()})
 }
 
 // myWatchlist reads or changes the Profile's "Request from my Plex Watchlist" switch.

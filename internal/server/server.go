@@ -261,6 +261,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		"version":     map[string]string{"version": version.Version, "build": version.Build, "full": version.Full(), "commit": version.Commit, "channel": version.Channel},
 		"update":      s.Update.Last(),
 		"imageCache":  s.Images.Enabled(),
+		"signIn":      s.signIn(),
 	})
 }
 
@@ -336,6 +337,10 @@ func (s *Server) plexCheck(w http.ResponseWriter, r *http.Request) {
 		u, err = s.Store.UserByPlexID(acct.ID)
 		if errors.Is(err, store.ErrNotFound) {
 			// Someone new: let them in if the Plex server is shared with them (and that's switched on).
+			if s.signIn() == "local" {
+				writeErr(w, http.StatusForbidden, "Sign in with the username and password the admin gave you.")
+				return
+			}
 			if ok, aerr := s.Library.HasAccess(r.Context(), pin.AuthToken); s.plexSignInOpen() && aerr == nil && ok {
 				u, err = s.Store.CreateUser(store.User{PlexID: acct.ID, Username: name, Email: acct.Email, Avatar: acct.Thumb, Role: s.defaultRole()})
 				s.Log.Info("new user signed in", "user", name)
@@ -343,6 +348,9 @@ func (s *Server) plexCheck(w http.ResponseWriter, r *http.Request) {
 				writeErr(w, http.StatusForbidden, "Your Plex account doesn't have access to this Flixarr yet. Ask the admin to add you.")
 				return
 			}
+		} else if err == nil && s.signIn() == "local" && !u.Can("admin") {
+			writeErr(w, http.StatusForbidden, "Sign in with the username and password the admin gave you.")
+			return
 		} else if err == nil {
 			err = s.Store.UpdatePlexProfile(u.ID, name, acct.Email, acct.Thumb)
 			u.Username, u.Email, u.Avatar = name, acct.Email, acct.Thumb
