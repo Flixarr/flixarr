@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { session, signOut, can } from '#lib/session.svelte.ts';
+	import { session, signOut } from '#lib/session.svelte.ts';
 	import Avatar from '#lib/components/Avatar.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import Row from '#lib/components/Row.svelte';
@@ -13,7 +13,6 @@
 	import { pushSupported, needsHomeScreen, subscribed, subscribe, unsubscribe } from '#lib/push.ts';
 	import type { Card, Page } from '#lib/types.ts';
 
-	const v = $derived(session.status?.version);
 	type Stats = { requests: number; available: number; waiting: number; inProgress: number; openIssues: number };
 	let stats = $state<Stats | null>(null);
 	let mine = $state<Card[]>([]);
@@ -206,28 +205,6 @@
 			</section>
 		{/if}
 
-		{#if can('admin')}
-			<section>
-				<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Admin</div>
-				<div class="grid gap-2 tablet:grid-cols-3">
-					{#each [['Issues', '/issues', 'issues', 'Reported problems'], ['Users', '/users', 'users', 'People and permissions'], ['Settings', '/settings', 'settings', 'Server settings']] as [l, h, i, d] (h)}
-						<a href={h} class="card flex items-center gap-3 px-4 py-3 transition hover:ring-1 hover:ring-primary/50">
-							<span class="grid size-9 place-items-center rounded-lg bg-gray-800 text-gray-300"><Icon name={i} class="size-4" /></span>
-							<span class="flex-1"><span class="block text-sm font-medium">{l}</span><span class="block text-xs text-gray-500">{d}</span></span>
-							<Icon name="chevron" class="size-4 text-gray-500" />
-						</a>
-					{/each}
-				</div>
-			</section>
-		{/if}
 
-		<section class="card divide-y divide-gray-700/40">
-			<div class="flex justify-between px-4 py-3 text-sm"><span class="text-gray-400">Flixarr version</span><span class="font-mono">{v?.full} <span class="text-xs text-gray-500">({v?.commit})</span></span></div>
-			<div class="flex justify-between px-4 py-3 text-sm"><span class="text-gray-400">Channel</span><span class="capitalize">{v?.channel}</span></div>
-			<div class="flex items-center gap-4 px-4 py-4">
-				<span class="rounded-md bg-linear-to-r from-[#90cea1] to-tmdb px-2 py-1 text-xs font-black tracking-wide text-gray-950">TMDB</span>
-				<p class="text-xs text-gray-400">This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
-			</div>
-		</section>
 	{/if}
 </main>
