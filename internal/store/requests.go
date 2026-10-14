@@ -336,3 +336,27 @@ func inList(list []string) string {
 func (s *Store) RequestsForTitle(typ string, tmdbID int) ([]Request, error) {
 	return s.queryRequests(`SELECT `+requestCols+` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.type = ? AND r.tmdb_id = ? ORDER BY r.id DESC`, typ, tmdbID)
 }
+
+// ClearTitle removes what Flixarr keeps about a title: its requests (with their timelines), its issues
+// (with their comments), its Plex row and its Maintainerr leaving rows and keep asks. Keeps stay (they
+// mirror Maintainerr's exclusions), and so do the blocklist and watchlists.
+func (s *Store) ClearTitle(typ string, tmdbID int) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, q := range []string{
+		`DELETE FROM leaving_told WHERE request_id IN (SELECT id FROM requests WHERE type = ? AND tmdb_id = ?)`,
+		`DELETE FROM requests WHERE type = ? AND tmdb_id = ?`,
+		`DELETE FROM issues WHERE type = ? AND tmdb_id = ?`,
+		`DELETE FROM plex_items WHERE type = ? AND tmdb_id = ?`,
+		`DELETE FROM leaving WHERE type = ? AND tmdb_id = ?`,
+		`DELETE FROM keep_asks WHERE type = ? AND tmdb_id = ?`,
+	} {
+		if _, err := tx.Exec(q, typ, tmdbID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}

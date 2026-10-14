@@ -91,4 +91,16 @@ export const runtime = (m: number) => (m ? `${Math.floor(m / 60) ? Math.floor(m 
 export const fmtBytes = (n: number) =>
 	n < 1024 ? `${n} B` : n < 1024 ** 2 ? `${(n / 1024).toFixed(0)} KB` : n < 1024 ** 3 ? `${(n / 1024 ** 2).toFixed(1)} MB` : n < 1024 ** 4 ? `${(n / 1024 ** 3).toFixed(n < 100 * 1024 ** 3 ? 2 : 1)} GB` : `${(n / 1024 ** 4).toFixed(1)} TB`;
 
+// How long ago: "just now", "42 sec ago", "5 min ago", "3 hr ago", "2 days ago". now is passed by pages
+// that tick, so the text keeps moving.
+export function ago(iso: string | null | undefined, now = Date.now()) {
+	if (!iso) return 'never';
+	const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));
+	if (s < 10) return 'just now';
+	if (s < 60) return `${s} sec ago`;
+	if (s < 3600) return `${Math.round(s / 60)} min ago`;
+	if (s < 86400) return `${Math.round(s / 3600)} hr ago`;
+	const d = Math.round(s / 86400);
+	return `${d} day${d === 1 ? '' : 's'} ago`;
+}
 export const fmtNum = (n: number) => n.toLocaleString('en-US');

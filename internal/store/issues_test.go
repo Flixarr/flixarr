@@ -67,3 +67,39 @@ func TestIssueBellSig(t *testing.T) {
 		t.Fatalf("another manager sees it unread: %+v", l)
 	}
 }
+
+func TestClearTitle(t *testing.T) {
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	st, _ := Open(dir, box)
+	t.Cleanup(func() { st.Close() })
+	u, _ := st.CreateUser(User{PlexID: 1, Username: "admin", Role: "Admin"})
+	r, _ := st.CreateRequest(Request{Type: "movie", TmdbID: 603, Title: "The Matrix", UserID: u.ID, Status: "available"})
+	other, _ := st.CreateRequest(Request{Type: "movie", TmdbID: 604, Title: "Reloaded", UserID: u.ID, Status: "available"})
+	st.CreateIssue(Issue{Type: "movie", TmdbID: 603, Title: "The Matrix", Kind: "Video", UserID: u.ID})
+	st.SavePlexItem(PlexItem{Type: "movie", TmdbID: 603, RatingKey: "1", SeenAt: "x"})
+	st.ToldLeaving(r.ID, "2026-11-01")
+	st.SaveKeep(Keep{Type: "movie", TmdbID: 603, PlexID: "1", Reason: "kept"})
+	st.Block(Blocked{Type: "movie", TmdbID: 603, Title: "The Matrix"}, u.ID)
+	if err := st.ClearTitle("movie", 603); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := st.RequestsForTitle("movie", 603); len(got) != 0 {
+		t.Fatalf("requests left: %+v", got)
+	}
+	if got, _ := st.OpenIssuesForTitle("movie", 603); len(got) != 0 {
+		t.Fatalf("issues left: %+v", got)
+	}
+	if got, _ := st.PlexItemsFor([]string{"movie:603"}); len(got) != 0 {
+		t.Fatal("plex row left")
+	}
+	if st.ToldLeaving(r.ID, "2026-11-01") {
+		t.Fatal("leaving_told row left")
+	}
+	if _, ok := st.KeepFor("movie", 603); !ok || !st.IsBlocked("movie", 603) {
+		t.Fatal("keep and blocklist should stay")
+	}
+	if _, err := st.Request(other.ID); err != nil {
+		t.Fatal("another title's request went too")
+	}
+}

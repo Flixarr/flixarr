@@ -31,6 +31,7 @@ type fakeArr struct {
 	noFile  bool // in the library without a file
 	gone    bool // movie 42 was deleted from Radarr
 	files   int  // series 42: episodes with files in seasons 1 and 2 (when hasFile is off)
+	deleted []string
 }
 
 func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -42,6 +43,8 @@ func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		id = 77
 	}
 	switch {
+	case r.Method == http.MethodDelete && (p == "movie/77" || p == "series/77"):
+		f.deleted = append(f.deleted, p+"?"+r.URL.RawQuery)
 	case p == "movie" && r.Method == http.MethodGet:
 		if f.inLib {
 			json.NewEncoder(w).Encode([]any{map[string]any{"id": 77, "tmdbId": 603, "hasFile": !f.noFile, "monitored": false}})
@@ -697,5 +700,25 @@ func TestPlainWordsForUsers(t *testing.T) {
 		if h := hintFor(store.Request{Type: "movie", Status: "sent"}, l); strings.Contains(h, "Radarr") || strings.Contains(h, "Fix") {
 			t.Fatalf("hint for a user: %q", h)
 		}
+	}
+}
+
+func TestRemoveFromArr(t *testing.T) {
+	s, st, radarr, _, admin, _ := setup(t)
+	ctx := context.Background()
+	if in, err := s.RemoveFromArr(ctx, "movie", 603); err != nil || in {
+		t.Fatalf("not in Radarr: %v %v", in, err)
+	}
+	radarr.inLib = true
+	r, _ := st.CreateRequest(store.Request{Type: "movie", TmdbID: 603, Title: "The Matrix", UserID: admin.ID, Status: "available", ArrID: 77})
+	if in, err := s.RemoveFromArr(ctx, "movie", 603); err != nil || !in {
+		t.Fatalf("remove: %v %v", in, err)
+	}
+	if len(radarr.deleted) != 1 || radarr.deleted[0] != "movie/77?deleteFiles=true&addImportExclusion=false" {
+		t.Fatalf("asked Radarr: %v", radarr.deleted)
+	}
+	got, _ := st.Request(r.ID)
+	if got.Status != "failed" || !strings.HasPrefix(got.Error, "Removed from Radarr") {
+		t.Fatalf("request after: %+v", got)
 	}
 }

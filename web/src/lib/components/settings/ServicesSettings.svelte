@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { api, fmtBytes } from '#lib/api.ts';
+	import { api, fmtBytes, ago } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import type { ArrInfo, FlixarrProfile, QueueRow, ServiceKind, ServiceView } from '#lib/types.ts';
 	import Toggle from '#lib/components/Toggle.svelte';
@@ -98,19 +98,11 @@
 		};
 	});
 
-	function ago(iso: string | null | undefined) {
-		if (!iso) return 'never';
-		const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));
-		if (s < 60) return `${s} sec ago`;
-		if (s < 3600) return `${Math.round(s / 60)} min ago`;
-		if (s < 86400) return `${Math.round(s / 3600)} hr ago`;
-		return `${Math.round(s / 86400)} days ago`;
-	}
 	// "Next update in 42 sec" normally; "Updates paused" when the job is off; "Updated X ago" in
 	// yellow when the last read is overdue (more than 3 minutes old). The other wording is the hover text.
 	function updateText(v: ServiceView): { text: string; title: string; warn: boolean } {
 		const st = v.status!;
-		const age = `Updated ${ago(st.updatedAt)}`;
+		const age = `Updated ${ago(st.updatedAt, now)}`;
 		if (v.updatesPaused) return { text: 'Updates paused', title: age, warn: false };
 		if (now - Date.parse(st.updatedAt) > 420000) return { text: age, title: 'The refresh-status job is overdue', warn: true }; // idle servers are read every 5 min
 		const secs = v.nextUpdate ? Math.round((Date.parse(v.nextUpdate) - now) / 1000) : -1;
@@ -354,7 +346,7 @@
 
 						{#if st && !st.connected}
 							<span class="mt-4 flex items-center gap-2 rounded-lg bg-red-500/10 px-2.5 py-1.5 text-[11px] text-red-300 ring-1 ring-red-500/30">✕ {st.error}</span>
-							<span class="mt-3 flex justify-between text-[11px] text-gray-500"><span>Last connected {ago(st.lastConnected)}</span><span>Updated {ago(st.updatedAt)}</span></span>
+							<span class="mt-3 flex justify-between text-[11px] text-gray-500"><span>Last connected {ago(st.lastConnected, now)}</span><span>Updated {ago(st.updatedAt, now)}</span></span>
 						{:else if st}
 							{#if !st.queue.length}
 								<span class="mt-4 flex items-center justify-between rounded-lg bg-gray-900/50 px-3 py-2 text-xs ring-1 ring-gray-700/40"><span class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Queue</span><span class="text-gray-500">Nothing downloading</span></span>

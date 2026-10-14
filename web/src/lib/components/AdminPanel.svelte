@@ -1,7 +1,7 @@
 <script lang="ts">
 	// A title's admin panel (people who manage requests): its requests, what's downloading, the media in
 	// Radarr / Sonarr and Plex, open issues, and the actions. Opens from the side; full screen on phones.
-	import { api, fmtDate, fmtBytes } from '#lib/api.ts';
+	import { api, fmtDate, fmtBytes, ago } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import { can } from '#lib/session.svelte.ts';
 	import { on } from '#lib/live.svelte.ts';
@@ -18,8 +18,9 @@
 
 	type Download = { season?: number; episode?: number; percent: number; timeLeft?: string; state: string; size: number; release?: string; problem?: string; detail?: string };
 	type Live = { inArr: boolean; monitored: boolean; hasFile: boolean; file?: { quality?: string; size: number; release?: string; path?: string }; queue: Download[]; seasons?: { number: number; have: number; total: number; inPlex: number }[]; link?: string; server: string; error?: string };
-	type Issue = { id: number; kind: string; sub: string; note: string; season: number; episode: number; parts?: [number, number][]; userName: string; userAvatar: string; createdAt: string; comments: number };
-	type Info = { live: Live; requests: Request[]; blocked: boolean; plex: string; issues: Issue[] };
+	type Comment = { userName: string; userAvatar: string; body: string; createdAt: string };
+	type Issue = { id: number; kind: string; sub: string; note: string; season: number; episode: number; parts?: [number, number][]; userName: string; userAvatar: string; createdAt: string; comments: number; last?: Comment };
+	type Info = { live: Live; requests: Request[]; blocked: boolean; plex: string; issues: Issue[]; kept: boolean };
 
 	let { open = $bindable(false), item }: { open?: boolean; item: Movie | Series } = $props();
 	let info = $state<Info | null>(null);
@@ -27,7 +28,9 @@
 	let detail = $state(0);
 	let detailOpen = $state(false);
 	let redownloadOpen = $state(false);
-	let blockOpen = $state(false);
+	let confirm = $state<'' | 'remove' | 'clear' | 'delete' | 'block'>('');
+	let replyTo = $state(0);
+	let reply = $state('');
 	const key = $derived(`${item.type}:${item.id}`);
 	const series = $derived(item.type === 'series');
 
@@ -89,8 +92,72 @@
 			busy = '';
 		}
 	}
+	// One issue card's Resolve and reply, right in the panel.
+	async function resolve(i: Issue) {
+		busy = `resolve${i.id}`;
+		try {
+			await api(`/issues/${i.id}/resolve`, { method: 'POST' });
+			notify('Resolved. The person who reported it is told.');
+			load();
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Could not resolve it.', 'orange');
+		} finally {
+			busy = '';
+		}
+	}
+	async function send(i: Issue) {
+		if (!reply.trim()) return;
+		busy = `reply${i.id}`;
+		try {
+			await api(`/issues/${i.id}/comments`, { method: 'POST', body: JSON.stringify({ body: reply }) });
+			reply = '';
+			replyTo = 0;
+			load();
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Could not send it.', 'orange');
+		} finally {
+			busy = '';
+		}
+	}
+
+	// Remove from Radarr / Sonarr, Clear data and Delete everywhere: each asks first (the confirm says
+	// exactly what goes), then the panel shows what's left.
+	async function run(action: 'remove' | 'clear' | 'delete') {
+		confirm = '';
+		busy = action;
+		try {
+			const d = await api<{ done: string }>(`/titles/${item.type}/${item.id}/${action}`, { method: 'POST' });
+			if (action !== 'remove') remember(key, null);
+			notify(d.done);
+			load();
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Could not do it.', 'orange');
+			load();
+		} finally {
+			busy = '';
+		}
+	}
+	const count = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
+	// What each one takes, from what the panel shows.
+	const goes = $derived.by(() => {
+		if (!info) return { remove: [], clear: [], delete: [] } as Record<string, string[]>;
+		const files = info.live.hasFile ? `${series ? 'Its files' : 'The file'}${info.live.file?.size ? ` (${fmtBytes(info.live.file.size)})` : ''} are deleted.` : '';
+		const data = [info.requests.length ? count(info.requests.length, 'request') : '', info.issues.length ? count(info.issues.length, 'open issue') : ''].filter(Boolean);
+		const open = info.requests.filter((r) => ['sent', 'grabbed', 'downloading', 'importing', 'available'].includes(r.status)).length;
+		return {
+			remove: [`${item.title} is removed from ${info.live.server}.`, files, open ? `${count(open, 'request')} for it end as failed, so it can be requested again.` : '', info.plex ? 'Plex drops it after its next scan.' : ''].filter(Boolean),
+			clear: [`Everything Flixarr has for it goes${data.length ? `: ${data.join(' and ')}` : ''}, with their history and comments.`, `Nothing changes in ${info.live.server || 'Radarr or Sonarr'} or Plex. If it's in Plex, it shows up again after the next scan.`],
+			delete: [
+				info.live.inArr ? `Removed from ${info.live.server}${info.live.hasFile ? ' with its files' : ''}${info.live.file?.size ? ` (${fmtBytes(info.live.file.size)})` : ''}.` : '',
+				info.plex ? 'Deleted from Plex.' : '',
+				info.kept ? 'Maintainerr stops keeping it.' : '',
+				`Flixarr's data for it is cleared${data.length ? ` (${data.join(', ')})` : ''}.`
+			].filter(Boolean)
+		};
+	});
+
 	async function block(on: boolean) {
-		blockOpen = false;
+		confirm = '';
 		busy = 'block';
 		try {
 			if (on) await api('/blocklist', { method: 'POST', body: JSON.stringify({ type: item.type, tmdbId: item.id, title: item.title, year: item.year, poster: item.poster ?? '' }) });
@@ -204,27 +271,44 @@
 				</div>
 			</section>
 
-			<!-- Issues -->
+			<!-- Issues: open ones stand out, and can be answered or resolved right here -->
 			<section>
-				{@render head('Issues', info.issues.length)}
+				<h3 class="mb-2.5 flex items-center gap-2 text-base font-bold">Issues{#if info.issues.length}<span class="rounded-full bg-yellow-500/20 px-2 py-0.5 text-xs font-semibold text-yellow-300 ring-1 ring-yellow-500/40">{info.issues.length} open</span>{/if}</h3>
 				{#if !info.issues.length}
 					<p class="rounded-xl border border-dashed border-gray-700/60 px-4 py-3 text-xs text-gray-500">No open issues.</p>
 				{:else}
 					<div class="space-y-2">
 						{#each info.issues as i (i.id)}
-							<a href="/issues?open={i.id}" class="card block p-3 transition hover:ring-1 hover:ring-primary/50">
+							<div class="rounded-xl bg-yellow-500/[0.06] p-3 ring-1 ring-yellow-500/30">
 								<div class="flex flex-wrap items-center gap-1.5">
 									<span class="rounded-md px-2 py-0.5 text-[11px] font-semibold ring-1 {ISSUE_TONE[i.kind] ?? ISSUE_TONE.Other}">{i.kind}</span>
 									{#if i.sub}<span class="text-xs text-gray-200">{i.sub}</span>{/if}
-									{#if where(i)}<span class="text-xs text-gray-500">· {where(i)}</span>{/if}
+									{#if where(i)}<span class="text-xs text-gray-400">· {where(i)}</span>{/if}
 								</div>
-								{#if i.note}<p class="mt-2 line-clamp-2 text-xs text-gray-300">{i.note}</p>{/if}
+								{#if i.note}<p class="mt-2 line-clamp-3 text-xs text-gray-300">{i.note}</p>{/if}
 								<div class="mt-2 flex items-center gap-2 text-[11px] text-gray-500">
 									<Avatar user={person(i.userName, i.userAvatar)} class="size-5 text-[10px]" />
-									<span class="truncate">{i.userName} · {fmtDate(i.createdAt, { month: 'short', day: 'numeric' })}</span>
-									{#if i.comments}<span class="ml-auto shrink-0">{i.comments} comment{i.comments === 1 ? '' : 's'}</span>{/if}
+									<span class="truncate">{i.userName} · {ago(i.createdAt)}</span>
 								</div>
-							</a>
+								{#if i.last}
+									<div class="mt-2.5 rounded-lg bg-gray-900/60 p-2.5 text-xs">
+										<p class="mb-1 text-[11px] text-gray-500"><span class="font-medium text-gray-300">{i.last.userName || 'Someone'}</span> · {ago(i.last.createdAt)}{i.comments > 1 ? ` · ${count(i.comments, 'comment')}` : ''}</p>
+										<p class="line-clamp-3 text-gray-300">{i.last.body}</p>
+									</div>
+								{/if}
+								{#if replyTo === i.id}
+									<div class="mt-2.5 space-y-2">
+										<textarea rows="2" maxlength="2000" class="w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-primary/60" placeholder="Write a reply…" bind:value={reply}></textarea>
+										<div class="flex justify-end gap-2"><button class="btn-ghost px-3 py-1 text-xs" onclick={() => ((replyTo = 0), (reply = ''))}>Cancel</button><button class="btn px-3 py-1 text-xs" disabled={!reply.trim() || !!busy} onclick={() => send(i)}>{busy === `reply${i.id}` ? 'Sending…' : 'Send'}</button></div>
+									</div>
+								{:else}
+									<div class="mt-2.5 flex flex-wrap gap-2">
+										{#if can('manageIssues')}<button class="btn-ghost px-3 py-1.5 text-xs" disabled={!!busy} onclick={() => resolve(i)}><Icon name="check" class="size-3.5" />{busy === `resolve${i.id}` ? 'Resolving…' : 'Resolve'}</button>{/if}
+										<button class="btn-ghost px-3 py-1.5 text-xs" onclick={() => ((replyTo = i.id), (reply = ''))}>Reply</button>
+										<a href="/issues?open={i.id}" class="ml-auto inline-flex items-center gap-1 px-1 py-1.5 text-xs text-gray-400 hover:text-gray-200">Open<Icon name="chevron" class="size-3" /></a>
+									</div>
+								{/if}
+							</div>
 						{/each}
 					</div>
 				{/if}
@@ -232,7 +316,7 @@
 
 			<div class="flex flex-wrap empty:hidden"><LeavingActions type={item.type as 'movie' | 'series'} id={item.id} title={item.title} /></div>
 
-			<!-- Actions -->
+			<!-- Actions: repairs first, then what removes things (each asks first) -->
 			<section>
 				{@render head('Actions')}
 				<div class="space-y-3">
@@ -244,24 +328,45 @@
 					{/if}
 					{#if info.live.hasFile && can('redownload')}
 						<div>
-							<button class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-red-600/90 py-2.5 font-medium text-white ring-1 ring-red-500/60 transition hover:bg-red-600" onclick={() => (redownloadOpen = true)}><Icon name="refresh" class="size-4" />Redownload</button>
+							<button class="btn-ghost w-full justify-center py-2.5" onclick={() => (redownloadOpen = true)}><Icon name="refresh" class="size-4" />Redownload</button>
 							<p class="mt-1.5 text-[11px] text-gray-500">Deletes the current {series ? 'files of the seasons you pick' : 'file'} and downloads a new copy. The release it came from isn't grabbed again.</p>
 						</div>
 					{/if}
-					<div>
-						{#if info.blocked}
-							<button class="btn-ghost w-full justify-center py-2.5" disabled={!!busy} onclick={() => block(false)}>Unblock</button>
-							<p class="mt-1.5 text-[11px] text-gray-500">Lets people request it again.</p>
-						{:else if blockOpen}
-							<div class="space-y-2 rounded-lg bg-gray-800/50 p-3 text-xs text-gray-300">
-								<p>Nobody can request it until it's unblocked (Settings, Blocklist).</p>
-								<div class="flex justify-end gap-2"><button class="btn-ghost px-3 py-1 text-xs" onclick={() => (blockOpen = false)}>Cancel</button><button class="inline-flex items-center rounded-lg bg-red-600/90 px-3 py-1 text-xs font-medium text-white hover:bg-red-600" onclick={() => block(true)}>Block</button></div>
-							</div>
-						{:else if !info.plex && !openReq}
-							<button class="w-full rounded-lg border border-red-500/40 py-2.5 font-medium text-red-300 transition hover:bg-red-500/10" disabled={!!busy} onclick={() => (blockOpen = true)}>Block</button>
-							<p class="mt-1.5 text-[11px] text-gray-500">Stops anyone from requesting it.</p>
-						{/if}
-					</div>
+				</div>
+			</section>
+
+			<section>
+				<h3 class="mb-2.5 text-base font-bold text-red-300">Remove</h3>
+				<div class="divide-y divide-red-500/20 rounded-xl ring-1 ring-red-500/30">
+					{#snippet danger(action: 'remove' | 'clear' | 'delete' | 'block', label: string, help: string)}
+						<div class="p-3">
+							{#if confirm === action}
+								<div class="space-y-2 text-xs">
+									<p class="font-semibold text-gray-100">{label}?</p>
+									{#if action === 'block'}<p class="text-gray-300">Nobody can request it until it's unblocked (Settings, Blocklist).</p>
+									{:else}<ul class="list-disc space-y-1 pl-4 text-gray-300">{#each goes[action] as g}<li>{g}</li>{/each}</ul>
+										<p class="text-gray-500">This can't be undone.</p>{/if}
+									<div class="flex justify-end gap-2"><button class="btn-ghost px-3 py-1 text-xs" onclick={() => (confirm = '')}>Cancel</button><button class="inline-flex items-center rounded-lg bg-red-600/90 px-3 py-1 text-xs font-medium text-white hover:bg-red-600" onclick={() => (action === 'block' ? block(true) : run(action))}>{label}</button></div>
+								</div>
+							{:else}
+								<div class="flex items-center justify-between gap-3">
+									<span class="min-w-0"><span class="block text-sm font-medium text-gray-100">{label}</span><span class="block text-[11px] text-gray-500">{help}</span></span>
+									<button class="shrink-0 rounded-lg border border-red-500/40 px-3 py-1.5 text-xs font-medium text-red-300 transition hover:bg-red-500/10" disabled={!!busy} onclick={() => (confirm = action)}>{busy === action ? 'Working…' : label.split(' ')[0]}</button>
+								</div>
+							{/if}
+						</div>
+					{/snippet}
+					{#if info.blocked}
+						<div class="flex items-center justify-between gap-3 p-3">
+							<span class="min-w-0"><span class="block text-sm font-medium text-gray-100">Blocked</span><span class="block text-[11px] text-gray-500">Nobody can request it.</span></span>
+							<button class="btn-ghost shrink-0 px-3 py-1.5 text-xs" disabled={!!busy} onclick={() => block(false)}>Unblock</button>
+						</div>
+					{:else if !info.plex && !openReq}
+						{@render danger('block', 'Block', 'Stops anyone from requesting it.')}
+					{/if}
+					{#if info.live.inArr && can('redownload')}{@render danger('remove', `Remove from ${info.live.server}`, `Takes it out of ${info.live.server} with its files.`)}{/if}
+					{@render danger('clear', 'Clear data', 'Forgets its requests and issues in Flixarr only.')}
+					{#if can('redownload')}{@render danger('delete', 'Delete everywhere', `${info.live.server || 'Radarr or Sonarr'}, Plex, Maintainerr and Flixarr.`)}{/if}
 				</div>
 			</section>
 		</div>
