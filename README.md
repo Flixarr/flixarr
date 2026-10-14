@@ -1,13 +1,14 @@
 <p align="center"><b>Flixarr</b></p>
 
+<p align="center"><img src=".github/screenshot.jpg" alt="The Flixarr Discover page" width="900"></p>
+
 Flixarr is a self-hosted app for requesting movies and series for your Plex server: browse what's trending, request it, and track it until it's ready to watch.
 
 > **Early development.** Flixarr is being built in the open and isn't ready for general use yet.
 
 ## What works so far
 
-- **Sign in** with Plex or a local account. The first account becomes the owner.
-- **Discover**: a rotating spotlight, trending, popular and upcoming rows, Recently Added and Recent Requests from your own server, and a Leaving Soon row. Admins can reorder or hide rows.
+- **Discover**: a rotating spotlight, trending, popular and upcoming rows, and Recently Added and Recent Requests from your own server. Admins can reorder or hide rows.
 - **Movie, series, person and collection pages**, search, and browse by genre with endless scrolling.
 - **Requests** for movies and series (whole show or picked seasons), with optional approval, per person request limits, and live status from requested to downloading to available.
 - **Radarr and Sonarr**: status cards with queue, disk space and health, alerts when something needs attention, and Fix and Redownload buttons for stuck or bad downloads.
@@ -17,7 +18,7 @@ Flixarr is a self-hosted app for requesting movies and series for your Plex serv
 - **Notifications** through Discord, webhooks, email and web push, chosen per event and per person.
 - **Report an issue** with a title (video, audio, subtitles), with comments and resolve.
 - **Plex Watchlist requests**, off by default and switched on per person.
-- **Maintainerr support**: leaving dates, a heads up before a title goes, and Keep or ask to keep.
+- **Maintainerr support** (optional): a Leaving Soon row with leaving dates, a heads up before a title goes, and Keep or ask to keep.
 - **Backups** with restore, a Jobs page, cache settings, and an installable app for your phone.
 
 ## Running it
