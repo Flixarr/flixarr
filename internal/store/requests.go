@@ -33,7 +33,7 @@ type Request struct {
 	SeasonCount int      `json:"seasonCount"` // seasons asked for (series), for request limits
 	CreatedAt   string   `json:"createdAt"`
 	UpdatedAt   string   `json:"updatedAt"`
-	Source      string   `json:"source"` // "" (someone asked) or "redownload"
+	Source      string   `json:"source"`           // "" (someone asked) or "redownload"
 	Detail      string   `json:"detail,omitempty"` // the stored reason as Radarr / Sonarr gave it (people who manage requests); not a column
 }
 
