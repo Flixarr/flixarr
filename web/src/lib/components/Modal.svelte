@@ -29,7 +29,7 @@
 
 {#if open}
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-	<div class="fixed inset-0 z-50 flex overscroll-none bg-gray-950/80 backdrop-blur-sm {side ? 'items-stretch justify-end' : `justify-center tablet:items-center tablet:p-4 ${center ? 'items-center p-3' : 'items-end'}`}"
+	<div class="fixed inset-0 z-50 flex overscroll-none {side ? 'items-stretch justify-end bg-gray-950/70' : `justify-center bg-gray-950/80 backdrop-blur-sm tablet:items-center tablet:p-4 ${center ? 'items-center p-3' : 'items-end'}`}"
 		onclick={(e) => e.target === e.currentTarget && (open = false)}>
 		<div class="card w-full overflow-y-auto overscroll-contain bg-gray-900 {side ? 'h-dvh rounded-none tablet:max-w-md tablet:rounded-l-xl' : `max-h-[90dvh] tablet:rounded-b-xl ${center ? '' : 'rounded-b-none'} ${wide ? 'tablet:max-w-3xl' : 'tablet:max-w-lg'}`}" role="dialog" aria-modal="true" aria-label={title}>
 			{#if top}
