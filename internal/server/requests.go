@@ -25,6 +25,10 @@ func (s *Server) requestList(w http.ResponseWriter, r *http.Request, u *store.Us
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return
 	}
+	admin := u.Can("manageRequests")
+	for i := range list {
+		list[i] = requests.ForViewer(list[i], admin)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"requests": list, "approvalRequired": s.Requests.ApprovalRequired()})
 }
 
@@ -60,7 +64,7 @@ func (s *Server) requestCreate(w http.ResponseWriter, r *http.Request, u *store.
 		writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
 		return
 	}
-	writeJSON(w, http.StatusCreated, req)
+	writeJSON(w, http.StatusCreated, requests.ForViewer(req, u.Can("manageRequests")))
 }
 
 // requestStatus answers "is this requested?" for a batch of titles: ?keys=movie:603,series:1396.

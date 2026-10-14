@@ -674,3 +674,28 @@ func TestExpiredByMaintainerr(t *testing.T) {
 		t.Fatalf("request again: %v", err)
 	}
 }
+
+func TestPlainWordsForUsers(t *testing.T) {
+	removed := store.Request{Status: "failed", Error: "Removed from Plex and Sonarr. Request it again to get it back."}
+	if got := ForViewer(removed, false).Error; strings.Contains(got, "Sonarr") || !strings.Contains(got, "Removed from Plex") {
+		t.Fatalf("removed: %q", got)
+	}
+	if got := ForViewer(removed, true).Error; got != removed.Error {
+		t.Fatalf("admins keep the detail: %q", got)
+	}
+	failed := store.Request{Status: "failed", Error: "Radarr didn't add it: the API key was refused"}
+	if got := PlainError(failed); strings.Contains(got, "Radarr") || strings.Contains(got, "API") {
+		t.Fatalf("failed: %q", got)
+	}
+	if got := PlainError(store.Request{Status: "expired", Error: "Removed by Maintainerr (Movies leaving)."}); strings.Contains(got, "Maintainerr") {
+		t.Fatalf("expired: %q", got)
+	}
+	if got := PlainError(store.Request{Status: "declined", Error: "Not out in good quality yet"}); got != "Not out in good quality yet" {
+		t.Fatalf("declined keeps the admin's words: %q", got)
+	}
+	for _, l := range []Live{{Error: "couldn't reach it"}, {InArr: false}, {InArr: true, Monitored: false}} {
+		if h := hintFor(store.Request{Type: "movie", Status: "sent"}, l, false); strings.Contains(h, "Radarr") || strings.Contains(h, "Fix") {
+			t.Fatalf("hint for a user: %q", h)
+		}
+	}
+}

@@ -3,6 +3,7 @@
 	// the whole show, chosen seasons or chosen episodes (whichever Settings → Requests allows).
 	import { api } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
+	import { can } from '#lib/session.svelte.ts';
 	import type { Movie, Series, Request } from '#lib/types.ts';
 	import Modal from './Modal.svelte';
 	import Select from './Select.svelte';
@@ -15,6 +16,7 @@
 		tvModes: { whole: boolean; seasons: boolean; episodes: boolean; default: Mode } };
 	type Mode = 'whole' | 'seasons' | 'episodes';
 	let opts = $state<Options | null>(null);
+	const admin = $derived(can('manageRequests'));
 	let profileId = $state(0);
 	let mode = $state<Mode>('whole');
 	let seasons = $state<number[]>([]);
@@ -66,10 +68,10 @@
 			});
 			open = false;
 			onrequested?.(r);
-			if (r.status === 'failed') notify(`Request saved, but ${opts?.server ?? 'it'} couldn't add it: ${r.error}`, 'orange');
+			if (r.status === 'failed') notify(admin ? `Request saved, but ${opts?.server ?? 'it'} couldn't add it: ${r.error}` : `Request saved, but it couldn't be added. ${r.error}`, 'orange');
 			else if (r.status === 'pending') notify('Requested. It waits for an admin to approve it.');
-			else if (r.status === 'available') notify(`${item.title} is already in ${opts?.server}.`);
-			else notify(`Requested. ${item.title} was sent to ${opts?.server}.`);
+			else if (r.status === 'available') notify(`${item.title} is already in your library.`);
+			else notify(admin ? `Requested. ${item.title} was sent to ${opts?.server}.` : `Requested. You'll see it here as it downloads.`);
 		} catch (e) {
 			notify(e instanceof Error ? e.message : 'Could not request it.', 'orange');
 		} finally {
@@ -99,9 +101,9 @@
 		{#if !opts}
 			<p class="text-sm text-gray-400">Loading…</p>
 		{:else if !opts.connected}
-			<p class="rounded-lg bg-yellow-500/10 px-3 py-2 text-sm text-yellow-300 ring-1 ring-yellow-500/30">{opts.server} isn't connected yet, so this can't be requested. An admin can connect it in Settings → Services.</p>
+			<p class="rounded-lg bg-yellow-500/10 px-3 py-2 text-sm text-yellow-300 ring-1 ring-yellow-500/30">{admin ? `${opts.server} isn't connected yet, so this can't be requested. An admin can connect it in Settings → Services.` : `${item.type === 'series' ? 'Series' : 'Movie'} requests aren't set up yet. Ask an admin.`}</p>
 		{:else}
-			<p class="text-xs text-gray-400">Goes to <span class="text-gray-200">{opts.server}</span>{opts.approval ? ' after an admin approves it' : ''}.{#if opts.usage?.limit}{@const left = Math.max(0, opts.usage.limit - opts.usage.used)} You have {left} {series ? 'season' : 'movie'}{left === 1 ? '' : 's'} left this week (of {opts.usage.limit}).{/if}</p>
+			<p class="text-xs text-gray-400">{#if admin}Goes to <span class="text-gray-200">{opts.server}</span>{opts.approval ? ' after an admin approves it' : ''}.{:else}{opts.approval ? 'An admin approves it first.' : 'It starts right away.'}{/if}{#if opts.usage?.limit}{@const left = Math.max(0, opts.usage.limit - opts.usage.used)} You have {left} {series ? 'season' : 'movie'}{left === 1 ? '' : 's'} left this week (of {opts.usage.limit}).{/if}</p>
 			{#if opts.profiles.length}
 				<div>
 					<label for="req-quality" class="block text-sm">Quality</label>

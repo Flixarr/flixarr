@@ -52,5 +52,5 @@ export const SIMPLE_STEPS = ['Requested', 'Downloading', 'Available'];
 export const EVENT_TEXT: Record<string, string> = {
 	requested: 'Requested', redownload: 'Redownload asked for', approved: 'Approved', declined: 'Declined', sent: 'Looking for a download',
 	grabbed: 'Found a download', downloading: 'Downloading', importing: 'Downloaded, adding to Plex', available: 'In Plex',
-	failed: 'Failed', expired: 'Removed by Maintainerr', pending: 'Waiting for approval'
+	failed: 'Failed', expired: 'Removed from Plex', pending: 'Waiting for approval'
 };

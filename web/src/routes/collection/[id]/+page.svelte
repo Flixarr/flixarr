@@ -53,7 +53,7 @@
 		}
 		sending = false;
 		open = false;
-		if (failed) notify(`Requested ${ok} of ${ok + failed}. ${firstErr}`, 'orange');
+		if (failed) notify(`Requested ${ok} of ${ok + failed}.${can('manageRequests') ? ' ' + firstErr : ' Someone who manages requests can look into the rest.'}`, 'orange');
 		else notify(`Requested ${ok} ${ok === 1 ? 'movie' : 'movies'}.${opts?.approval ? ' They wait for an admin to approve them.' : ''}`);
 	}
 	$effect(() => {
@@ -106,9 +106,9 @@
 		{#if !opts}
 			<p class="text-sm text-gray-400">Loading…</p>
 		{:else if !opts.connected}
-			<p class="rounded-lg bg-yellow-500/10 px-3 py-2 text-sm text-yellow-300 ring-1 ring-yellow-500/30">{opts.server} isn't connected yet. An admin can connect it in Settings → Services.</p>
+			<p class="rounded-lg bg-yellow-500/10 px-3 py-2 text-sm text-yellow-300 ring-1 ring-yellow-500/30">{can('manageRequests') ? `${opts.server} isn't connected yet. An admin can connect it in Settings → Services.` : "Movie requests aren't set up yet. Ask an admin."}</p>
 		{:else}
-			<p class="text-xs text-gray-400">Goes to <span class="text-gray-200">{opts.server}</span>{opts.approval ? ' after an admin approves it' : ''}.{#if opts.usage?.limit}{@const left = Math.max(0, opts.usage.limit - opts.usage.used)} You have {left} movie{left === 1 ? '' : 's'} left this week.{/if}</p>
+			<p class="text-xs text-gray-400">{#if can('manageRequests')}Goes to <span class="text-gray-200">{opts.server}</span>{opts.approval ? ' after an admin approves it' : ''}.{:else}{opts.approval ? 'An admin approves them first.' : 'They start right away.'}{/if}{#if opts.usage?.limit}{@const left = Math.max(0, opts.usage.limit - opts.usage.used)} You have {left} movie{left === 1 ? '' : 's'} left this week.{/if}</p>
 			{#if opts.profiles.length}
 				<div>
 					<label for="col-quality" class="block text-sm">Quality</label>

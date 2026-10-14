@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Flixarr/flixarr/internal/requests"
 	"github.com/Flixarr/flixarr/internal/store"
 )
 
@@ -303,7 +304,9 @@ func (n *Notifier) FromRequest(event string, r store.Request) Message {
 	case "request_available":
 		m.Text = "Ready to watch in Plex. Requested by " + user
 	case "request_failed":
-		m.Text = "Requested by " + user + ". " + r.Error
+		// The requester reads this (email, push): plain words. The full reason stays in m.Error for the
+		// shared Discord channel and webhooks.
+		m.Text = "Requested by " + user + ". " + requests.PlainError(r)
 	}
 	if base := n.Store.Setting("app_url", ""); base != "" {
 		m.Link = fmt.Sprintf("%s/%s/%d", base, r.Type, r.TmdbID)
@@ -430,6 +433,9 @@ func discordBody(c Config, m Message) map[string]any {
 			name = "Where"
 		}
 		fields = append(fields, map[string]any{"name": name, "value": m.Seasons, "inline": true})
+	}
+	if m.Event == "request_failed" && m.Error != "" {
+		fields = append(fields, map[string]any{"name": "Details", "value": m.Error})
 	}
 	if len(fields) > 0 {
 		embed["fields"] = fields

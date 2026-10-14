@@ -189,7 +189,7 @@
 			{/if}
 			{#if removing}
 				<div class="space-y-2 rounded-lg bg-gray-800/50 p-3 text-xs text-gray-300">
-					<p>The request is removed from Flixarr. Anything already in {d.live.server || 'Radarr or Sonarr'} stays there.</p>
+					<p>{admin ? `The request is removed from Flixarr. Anything already in ${d.live.server || 'Radarr or Sonarr'} stays there.` : 'Your request is cancelled.'}</p>
 					<div class="flex justify-end gap-2"><button class="btn-ghost px-3 py-1 text-xs" onclick={() => (removing = false)}>Keep it</button><button class="btn px-3 py-1 text-xs" disabled={!!busy} onclick={remove}>Remove</button></div>
 				</div>
 			{/if}

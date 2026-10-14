@@ -23,7 +23,7 @@
 <main class="mx-auto max-w-[1200px] px-4 pb-28 pt-20 laptop:px-10 laptop:pt-24">
 	<h1 class="text-2xl font-bold laptop:text-3xl">Leaving soon</h1>
 	<p class="text-sm text-gray-400">
-		{#if !connected}Maintainerr isn't connected, so Flixarr doesn't know what's leaving.{:else}Titles Maintainerr removes from Plex soon, soonest first.{can('manageRequests') && asked ? ` ${asked} ${asked === 1 ? 'has' : 'have'} been asked to stay.` : ''}{/if}
+		{#if !connected}{can('manageRequests') ? "Maintainerr isn't connected, so Flixarr doesn't know what's leaving." : 'Nothing is leaving right now.'}{:else}Titles leaving Plex soon, soonest first.{can('manageRequests') && asked ? ` ${asked} ${asked === 1 ? 'has' : 'have'} been asked to stay.` : ''}{/if}
 	</p>
 	{#if !items}
 		<p class="mt-8 text-sm text-gray-400">Loading…</p>

@@ -43,7 +43,7 @@
 <Modal bind:open title="Redownload {item.title}">
 	<div class="space-y-4 p-5 text-sm">
 		<p class="text-gray-300">
-			{series ? 'The files for the seasons you pick are deleted' : 'The current file is deleted'} and {series ? 'Sonarr looks for new copies' : 'Radarr looks for a new copy'}.
+			{series ? 'The files for the seasons you pick are deleted' : 'The current file is deleted'} and {series ? 'new copies are downloaded' : 'a new copy is downloaded'}.
 			The release {series ? 'they' : 'it'} came from won't be grabbed again. Until {series ? 'they arrive, those seasons are' : 'it arrives, it is'} not in Plex.
 		</p>
 		{#if series}

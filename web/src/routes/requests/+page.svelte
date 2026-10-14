@@ -101,7 +101,7 @@
 	<div class="flex flex-wrap items-end justify-between gap-3">
 		<div>
 			<h1 class="text-2xl font-bold laptop:text-3xl">Requests</h1>
-			<p class="text-sm text-gray-400">{approval ? 'New requests wait for an admin to approve them.' : 'Requests are sent straight to Radarr and Sonarr.'} Tap one for its details.</p>
+			<p class="text-sm text-gray-400">{approval ? 'New requests wait for an admin to approve them.' : admin ? 'Requests are sent straight to Radarr and Sonarr.' : 'Requests start right away.'} Tap one for its details.</p>
 		</div>
 		{#if everyone}
 			<div class="inline-flex gap-1 rounded-lg border border-gray-700/60 bg-gray-800/70 p-0.5 text-sm" role="radiogroup" aria-label="Whose requests">
