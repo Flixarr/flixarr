@@ -61,6 +61,7 @@
 		}
 	}
 
+	const took = (sec: number) => (sec < 1 ? 'under a second' : sec < 60 ? `${Math.round(sec)} sec` : `${Math.round(sec / 60)} min`);
 	const describe = (s: string) => {
 		try {
 			return cron.describe(s);
@@ -70,19 +71,30 @@
 	};
 </script>
 
-<div class="card px-4">
+<!-- One card per job: the schedule in words, the last run (when, how long, what happened), the next. -->
+<div class="grid gap-3 tablet:grid-cols-2">
 	{#each list as j (j.id)}
-		<div class="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-gray-700/30 py-3 last:border-0 {j.enabled ? '' : 'opacity-60'}">
-			<div class="min-w-0 flex-1 basis-56">
-				<div class="text-sm">{j.name}</div>
-				<div class="mt-0.5 flex flex-wrap items-center gap-2 text-xs"><code class="rounded bg-gray-950/60 px-1.5 py-0.5 text-gray-300">{j.schedule}</code><span class="text-gray-400">{describe(j.schedule)}</span></div>
-				<div class="mt-1 text-xs text-gray-500">{j.about}</div>
+		<div class="card flex flex-col p-4 {j.enabled ? '' : 'opacity-70'}">
+			<div class="flex items-start justify-between gap-3">
+				<div class="min-w-0">
+					<h3 class="text-sm font-bold">{j.name}</h3>
+					<p class="mt-0.5 text-xs text-gray-500">{j.about}</p>
+				</div>
+				{#if j.running}<span class="shrink-0 rounded-md bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary-light ring-1 ring-primary/40">Running</span>
+				{:else if !j.enabled}<span class="shrink-0 rounded-md bg-gray-800 px-2 py-0.5 text-[11px] font-semibold text-gray-400 ring-1 ring-gray-700/60">Paused</span>
+				{:else if j.last?.error}<span class="shrink-0 rounded-md bg-red-500/15 px-2 py-0.5 text-[11px] font-semibold text-red-300 ring-1 ring-red-500/40">Failed</span>{/if}
 			</div>
-			<div class="text-xs text-gray-400">
-				<div>Last: {#if j.running}<span class="text-primary-light">running…</span>{:else if j.last}{cron.fmtRun(j.last.at)} · {#if j.last.error}<span class="text-red-400">{j.last.error}</span>{:else}{j.last.result}{/if}{:else}never{/if}</div>
-				<div>Next: {j.enabled ? (j.next && !j.next.startsWith('0001') ? cron.fmtRun(j.next) : '—') : 'Paused'}</div>
+			<p class="mt-3 flex items-center gap-2 text-sm text-gray-200"><span class="text-gray-500">⏱</span>{describe(j.schedule)}</p>
+			<dl class="mt-3 grid flex-1 grid-cols-[3.5rem_1fr] gap-x-3 gap-y-1 text-xs">
+				<dt class="text-gray-500">Last</dt>
+				<dd class="min-w-0 text-gray-300">{#if j.running}<span class="text-primary-light">running now…</span>{:else if j.last}{cron.fmtRun(j.last.at)} · {took(j.last.seconds)}<span class="mt-0.5 block truncate {j.last.error ? 'text-red-300' : 'text-gray-400'}" title={j.last.error || j.last.result}>{j.last.error || j.last.result || 'Done'}</span>{:else}never{/if}</dd>
+				<dt class="text-gray-500">Next</dt>
+				<dd class="text-gray-300">{j.enabled ? (j.next && !j.next.startsWith('0001') ? cron.fmtRun(j.next) : '—') : 'Paused'}</dd>
+			</dl>
+			<div class="mt-3 grid grid-cols-2 gap-2">
+				<button class="btn-ghost px-3 py-1.5 text-xs" disabled={j.running} onclick={() => run(j)}>{j.running ? 'Running…' : 'Run now'}</button>
+				<button class="btn-ghost px-3 py-1.5 text-xs" onclick={() => edit(j)}>Edit schedule</button>
 			</div>
-			<div class="flex gap-1.5"><button class="btn-ghost px-2.5 py-1 text-xs" onclick={() => edit(j)}>Edit</button><button class="btn-ghost px-2.5 py-1 text-xs" disabled={j.running} onclick={() => run(j)}>Run now</button></div>
 		</div>
 	{/each}
 </div>
