@@ -40,8 +40,20 @@
 		active = Math.max(0, options.findIndex((o) => o.value === value));
 		open = true;
 		await tick();
-		if (search) input?.focus();
-		list?.querySelector(`[data-i="${active}"]`)?.scrollIntoView({ block: 'nearest' });
+		// Neither may scroll the page: a page scroll closes the list (it would float away from its button).
+		// Phones don't jump into the search box: the keyboard would push the page and close the list.
+		openedAt = Date.now();
+		if (search && !matchMedia('(pointer: coarse)').matches) input?.focus({ preventScroll: true });
+		reveal();
+	}
+
+	// Scrolls the list (only the list) so the active option shows.
+	function reveal() {
+		const el = list?.querySelector<HTMLElement>(`[data-i="${active}"]`);
+		if (!el || !list) return;
+		const top = el.offsetTop, bottom = top + el.offsetHeight;
+		if (top < list.scrollTop) list.scrollTop = top;
+		else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight;
 	}
 
 	function hide(focus = true) {
@@ -58,9 +70,10 @@
 	function move(to: number) {
 		if (!shown.length) return;
 		active = (to + shown.length) % shown.length;
-		list?.querySelector(`[data-i="${active}"]`)?.scrollIntoView({ block: 'nearest' });
+		reveal();
 	}
 
+	let openedAt = 0;
 	let typed = '', typedAt = 0;
 	function onkey(e: KeyboardEvent) {
 		if (!open) {
@@ -88,7 +101,8 @@
 		if (!open) return;
 		const away = (e: PointerEvent) => !button.contains(e.target as Node) && !list?.contains(e.target as Node) && hide(false);
 		// Scrolling the page or modal moves the button, so the list closes rather than float away.
-		const scrolled = (e: Event) => !list?.contains(e.target as Node) && hide(false);
+		// (Ignored right after opening, while the page may still be settling.)
+		const scrolled = (e: Event) => Date.now() - openedAt > 400 && !list?.contains(e.target as Node) && hide(false);
 		document.addEventListener('pointerdown', away, true);
 		addEventListener('scroll', scrolled, true);
 		addEventListener('resize', place);
@@ -123,7 +137,7 @@
 					class="w-full rounded-md bg-gray-800/70 px-2.5 py-1.5 text-sm outline-none placeholder:text-gray-500 focus:ring-1 focus:ring-primary/60" />
 			</div>
 		{/if}
-		<ul bind:this={list} id={uid} role="listbox" class="overflow-y-auto overscroll-contain py-1" style="max-height:{pos.max - (search ? 52 : 0)}px">
+		<ul bind:this={list} id={uid} role="listbox" class="relative overflow-y-auto overscroll-contain py-1" style="max-height:{pos.max - (search ? 52 : 0)}px">
 			{#each shown as o, i (o.value)}
 				<li data-i={i} role="option" aria-selected={o.value === value}>
 					<button type="button" tabindex="-1" onclick={() => choose(o)} onpointermove={() => (active = i)}
