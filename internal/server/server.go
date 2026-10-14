@@ -176,6 +176,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/backups/{name}", s.auth(s.admin(s.backupDelete)))
 	mux.HandleFunc("POST /api/backups/{name}/restore", s.auth(s.admin(s.backupRestore)))
 	mux.HandleFunc("GET /api/blocklist", s.auth(s.admin(s.blockList)))
+	mux.HandleFunc("GET /api/settings/blocklist", s.auth(s.admin(s.blockSettings)))
+	mux.HandleFunc("PUT /api/settings/blocklist", s.auth(s.admin(s.blockSettings)))
 	mux.HandleFunc("POST /api/blocklist", s.auth(s.admin(s.blockAdd)))
 	mux.HandleFunc("DELETE /api/blocklist/{type}/{id}", s.auth(s.admin(s.blockRemove)))
 	mux.HandleFunc("GET /api/jobs", s.auth(s.admin(s.jobList)))
@@ -419,7 +421,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 // metaProxy forwards /api/meta/<path> to the Flixarr API (through the cache) with this install's region and language.
-func (s *Server) metaProxy(w http.ResponseWriter, r *http.Request, _ *store.User) {
+func (s *Server) metaProxy(w http.ResponseWriter, r *http.Request, u *store.User) {
 	q := url.Values{}
 	for _, k := range []string{"q", "page", "genre", "sort"} {
 		if v := r.URL.Query().Get(k); v != "" {
@@ -443,7 +445,7 @@ func (s *Server) metaProxy(w http.ResponseWriter, r *http.Request, _ *store.User
 	// no-store: the browser must not keep its own copy, or repeat visits never reach the cache (or its counters).
 	// A cache hit here takes under a millisecond, so nothing is lost.
 	w.Header().Set("Cache-Control", "no-store")
-	w.Write(body)
+	w.Write(s.hideBlocked(body, u))
 }
 
 // spa serves the built web app: real files when they exist, otherwise the app shell (200.html).

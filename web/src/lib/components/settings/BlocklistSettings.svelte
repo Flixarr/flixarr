@@ -4,12 +4,23 @@
 	import { notify } from '#lib/toast.svelte.ts';
 	import { remember } from '#lib/availability.svelte.ts';
 	import Img from '#lib/components/Img.svelte';
+	import Toggle from '#lib/components/Toggle.svelte';
 
 	type Blocked = { type: 'movie' | 'series'; tmdbId: number; title: string; year: string; poster: string; userName: string; createdAt: string };
 	let list = $state<Blocked[] | null>(null);
+	let hide = $state<boolean | null>(null);
 	$effect(() => {
 		api<Blocked[]>('/blocklist').then((d) => (list = d));
+		api<{ hide: boolean }>('/settings/blocklist').then((d) => (hide = d.hide));
 	});
+	async function setHide(on: boolean) {
+		try {
+			hide = (await api<{ hide: boolean }>('/settings/blocklist', { method: 'PUT', body: JSON.stringify({ hide: on }) })).hide;
+			notify(on ? 'Blocked titles are hidden from everyone who doesn\'t manage requests.' : "Blocked titles show again, as Can't be requested.");
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+		}
+	}
 	async function unblock(b: Blocked) {
 		try {
 			await api(`/blocklist/${b.type}/${b.tmdbId}`, { method: 'DELETE' });
@@ -22,6 +33,11 @@
 	}
 </script>
 
+{#if hide !== null}
+	<div class="card mb-4 px-4 py-3">
+		<Toggle checked={hide} label="Hide blocked titles" about="Leaves them out of Discover, search, browse, collections and recommendations. People who manage requests still see them, so they can unblock." onchange={setHide} />
+	</div>
+{/if}
 {#if list}
 	{#if !list.length}
 		<div class="card p-4 text-sm text-gray-400">Nothing is blocked. To block a title, open it and press Block next to Request.</div>
