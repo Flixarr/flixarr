@@ -1,0 +1,17 @@
+name: Feature request
+description: An idea or something Flixarr should do.
+type: Feature
+labels: [feature, needs triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like Flixarr to do?
+      description: Describe the problem or the idea. Why would it help?
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How might it work?
+      description: Optional. How you picture it working, or how another app does it.
