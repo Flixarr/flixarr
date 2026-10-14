@@ -103,3 +103,26 @@ func TestClearTitle(t *testing.T) {
 		t.Fatal("another title's request went too")
 	}
 }
+
+func TestSeriesCoverageFor(t *testing.T) {
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	st, _ := Open(dir, box)
+	t.Cleanup(func() { st.Close() })
+	u, _ := st.CreateUser(User{PlexID: 1, Username: "admin", Role: "Admin"})
+	st.CreateRequest(Request{Type: "series", TmdbID: 1, Title: "A", UserID: u.ID, Status: "sent", Mode: "seasons", Seasons: []int{2}})
+	st.CreateRequest(Request{Type: "series", TmdbID: 1, Title: "A", UserID: u.ID, Status: "available", Mode: "seasons", Seasons: []int{1}})
+	st.CreateRequest(Request{Type: "series", TmdbID: 2, Title: "B", UserID: u.ID, Status: "sent", Mode: "all"})
+	st.CreateRequest(Request{Type: "series", TmdbID: 3, Title: "C", UserID: u.ID, Status: "failed", Mode: "all"})
+	got, err := st.SeriesCoverageFor([]int{1, 2, 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	one, _ := st.SeriesCoverage(1)
+	if len(got[1].Seasons) != 2 || got[1].Seasons[0] != 1 || len(one.Seasons) != 2 || !got[2].Whole || got[3].Whole || len(got[3].Seasons) != 0 {
+		t.Fatalf("coverage: %+v", got)
+	}
+	if st.Block(Blocked{Type: "movie", TmdbID: 9}, u.ID); !st.BlockedKeys()["movie:9"] {
+		t.Fatal("blocked keys")
+	}
+}

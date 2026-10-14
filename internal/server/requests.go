@@ -100,20 +100,24 @@ func (s *Server) briefs(keys []string) (map[string]brief, error) {
 	if err != nil {
 		return nil, err
 	}
+	series := []int{}
+	for _, v := range got {
+		if v.Type == "series" {
+			series = append(series, v.TmdbID)
+		}
+	}
+	cov, _ := s.Store.SeriesCoverageFor(series) // one query for the whole page
 	out := map[string]brief{}
 	for k, v := range got {
 		b := brief{ID: v.ID, Status: v.Status, Progress: v.Progress}
-		if v.Type == "series" {
-			if c, err := s.Store.SeriesCoverage(v.TmdbID); err == nil {
-				b.Asked = &c
-			}
+		if c, ok := cov[v.TmdbID]; ok && v.Type == "series" {
+			b.Asked = &c
 		}
 		out[k] = b
 	}
+	blocked := s.Store.BlockedKeys()
 	for _, k := range keys {
-		typ, id, _ := strings.Cut(k, ":")
-		n, _ := strconv.Atoi(id)
-		if _, has := out[k]; !has && s.Store.IsBlocked(typ, n) {
+		if _, has := out[k]; !has && blocked[k] {
 			out[k] = brief{Status: "blocked", Blocked: true}
 		}
 	}

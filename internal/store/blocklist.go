@@ -1,5 +1,7 @@
 package store
 
+import "strconv"
+
 // Blocked is a title that can't be requested.
 type Blocked struct {
 	Type      string `json:"type"`
@@ -29,6 +31,24 @@ func (s *Store) IsBlocked(typ string, tmdbID int) bool {
 	var n int
 	s.db.QueryRow(`SELECT COUNT(*) FROM blocklist WHERE type = ? AND tmdb_id = ?`, typ, tmdbID).Scan(&n)
 	return n > 0
+}
+
+// BlockedKeys is every blocked title as a "movie:603" key.
+func (s *Store) BlockedKeys() map[string]bool {
+	out := map[string]bool{}
+	rows, err := s.db.Query(`SELECT type, tmdb_id FROM blocklist`)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var typ string
+		var id int
+		if rows.Scan(&typ, &id) == nil {
+			out[typ+":"+strconv.Itoa(id)] = true
+		}
+	}
+	return out
 }
 
 // Blocklist lists blocked titles, newest first.

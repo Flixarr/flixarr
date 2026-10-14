@@ -136,6 +136,35 @@ type Coverage struct {
 // SeriesCoverage adds up a series' open requests.
 func (s *Store) SeriesCoverage(tmdbID int) (Coverage, error) {
 	list, err := s.OpenRequests("series", tmdbID)
+	return coverageOf(list), err
+}
+
+// SeriesCoverageFor is SeriesCoverage for many series in one query (status lookups for whole pages).
+func (s *Store) SeriesCoverageFor(tmdbIDs []int) (map[int]Coverage, error) {
+	out := map[int]Coverage{}
+	if len(tmdbIDs) == 0 {
+		return out, nil
+	}
+	ids := make([]string, len(tmdbIDs))
+	for i, id := range tmdbIDs {
+		ids[i] = itoa(id)
+	}
+	list, err := s.queryRequests(`SELECT ` + requestCols + ` FROM requests r LEFT JOIN users u ON u.id = r.user_id
+		WHERE r.type = 'series' AND r.tmdb_id IN (` + strings.Join(ids, ",") + `) AND r.status IN (` + inList(OpenStatuses) + `) ORDER BY r.id`)
+	if err != nil {
+		return out, err
+	}
+	by := map[int][]Request{}
+	for _, r := range list {
+		by[r.TmdbID] = append(by[r.TmdbID], r)
+	}
+	for _, id := range tmdbIDs {
+		out[id] = coverageOf(by[id])
+	}
+	return out, nil
+}
+
+func coverageOf(list []Request) Coverage {
 	c := Coverage{Seasons: []int{}}
 	seen := map[int]bool{}
 	for _, r := range list {
@@ -156,7 +185,7 @@ func (s *Store) SeriesCoverage(tmdbID int) (Coverage, error) {
 		}
 	}
 	sort.Ints(c.Seasons)
-	return c, err
+	return c
 }
 
 // ActiveRequests lists requests that went to a Radarr/Sonarr and aren't available yet (the request follow loop watches them).

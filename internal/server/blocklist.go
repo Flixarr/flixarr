@@ -66,13 +66,9 @@ func (s *Server) hideBlocked(body []byte, u *store.User) []byte {
 	if u.Can("manageRequests") || s.Store.Setting(KeyHideBlocked, "false") != "true" {
 		return body
 	}
-	list, err := s.Store.Blocklist()
-	if err != nil || len(list) == 0 {
+	blocked := s.Store.BlockedKeys()
+	if len(blocked) == 0 {
 		return body
-	}
-	blocked := map[string]bool{}
-	for _, b := range list {
-		blocked[b.Type+":"+strconv.Itoa(b.TmdbID)] = true
 	}
 	d := json.NewDecoder(bytes.NewReader(body))
 	d.UseNumber()
