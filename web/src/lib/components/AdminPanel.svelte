@@ -53,7 +53,7 @@
 	});
 
 	// The state in one line: the newest open request's exact status, or what Radarr / Sonarr have.
-	const openReq = $derived(info?.requests.find((r) => !['failed', 'declined', 'expired'].includes(r.status)));
+	const openReq = $derived(info?.requests.find((r) => !['failed', 'declined', 'expired', 'removed'].includes(r.status)));
 	const current = $derived.by(() => {
 		if (!info) return null;
 		if (openReq) return { label: text(openReq.status, openReq.progress), tone: TONE[openReq.status] ?? NEUTRAL };

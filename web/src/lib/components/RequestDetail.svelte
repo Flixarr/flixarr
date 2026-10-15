@@ -173,10 +173,10 @@
 				<ol class="relative ml-1.5 space-y-3 border-l border-gray-700/60 pl-4">
 					{#each d.events as e, i (i)}
 						<li class="relative">
-							<span class="absolute -left-[21px] top-1 size-2.5 rounded-full ring-2 ring-gray-900 {e.status === 'failed' ? 'bg-red-500' : e.status === 'available' ? 'bg-green-500' : e.status === 'declined' || e.status === 'expired' ? 'bg-gray-500' : 'bg-primary'}"></span>
+							<span class="absolute -left-[21px] top-1 size-2.5 rounded-full ring-2 ring-gray-900 {e.status === 'failed' ? 'bg-red-500' : e.status === 'available' ? 'bg-green-500' : e.status === 'declined' || e.status === 'expired' || e.status === 'removed' ? 'bg-gray-500' : 'bg-primary'}"></span>
 							<div class="text-xs text-gray-200">{EVENT_TEXT[e.status] ?? e.status}{e.note && (e.status === 'approved' || e.status === 'declined') ? ` by ${e.note}` : ''}</div>
 							<div class="text-[11px] text-gray-500">{fmtDate(e.at, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
-							{#if e.note && (e.status === 'failed' || e.status === 'expired')}<div class="text-[11px] text-gray-400">{e.note}</div>{/if}
+							{#if e.note && (e.status === 'failed' || e.status === 'expired' || e.status === 'removed')}<div class="text-[11px] text-gray-400">{e.note}</div>{/if}
 						</li>
 					{/each}
 				</ol>
@@ -208,7 +208,7 @@
 				<button class="btn px-4 py-1.5 text-xs" disabled={!!busy} onclick={() => act('approve')}>{busy === 'approve' ? 'Approving…' : 'Approve'}</button>
 			{:else if r.status === 'failed'}
 				<button class="btn px-4 py-1.5 text-xs" disabled={!!busy} onclick={() => act('retry')}>{busy === 'retry' ? 'Trying…' : 'Try again'}</button>
-			{:else if r.status !== 'available' && r.status !== 'declined' && r.status !== 'expired'}
+			{:else if r.status !== 'available' && r.status !== 'declined' && r.status !== 'expired' && r.status !== 'removed'}
 				<button class="btn-ghost px-3 py-1.5 text-xs" disabled={!!busy} onclick={() => act('fix')}>{busy === 'fix' ? 'Fixing…' : 'Fix'}</button>
 			{/if}
 		{:else if r && r.status === 'pending' && r.userId === session.me?.id}

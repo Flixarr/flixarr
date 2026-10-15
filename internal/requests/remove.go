@@ -30,7 +30,7 @@ func inArr(ctx context.Context, c *arr.Client, typ string, tmdbID int) (map[stri
 
 // RemoveFromArr takes a title out of Radarr/Sonarr with its files (Seerr's "Remove from Radarr"). It
 // isn't added to their import exclusions, so it can be requested again. Requests for it end as failed
-// with the same reason a removal found later gets. found=false: it wasn't there (nothing changed).
+// as removed. found=false: it wasn't there (nothing changed).
 func (s *Service) RemoveFromArr(ctx context.Context, typ string, tmdbID int) (found bool, err error) {
 	v, ok, err := s.Store.FirstServer(kindOf(typ))
 	if err != nil {
@@ -57,8 +57,8 @@ func (s *Service) RemoveFromArr(ctx context.Context, typ string, tmdbID int) (fo
 	for _, r := range reqs {
 		switch r.Status {
 		case "sent", "grabbed", "downloading", "importing", "available":
-			r.Status, r.Progress = "failed", 0
-			r.Error = fmt.Sprintf("%s from %s. Request it again to get it back.", removedNote, ArrName(typ))
+			r.Status, r.Progress = "removed", 0
+			r.Error = fmt.Sprintf("Removed from %s.", ArrName(typ))
 			s.Store.UpdateRequest(r)
 			s.Publish(r)
 		}

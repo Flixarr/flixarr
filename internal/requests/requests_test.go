@@ -500,10 +500,10 @@ func TestRecheckAfterPlexRemoval(t *testing.T) {
 	st.UpdateRequest(r)
 	radarr.gone = true
 	s.Recheck(ctx, []string{"movie:603"}, false)
-	if r, _ = st.Request(r.ID); r.Status != "failed" || !strings.HasPrefix(r.Error, "Removed from Plex and Radarr") {
+	if r, _ = st.Request(r.ID); r.Status != "removed" || !strings.HasPrefix(r.Error, "Removed from Plex and Radarr") {
 		t.Fatalf("gone everywhere: %+v", r)
 	}
-	if a, _ := st.ActiveAlerts(user.ID, store.CanNone); len(a) != 1 || a[0].Detail != "The Matrix was removed from Plex" {
+	if a, _ := st.ActiveAlerts(user.ID, store.CanNone); len(a) != 1 || a[0].Detail != "The Matrix was removed" {
 		t.Fatalf("alert: %+v", a)
 	}
 	radarr.gone, radarr.hasFile = false, false
@@ -682,7 +682,7 @@ func TestExpiredByMaintainerr(t *testing.T) {
 }
 
 func TestPlainWordsForUsers(t *testing.T) {
-	removed := store.Request{Status: "failed", Error: "Removed from Plex and Sonarr. Request it again to get it back."}
+	removed := store.Request{Status: "removed", Error: "Removed from Plex and Sonarr."}
 	if got := ForViewer(removed, false).Error; strings.Contains(got, "Sonarr") || !strings.Contains(got, "Removed from Plex") {
 		t.Fatalf("removed: %q", got)
 	}
@@ -721,7 +721,7 @@ func TestRemoveFromArr(t *testing.T) {
 		t.Fatalf("asked Radarr: %v", radarr.deleted)
 	}
 	got, _ := st.Request(r.ID)
-	if got.Status != "failed" || !strings.HasPrefix(got.Error, "Removed from Radarr") {
+	if got.Status != "removed" || !strings.HasPrefix(got.Error, "Removed from Radarr") {
 		t.Fatalf("request after: %+v", got)
 	}
 }

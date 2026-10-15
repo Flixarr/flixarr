@@ -222,7 +222,7 @@ func (s *Store) RequestStatusFor(keys []string) (map[string]Request, error) {
 	}
 	// Open requests first; a title with none shows its newest failed or declined one (so pages can say
 	// so and offer Request again). Expired ones don't count: the title is simply requestable again.
-	rows, err := s.db.Query(`SELECT ` + requestCols + ` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.status IN (` + inList(append(append([]string{}, OpenStatuses...), "failed", "declined")) + `) ORDER BY r.id`)
+	rows, err := s.db.Query(`SELECT ` + requestCols + ` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.status IN (` + inList(append(append([]string{}, OpenStatuses...), "failed", "declined", "removed")) + `) ORDER BY r.id`)
 	if err != nil {
 		return nil, err
 	}

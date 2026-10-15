@@ -55,10 +55,10 @@
 	// it's on its way.
 	const groupOf = (r: Request) =>
 		r.status === 'available' ? 'ready'
-		: r.status === 'declined' || r.status === 'expired' ? 'ended'
+		: r.status === 'declined' || r.status === 'expired' || r.status === 'removed' ? 'ended'
 		: r.status === 'failed' || (r.status === 'pending' && admin) ? 'attention'
 		: 'onway';
-	const ORDER = ['pending', 'failed', 'importing', 'downloading', 'grabbed', 'sent', 'approved', 'available', 'declined', 'expired'];
+	const ORDER = ['pending', 'failed', 'importing', 'downloading', 'grabbed', 'sent', 'approved', 'available', 'declined', 'removed', 'expired'];
 	const scoped = $derived((list ?? []).filter((r) => scope === 'all' || r.userId === session.me?.id));
 	const shown = $derived.by(() => {
 		const q = query.trim().toLowerCase();

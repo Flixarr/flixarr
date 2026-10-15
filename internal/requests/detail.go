@@ -82,7 +82,7 @@ func (s *Service) Detail(ctx context.Context, r store.Request, admin bool) Detai
 	d.Hint = hintFor(r, d.Live)
 	d.Request = ForViewer(r, admin)
 	for i := range d.Events {
-		if st := d.Events[i].Status; st == "failed" || st == "expired" {
+		if st := d.Events[i].Status; st == "failed" || st == "expired" || st == "removed" {
 			d.Events[i].Note = PlainError(store.Request{Status: st, Error: d.Events[i].Note})
 		}
 	}
@@ -305,7 +305,7 @@ func hintFor(r store.Request, l Live) string {
 			return "Declined: " + r.Error
 		}
 		return "Declined."
-	case "failed", "expired":
+	case "failed", "expired", "removed":
 		return PlainError(r)
 	case "available":
 		return ""
@@ -400,10 +400,9 @@ func (s *Service) FixTitle(ctx context.Context, typ string, tmdbID int) (string,
 // People who manage requests see the stored reason as it is.
 func PlainError(r store.Request) string {
 	switch r.Status {
+	case "removed":
+		return "Removed from Plex. Request it again to get it back."
 	case "failed":
-		if strings.HasPrefix(r.Error, removedNote+" from Plex") {
-			return "Removed from Plex. Request it again to get it back."
-		}
 		return "It couldn't be added. Someone who manages requests can look into it."
 	case "expired":
 		return "Removed from Plex to make room. Request it again to get it back."

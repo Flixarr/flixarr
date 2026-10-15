@@ -140,6 +140,6 @@ func (s *Store) SetLimits(id int64, movies, seasons int) error {
 // Declined and failed requests don't count.
 func (s *Store) RecentUsage(userID int64) (movies, seasons int, err error) {
 	err = s.db.QueryRow(`SELECT COALESCE(SUM(type = 'movie'), 0), COALESCE(SUM(CASE WHEN type = 'series' THEN MAX(season_count, 1) ELSE 0 END), 0)
-		FROM requests WHERE user_id = ? AND status NOT IN ('declined', 'failed', 'expired') AND source = '' AND created_at > ?`, userID, time.Now().Add(-7*24*time.Hour).UTC().Format(time.RFC3339)).Scan(&movies, &seasons)
+		FROM requests WHERE user_id = ? AND status NOT IN ('declined', 'failed', 'expired', 'removed') AND source = '' AND created_at > ?`, userID, time.Now().Add(-7*24*time.Hour).UTC().Format(time.RFC3339)).Scan(&movies, &seasons)
 	return
 }

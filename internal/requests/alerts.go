@@ -2,7 +2,6 @@ package requests
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/Flixarr/flixarr/internal/store"
 )
@@ -15,7 +14,7 @@ func userAlertKey(userID int64) string { return fmt.Sprintf("requests:user:%d", 
 var alertText = map[string]string{
 	"approved": "%s was approved", "sent": "%s was sent to be downloaded", "grabbed": "%s was found and is about to download",
 	"downloading": "%s is downloading", "importing": "%s is being added to Plex", "available": "%s is ready to watch",
-	"failed": "%s couldn't be added", "declined": "%s was declined", "expired": "%s left Plex",
+	"failed": "%s couldn't be added", "declined": "%s was declined", "expired": "%s left Plex", "removed": "%s was removed",
 }
 
 // Alert updates the requester's bell for a request that just changed status, and the admins' waiting count.
@@ -24,9 +23,6 @@ func (s *Service) Alert(r store.Request) {
 		detail := fmt.Sprintf(f, r.Title)
 		if r.Status == "declined" && r.Error != "" {
 			detail += ": " + r.Error
-		}
-		if r.Status == "failed" && strings.HasPrefix(r.Error, removedNote+" from Plex") {
-			detail = r.Title + " was removed from Plex"
 		}
 		if n := s.activeCount(r.UserID); n > 0 && r.Status != "downloading" && r.Status != "grabbed" && r.Status != "importing" && r.Status != "sent" && r.Status != "approved" {
 			detail += fmt.Sprintf(" · %d more on the way", n)

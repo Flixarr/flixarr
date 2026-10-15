@@ -41,7 +41,7 @@
 					<div class="flex items-center gap-3 pt-1">
 						{#if statusOf(`${h.type}:${h.id}`)?.plex}
 							<a href={statusOf(`${h.type}:${h.id}`)?.plex} target="_blank" rel="noopener" class="btn-plex px-4 py-1.5 text-sm"><PlexMark class="size-4" color="#111827" />Play on Plex</a>
-						{:else if statusOf(`${h.type}:${h.id}`) && !['failed', 'declined', 'expired'].includes(statusOf(`${h.type}:${h.id}`)!.status)}
+						{:else if statusOf(`${h.type}:${h.id}`) && !['failed', 'declined', 'expired', 'removed'].includes(statusOf(`${h.type}:${h.id}`)!.status)}
 							<a href="/requests" class="btn-ghost px-4 py-1.5 text-sm text-yellow-300">Requested</a>
 						{:else if can(h.type === 'series' ? 'requestTv' : 'requestMovies')}
 							<a href="{href(h)}?request=1" class="btn px-4 py-1.5 text-sm"><Icon name="plus" class="size-4" />Request</a>

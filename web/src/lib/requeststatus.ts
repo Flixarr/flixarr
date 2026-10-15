@@ -5,7 +5,7 @@ type Status = Request['status'] | 'blocked';
 
 export const LABEL: Record<Status, string> = {
 	pending: 'Waiting for approval', approved: 'Requested', sent: 'Requested', grabbed: 'Grabbed', downloading: 'Downloading',
-	importing: 'Importing', available: 'Available', failed: 'Failed', declined: 'Declined', expired: 'Expired', blocked: "Can't be requested"
+	importing: 'Importing', available: 'Available', failed: 'Failed', declined: 'Declined', expired: 'Expired', removed: 'Removed', blocked: "Can't be requested"
 };
 
 // Pill colours: [background, text, ring].
@@ -43,6 +43,7 @@ export function simple(s: Status | string | undefined, progress = 0): Simple {
 		case 'available': return { label: 'Available', tone: TONE.available!, step: 2 };
 		case 'failed': return { label: 'Failed', tone: TONE.failed!, step: -1 };
 		case 'declined': return { label: 'Declined', tone: NEUTRAL, step: -1 };
+		case 'removed': return { label: 'Removed', tone: NEUTRAL, step: -1 };
 	}
 	return null;
 }
@@ -52,5 +53,5 @@ export const SIMPLE_STEPS = ['Requested', 'Downloading', 'Available'];
 export const EVENT_TEXT: Record<string, string> = {
 	requested: 'Requested', redownload: 'Redownload asked for', approved: 'Approved', declined: 'Declined', sent: 'Looking for a download',
 	grabbed: 'Found a download', downloading: 'Downloading', importing: 'Downloaded, adding to Plex', available: 'In Plex',
-	failed: 'Failed', expired: 'Removed from Plex', pending: 'Waiting for approval'
+	failed: 'Failed', expired: 'Removed from Plex', removed: 'Removed', pending: 'Waiting for approval'
 };

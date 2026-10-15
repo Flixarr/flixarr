@@ -76,14 +76,14 @@
 	{/if}
 {:else if req?.blocked}
 	<span class="btn-ghost act cursor-default text-gray-400">Can't be requested</span>
-{:else if req && req.status !== 'declined' && req.status !== 'failed' && req.status !== 'expired'}
+{:else if req && req.status !== 'declined' && req.status !== 'failed' && req.status !== 'expired' && req.status !== 'removed'}
 	{@render pill(req)}
 	{#if moreSeasons && can('requestTv')}{@render more()}{/if}
 {:else if req !== undefined && !can(item.type === 'series' ? 'requestTv' : 'requestMovies')}
 	<span class="btn-ghost act cursor-default text-gray-400">You can't request {item.type === 'series' ? 'series' : 'movies'}</span>
 {:else if req !== undefined}
 	{#if req && (req.status === 'failed' || req.status === 'declined')}{@render pill(req)}{/if}
-	<button class="btn act" onclick={() => (open = true)}><Icon name="plus" class="size-4" />{req && ['failed', 'declined', 'expired'].includes(req.status) ? 'Request again' : 'Request'}</button>
+	<button class="btn act" onclick={() => (open = true)}><Icon name="plus" class="size-4" />{req && ['failed', 'declined', 'expired', 'removed'].includes(req.status) ? 'Request again' : 'Request'}</button>
 {/if}
 <RequestModal bind:open {item} asked={req?.asked} onrequested={(r) => {
 	// The live update brings the title's full state (all its requests) right after; this is the stopgap.

@@ -708,9 +708,6 @@ func (s *Service) removedFromArr(ctx context.Context, v store.Server, r store.Re
 	return asked, nil
 }
 
-// removedNote starts the reason on a request whose title left Plex and Radarr/Sonarr.
-const removedNote = "Removed"
-
 // Recheck looks again at available requests whose title just left Plex ("movie:603" keys; episodes = some
 // show lost episodes or seasons). Files still in Radarr/Sonarr: importing again (Plex is asked to scan).
 // Gone from Radarr/Sonarr too: failed with the reason, so it can be requested again.
@@ -740,8 +737,8 @@ func (s *Service) Recheck(ctx context.Context, keys []string, episodes bool) err
 			gone = errors.Is(err, arr.ErrNotFound)
 		}
 		if gone {
-			r.Status, r.Progress = "failed", 0
-			r.Error = fmt.Sprintf("%s from Plex and %s. Request it again to get it back.", removedNote, arr.Kinds[kindOf(r.Type)])
+			r.Status, r.Progress = "removed", 0
+			r.Error = fmt.Sprintf("Removed from Plex and %s.", arr.Kinds[kindOf(r.Type)])
 			if l, ok := s.Store.WasLeaving(r.Type, r.TmdbID); ok {
 				// Maintainerr's doing: it reached the end of its time, not an error.
 				r.Status, r.Error = "expired", "Removed by Maintainerr ("+l.Collection+")."
@@ -755,7 +752,7 @@ func (s *Service) Recheck(ctx context.Context, keys []string, episodes bool) err
 		}
 		// Checked only because some show lost episodes: act only when Plex is missing what Sonarr has, not
 		// because new episodes aired since (Sonarr picks those up on its own).
-		if !named[r.Type+":"+fmt.Sprint(r.TmdbID)] && r.Status != "importing" && r.Status != "failed" {
+		if !named[r.Type+":"+fmt.Sprint(r.TmdbID)] && r.Status != "importing" && r.Status != "removed" {
 			continue
 		}
 		s.Log.Info("request no longer available", "title", r.Title, "status", r.Status)
