@@ -22,7 +22,6 @@
 		['requestMovies', 'Request movies', ''],
 		['requestTv', 'Request series', ''],
 		['advanced', 'Choose quality', 'Pick a quality other than the default when requesting.'],
-		['viewRequests', 'View all requests', "See everyone's requests, not just their own."],
 		['reportIssues', 'Report issues', 'Report problems on titles in the library.'],
 		['manageIssues', 'Manage issues', "See, resolve and remove anyone's issues."],
 		['watchlist', 'Plex Watchlist requests', 'Can switch on requests from their Plex Watchlist (in their Profile).'],

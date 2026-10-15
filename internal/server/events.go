@@ -69,7 +69,7 @@ func (s *Server) liveStream(w http.ResponseWriter, r *http.Request, u *store.Use
 }
 
 // PublishRequest sends a request's new state to the people who can see it: the requester, and anyone
-// who can view or manage all requests.
+// else signed in (everyone can see all requests).
 func (s *Server) PublishRequest(r store.Request) {
 	key := fmt.Sprintf("%s:%d", r.Type, r.TmdbID)
 	// The title as a whole (a series can have other requests still open), not just this request.
@@ -79,7 +79,5 @@ func (s *Server) PublishRequest(r store.Request) {
 			brief = b
 		}
 	}
-	owner := r.UserID
-	s.Live.Publish(live.Event{Type: "request", Data: map[string]any{"key": key, "brief": brief, "request": requests.ForViewer(r, false)},
-		For: func(u *store.User) bool { return u.ID == owner || u.Can("viewRequests") || u.Can("manageRequests") }})
+	s.Live.Publish(live.Event{Type: "request", Data: map[string]any{"key": key, "brief": brief, "request": requests.ForViewer(r, false)}}) // For nil: everyone signed in
 }

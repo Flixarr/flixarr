@@ -8,12 +8,12 @@ import (
 )
 
 // Permission switches. Roles are presets that set them; changing any switch makes the role Custom.
-var AllPerms = []string{"admin", "manageRequests", "autoApprove", "requestMovies", "requestTv", "advanced", "viewRequests", "reportIssues", "manageIssues", "watchlist", "redownload"}
+var AllPerms = []string{"admin", "manageRequests", "autoApprove", "requestMovies", "requestTv", "advanced", "reportIssues", "manageIssues", "watchlist", "redownload"}
 
 // RolePerms are the presets, in the order Users shows them.
 var RolePerms = map[string][]string{
 	"Admin":   AllPerms,
-	"Trusted": {"autoApprove", "requestMovies", "requestTv", "advanced", "viewRequests", "reportIssues", "watchlist"},
+	"Trusted": {"autoApprove", "requestMovies", "requestTv", "advanced", "reportIssues", "watchlist"},
 	"User":    {"requestMovies", "requestTv", "reportIssues", "watchlist"},
 }
 
@@ -62,7 +62,7 @@ func splitPerms(s string) []string {
 	if s == "" {
 		return []string{}
 	}
-	return strings.Split(s, ",")
+	return cleanPerms(strings.Split(s, ",")) // drops retired permissions (viewRequests: everyone sees all requests now)
 }
 
 // ErrOwner is returned when a change would lock the owner out.

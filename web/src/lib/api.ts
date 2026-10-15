@@ -103,4 +103,10 @@ export function ago(iso: string | null | undefined, now = Date.now()) {
 	const d = Math.round(s / 86400);
 	return `${d} day${d === 1 ? '' : 's'} ago`;
 }
+// "1 h 12 min left" from Radarr / Sonarr's "01:12:05".
+export function timeLeft(t?: string) {
+	if (!t) return '';
+	const [h, m] = t.split(':').map(Number);
+	return h ? `${h} h ${m} min left` : m ? `${m} min left` : 'under a minute left';
+}
 export const fmtNum = (n: number) => n.toLocaleString('en-US');

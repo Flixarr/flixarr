@@ -57,3 +57,10 @@ func TestUserLocale(t *testing.T) {
 		t.Fatalf("users page: %+v", rows)
 	}
 }
+
+func TestRetiredPermissionDropped(t *testing.T) {
+	old := "autoApprove,requestMovies,requestTv,advanced,viewRequests,reportIssues,watchlist" // a Trusted user from before viewRequests went away
+	if got := splitPerms(old); RoleOf(got) != "Trusted" {
+		t.Fatalf("still Trusted: %v %s", got, RoleOf(got))
+	}
+}

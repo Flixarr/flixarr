@@ -1,13 +1,15 @@
 <script lang="ts">
 	// A title's admin panel (people who manage requests): its requests, what's downloading, the media in
 	// Radarr / Sonarr and Plex, open issues, and the actions. Opens from the side; full screen on phones.
-	import { api, fmtDate, fmtBytes, ago } from '#lib/api.ts';
+	import { api, fmtDate, fmtBytes, ago, timeLeft } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import { can } from '#lib/session.svelte.ts';
 	import { on } from '#lib/live.svelte.ts';
 	import { remember } from '#lib/availability.svelte.ts';
 	import type { Movie, Series, Request, User } from '#lib/types.ts';
-	import { text, TONE, NEUTRAL, EVENT_TEXT } from '#lib/requeststatus.ts';
+	import { text, TONE, NEUTRAL, EVENT_TEXT, askedFor, eventDot } from '#lib/requeststatus.ts';
+	import Timeline, { type Step } from './Timeline.svelte';
+	import FolderCard from './FolderCard.svelte';
 	import Modal from './Modal.svelte';
 	import Icon from './Icon.svelte';
 	import Avatar from './Avatar.svelte';
@@ -63,25 +65,12 @@
 		if (info.live.inArr) return { label: info.live.monitored ? `In ${info.live.server}, no file yet` : `In ${info.live.server}, not monitored`, tone: NEUTRAL };
 		return { label: 'Not requested', tone: NEUTRAL };
 	});
-	const left = (t?: string) => {
-		if (!t) return '';
-		const [h, m] = t.split(':').map(Number);
-		return h ? `${h} h ${m} min left` : m ? `${m} min left` : 'under a minute left';
-	};
-	const what = (r: Request) => (r.type !== 'series' ? '' : r.mode === 'all' ? 'Whole show' : r.mode === 'episodes' ? `${r.episodes.length} episodes` : r.seasons.length === 1 ? `Season ${r.seasons[0]}` : `Seasons ${r.seasons.join(', ')}`);
 	const person = (name: string, avatar = '') => ({ username: name || '?', avatar }) as User;
 	const where = (i: Issue) => {
 		const p = i.parts?.length ? i.parts : i.season ? [[i.season, i.episode] as [number, number]] : [];
 		return p.map(([s, e]) => (e ? `S${s}E${e}` : `Season ${s}`)).join(', ');
 	};
 	const ISSUE_TONE: Record<string, string> = { Video: 'bg-blue-500/15 text-blue-300 ring-blue-500/40', Audio: 'bg-primary/15 text-primary-light ring-primary/40', Subtitles: 'bg-yellow-500/15 text-yellow-300 ring-yellow-500/40', Other: 'bg-gray-800 text-gray-300 ring-gray-700/60' };
-	// The folder, split like the Services cards: its own name big, the path above it small.
-	const folder = $derived.by(() => {
-		const p = info?.live.file?.path ?? '';
-		const cut = p.replace(/\/$/, '').lastIndexOf('/');
-		return { name: cut >= 0 ? p.slice(cut + 1) : p, parent: cut >= 0 ? p.slice(0, cut + 1) : '' };
-	});
-
 	async function fix() {
 		busy = 'fix';
 		try {
@@ -137,21 +126,21 @@
 	let allHistory = $state(false);
 	const story5 = $derived.by(() => {
 		const all = [...(info?.history ?? [])].reverse();
-		return { shown: allHistory ? all : all.slice(-5), earlier: Math.max(0, all.length - 5) };
+		return { shown: (allHistory ? all : all.slice(-5)).map(story), earlier: Math.max(0, all.length - 5) };
 	});
-	function story(h: History): { text: string; dot: string } {
+	function story(h: History): Step {
+		const note = h.note && ['request:failed', 'request:removed', 'request:expired'].includes(h.kind) ? h.note : undefined;
 		const by = h.who ? ` by ${h.who}` : '';
 		if (h.kind.startsWith('request:')) {
 			const st = h.kind.slice(8);
-			const dot = st === 'failed' ? 'bg-red-500' : st === 'available' ? 'bg-green-500' : ['declined', 'expired', 'removed'].includes(st) ? 'bg-gray-500' : 'bg-primary';
-			return { text: (EVENT_TEXT[st] ?? st) + (st === 'requested' || st === 'approved' || st === 'declined' ? by : '') + (h.detail ? ` · ${h.detail}` : ''), dot };
+			return { text: (EVENT_TEXT[st] ?? st) + (st === 'requested' || st === 'approved' || st === 'declined' ? by : '') + (h.detail ? ` · ${h.detail}` : ''), dot: eventDot(st), at: h.at, note };
 		}
 		const t: Record<string, string> = {
 			plex: series ? 'First episodes in Plex' : 'Added to Plex', issue: `Issue reported${by}: ${h.note}`, resolved: `Issue resolved${by}: ${h.note}`,
 			redownload: `Redownload${h.note ? ` (${h.note})` : ''}${by}`, deleted: `Deleted from ${h.note} with its files${by}`, cleared: `Requests and issues cleared${by}`
 		};
 		const dot = h.kind === 'plex' ? 'bg-green-500' : h.kind === 'issue' ? 'bg-yellow-500' : h.kind === 'deleted' || h.kind === 'cleared' ? 'bg-gray-500' : 'bg-primary';
-		return { text: t[h.kind] ?? h.kind, dot };
+		return { text: t[h.kind] ?? h.kind, dot, at: h.at };
 	}
 	// What the Delete window can offer.
 	const forDelete = $derived(
@@ -207,7 +196,7 @@
 								<Avatar user={person(r.userName, r.userAvatar)} class="size-8 text-xs" />
 								<span class="min-w-0 flex-1">
 									<span class="block truncate text-sm font-medium text-gray-100">{r.source === 'redownload' ? 'Redownload by ' : ''}{r.userName || 'Someone'}</span>
-									<span class="block truncate text-[11px] text-gray-500">{[what(r), r.profileName, fmtDate(r.createdAt, { month: 'short', day: 'numeric', year: 'numeric' })].filter(Boolean).join(' · ')}</span>
+									<span class="block truncate text-[11px] text-gray-500">{[askedFor(r), r.profileName, fmtDate(r.createdAt, { month: 'short', day: 'numeric', year: 'numeric' })].filter(Boolean).join(' · ')}</span>
 								</span>
 								<span class="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 {TONE[r.status] ?? NEUTRAL}">{text(r.status, r.progress)}</span>
 								<Icon name="chevron" class="size-3.5 shrink-0 text-gray-500" />
@@ -223,17 +212,7 @@
 					{@render foldHead('History', 'history')}
 					{#if !folded.history}
 					{#if story5.earlier}<button class="mb-2 text-xs text-gray-400 hover:text-white" onclick={() => (allHistory = !allHistory)}>{allHistory ? 'Show less' : `Show ${story5.earlier} earlier`}</button>{/if}
-					<ol class="relative ml-1.5 space-y-3 border-l border-gray-700/60 pl-4">
-						{#each story5.shown as h, i (i)}
-							{@const s = story(h)}
-							<li class="relative">
-								<span class="absolute -left-[21px] top-1 size-2.5 rounded-full ring-2 ring-gray-900 {s.dot}"></span>
-								<div class="text-xs text-gray-200">{s.text}</div>
-								<div class="text-[11px] text-gray-500">{fmtDate(h.at, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
-								{#if h.note && ['request:failed', 'request:removed', 'request:expired'].includes(h.kind)}<div class="text-[11px] text-gray-400">{h.note}</div>{/if}
-							</li>
-						{/each}
-					</ol>
+					<Timeline steps={story5.shown} year />
 					{/if}
 				</section>
 			{/if}
@@ -247,7 +226,7 @@
 							<div class="p-3">
 								<div class="flex items-baseline justify-between gap-3 text-xs">
 									<span class="font-medium text-gray-200">{q.season ? `S${q.season}${q.episode ? 'E' + q.episode : ''}` : item.title} <span class="font-normal text-gray-500">· {q.state}</span></span>
-									<span class="shrink-0 tabular-nums text-gray-400">{q.percent}%{q.timeLeft && q.state === 'downloading' ? ` · ${left(q.timeLeft)}` : ''}</span>
+									<span class="shrink-0 tabular-nums text-gray-400">{q.percent}%{q.timeLeft && q.state === 'downloading' ? ` · ${timeLeft(q.timeLeft)}` : ''}</span>
 								</div>
 								<div class="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-700/60"><div class="h-full rounded-full {q.state === 'warning' || q.state === 'failed' ? 'bg-yellow-500' : 'bg-blue-500'}" style="width:{q.percent}%"></div></div>
 								{#if q.detail || q.problem}<p class="mt-1.5 text-xs text-yellow-200">{q.detail || q.problem}</p>{/if}
@@ -264,16 +243,7 @@
 				{#if !folded.media}
 				<div class="card divide-y divide-gray-700/40">
 					{#if info.live.file}
-						<div class="p-3">
-							<div class="flex items-end justify-between gap-3">
-								<span class="flex min-w-0 items-center gap-2">
-									<span class="grid size-7 shrink-0 place-items-center rounded-md bg-gray-900/70 text-gray-400 ring-1 ring-gray-700/50"><Icon name="folder" class="size-3.5" /></span>
-									<span class="min-w-0 leading-tight"><span class="block truncate text-xs font-medium text-gray-200">{folder.name || 'Files'}</span>{#if folder.parent}<span class="block truncate font-mono text-[10px] text-gray-500">{folder.parent}</span>{/if}</span>
-								</span>
-								<span class="shrink-0 text-right leading-tight"><span class="block text-xs font-semibold tabular-nums text-gray-100">{fmtBytes(info.live.file.size)}</span>{#if info.live.file.quality}<span class="block text-[10px] text-gray-500">{info.live.file.quality}</span>{/if}</span>
-							</div>
-							{#if info.live.file.release}<p class="mt-2 break-all font-mono text-[10px] text-gray-500">{info.live.file.release}</p>{/if}
-						</div>
+						<FolderCard path={info.live.file.path} size={info.live.file.size} quality={info.live.file.quality} release={info.live.file.release} />
 					{:else}
 						<p class="p-3 text-xs text-gray-500">{info.live.inArr ? `No file in ${info.live.server} yet.` : `Not in ${info.live.server || 'Radarr or Sonarr'}.`}</p>
 					{/if}

@@ -1,24 +1,30 @@
 <script lang="ts">
-	// Requests: your own, or everyone's for people who can see them (Mine / Everyone), grouped by where they
-	// are. Tap a card for its details window (timeline, live progress, and the admin buttons for people who
+	// Requests: yours or everyone's (anyone can see all requests), grouped by where they are. Tap a card for its details window (timeline, live progress, and the admin buttons for people who
 	// manage requests). Cards update on their own while the page is open.
 	import Select from '#lib/components/Select.svelte';
-	import { api, fmtDate } from '#lib/api.ts';
+	import { api, ago } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import { session, can } from '#lib/session.svelte.ts';
-	import type { Request } from '#lib/types.ts';
+	import type { Request, User } from '#lib/types.ts';
+	import Avatar from '#lib/components/Avatar.svelte';
+	import StepBar from '#lib/components/StepBar.svelte';
 	import Img from '#lib/components/Img.svelte';
 	import PlexMark from '#lib/components/PlexMark.svelte';
 	import RequestDetail from '#lib/components/RequestDetail.svelte';
 	import { statusOf } from '#lib/availability.svelte.ts';
-	import { simple, SIMPLE_STEPS } from '#lib/requeststatus.ts';
+	import { simple, askedFor } from '#lib/requeststatus.ts';
 	import { on } from '#lib/live.svelte.ts';
 
 	let list = $state<Request[] | null>(null);
 	let approval = $state(false);
 	const admin = $derived(can('manageRequests'));
-	const everyone = $derived(can('viewRequests') || admin);
-	let scope = $state<'mine' | 'all'>('all');
+	// Your requests or all of them; people who manage requests start on all. Remembered on the device.
+	let scope = $state<'mine' | 'all'>((localStorage.getItem('flixarr:requests-scope') as 'mine' | 'all') ?? (can('manageRequests') ? 'all' : 'mine'));
+	function pick(k: 'mine' | 'all') {
+		scope = k;
+		localStorage.setItem('flixarr:requests-scope', k);
+	}
+	const mine = $derived((list ?? []).filter((r) => r.userId === session.me?.id).length);
 	let group = $state<'all' | 'onway' | 'attention' | 'ready' | 'ended'>('all');
 	let query = $state('');
 	let sort = $state<'new' | 'old' | 'title' | 'status'>('new');
@@ -60,6 +66,7 @@
 		: 'onway';
 	const ORDER = ['pending', 'failed', 'importing', 'downloading', 'grabbed', 'sent', 'approved', 'available', 'declined', 'removed', 'expired'];
 	const scoped = $derived((list ?? []).filter((r) => scope === 'all' || r.userId === session.me?.id));
+	const person = (r: Request) => ({ username: r.userName || '?', avatar: r.userAvatar }) as User;
 	const shown = $derived.by(() => {
 		const q = query.trim().toLowerCase();
 		const out = scoped.filter((r) => (group === 'all' || groupOf(r) === group) && (!q || r.title.toLowerCase().includes(q) || r.userName.toLowerCase().includes(q)));
@@ -74,8 +81,6 @@
 	const count = (g: string) => scoped.filter((r) => groupOf(r) === g).length;
 	const GROUPS: [typeof group, string][] = [['all', 'All'], ['onway', 'On its way'], ['attention', 'Needs attention'], ['ready', 'Ready'], ['ended', 'Ended']];
 
-	const what = (r: Request) =>
-		r.type !== 'series' ? '' : r.mode === 'all' ? 'Whole show' : r.mode === 'episodes' ? `${r.episodes.length} episodes` : r.seasons.length === 1 ? `Season ${r.seasons[0]}` : `Seasons ${r.seasons.join(', ')}`;
 	const status = (r: Request) => simple(r.status, r.progress);
 
 	async function approve(r: Request) {
@@ -97,21 +102,18 @@
 </script>
 
 <main class="mx-auto max-w-[1200px] px-4 pb-28 pt-20 laptop:px-10 laptop:pt-24">
-	<div class="flex flex-wrap items-end justify-between gap-3">
-		<div>
-			<h1 class="text-2xl font-bold laptop:text-3xl">Requests</h1>
-			<p class="text-sm text-gray-400">{approval ? 'New requests wait for an admin to approve them.' : 'Requests start right away.'} Tap one for its details.</p>
-		</div>
-		{#if everyone}
-			<div class="inline-flex gap-1 rounded-lg border border-gray-700/60 bg-gray-800/70 p-0.5 text-sm" role="radiogroup" aria-label="Whose requests">
-				{#each [['mine', 'Mine'], ['all', 'Everyone']] as [k, l] (k)}
-					<button class="rounded-md px-3 py-1 {scope === k ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'}" role="radio" aria-checked={scope === k} onclick={() => (scope = k as typeof scope)}>{l}</button>
-				{/each}
-			</div>
-		{/if}
+	<div>
+		<h1 class="text-2xl font-bold laptop:text-3xl">Requests</h1>
+		<p class="text-sm text-gray-400">{approval ? 'New requests wait for an admin to approve them.' : 'Requests start right away.'} Tap one for its details.</p>
 	</div>
 
-	<div class="mt-5 flex flex-wrap items-center gap-2">
+	<div class="mt-5 flex gap-6 border-b border-gray-700/60 text-sm" role="tablist">
+		{#each [['mine', 'Your requests', mine], ['all', 'All requests', list?.length ?? 0]] as [k, l, n] (k)}
+			<button class="-mb-px border-b-2 pb-2.5 font-medium transition {scope === k ? 'border-primary text-white' : 'border-transparent text-gray-400 hover:text-white'}" role="tab" aria-selected={scope === k} onclick={() => pick(k as 'mine' | 'all')}>{l} <span class="ml-0.5 text-xs text-gray-500">{n}</span></button>
+		{/each}
+	</div>
+
+	<div class="mt-4 flex flex-wrap items-center gap-2">
 		<input class="w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/60 tablet:w-64" placeholder="Search titles or people" bind:value={query} />
 		<Select bind:value={sort} class="w-44" options={[{ value: 'new', label: 'Newest first' }, { value: 'old', label: 'Oldest first' }, { value: 'title', label: 'Title A to Z' }, { value: 'status', label: 'By status' }]} />
 	</div>
@@ -125,42 +127,41 @@
 	{#if !list}
 		<p class="mt-8 text-sm text-gray-400">Loading…</p>
 	{:else if !shown.length}
-		<div class="card mt-6 p-8 text-center text-sm text-gray-400">{scoped.length ? (query ? 'Nothing matches that search.' : 'Nothing here.') : 'No requests yet. Find a movie or series and hit Request.'}</div>
+		<div class="card mt-6 p-8 text-center text-sm text-gray-400">{scoped.length ? (query ? 'Nothing matches that search.' : 'Nothing here.') : scope === 'mine' ? "You haven't requested anything yet. Find a movie or series and hit Request." : 'No requests yet.'}</div>
 	{:else}
 		<div class="mt-5 grid gap-3 laptop:grid-cols-2">
 			{#each shown as r (r.id)}
 				{@const st = status(r)}
-				{@const s = simple(r.status, r.progress)}
 				<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-				<div class="card relative cursor-pointer overflow-hidden transition hover:ring-1 hover:ring-primary/50" onclick={() => openDetail(r)}>
-					{#if r.backdrop}<div class="pointer-events-none absolute inset-0 opacity-15"><Img path={r.backdrop} kind="backdrop" sizes="(min-width: 1024px) 600px, 100vw" class="h-full w-full" /></div>{/if}
-					<div class="relative flex gap-4 p-4">
-						<div class="w-20 shrink-0 overflow-hidden rounded-lg ring-1 ring-gray-700/50 tablet:w-24">{#if r.poster}<Img path={r.poster} kind="poster" sizes="96px" class="aspect-[2/3] w-full" />{:else}<div class="aspect-[2/3] bg-gray-800"></div>{/if}</div>
-						<div class="flex min-w-0 flex-1 flex-col">
-							<div class="flex flex-wrap items-baseline gap-x-2">
-								<span class="font-semibold">{r.title}</span><span class="text-sm text-gray-400">{r.year}</span>
-								<span class="rounded bg-gray-800/80 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-gray-400">{r.type === 'movie' ? 'Movie' : 'Series'}</span>
-							</div>
-							<div class="mt-0.5 text-xs text-gray-400">
-								{r.source === 'redownload' ? 'Redownload by ' : ''}{r.userName || 'Someone'} · {fmtDate(r.createdAt, { month: 'short', day: 'numeric' })}{what(r) ? ` · ${what(r)}` : ''}
-							</div>
-							<div class="mt-3 flex flex-wrap items-center gap-2">
-								{#if st}<span class="inline-flex rounded-lg px-2.5 py-1 text-xs font-medium ring-1 {st.tone}">{st.label}</span>{/if}
-								{#if r.status === 'available' && statusOf(`${r.type}:${r.tmdbId}`)?.plex}
-									<a href={statusOf(`${r.type}:${r.tmdbId}`)?.plex} target="_blank" rel="noopener" class="btn-plex px-3 py-1 text-xs" onclick={(e) => e.stopPropagation()}><PlexMark class="size-3.5" color="#111827" />Play</a>
-								{/if}
-								{#if admin && r.status === 'pending'}
-									<button class="btn px-3 py-1 text-xs" disabled={busy === r.id} onclick={(e) => (e.stopPropagation(), approve(r))}>{busy === r.id ? 'Approving…' : 'Approve'}</button>
-								{/if}
-							</div>
-							{#if s && s.step >= 0}
-								<div class="mt-auto grid max-w-sm grid-cols-3 gap-1 pt-3">
-									{#each SIMPLE_STEPS as label, i (label)}
-										<div class="h-1 overflow-hidden rounded-full bg-gray-700/60"><div class="h-full rounded-full {r.status === 'available' ? 'bg-green-500' : 'bg-primary'}" style="width:{i < s.step ? 100 : i === s.step ? (r.status === 'downloading' ? r.progress : r.status === 'importing' || r.status === 'available' ? 100 : 15) : 0}%"></div></div>
-									{/each}
+				<div class="relative cursor-pointer overflow-hidden rounded-xl border border-gray-700/40 shadow-xl transition hover:border-primary/50" onclick={() => openDetail(r)}>
+					{#if r.backdrop}<div class="pointer-events-none absolute inset-0 opacity-30"><Img path={r.backdrop} kind="backdrop" sizes="(min-width: 1024px) 600px, 100vw" class="h-full w-full" /></div>{/if}
+					<div class="absolute inset-0 bg-linear-to-r from-gray-950/95 via-gray-950/85 to-gray-950/55"></div>
+					<div class="relative flex gap-3 p-3">
+						<div class="w-16 shrink-0 overflow-hidden rounded-lg shadow-lg ring-1 ring-gray-700/60 tablet:w-20">{#if r.poster}<Img path={r.poster} kind="poster" sizes="80px" class="aspect-[2/3] w-full" />{:else}<div class="aspect-[2/3] bg-gray-800"></div>{/if}</div>
+						<div class="flex min-w-0 flex-1 flex-col gap-1">
+							<div class="flex items-start justify-between gap-2">
+								<div class="min-w-0">
+									<div class="text-[11px] text-gray-400">{[r.year, r.type === 'movie' ? 'Movie' : 'Series', askedFor(r)].filter(Boolean).join(' · ')}</div>
+									<div class="truncate font-semibold">{r.title}</div>
 								</div>
-							{:else if r.error}
-								<p class="mt-2 line-clamp-2 text-xs {r.status === 'failed' ? 'text-red-300' : 'text-gray-400'}">{r.status === 'declined' ? 'Reason: ' : ''}{r.error}</p>
+								{#if st}<span class="shrink-0 rounded-lg px-2 py-0.5 text-[11px] font-medium ring-1 {st.tone}">{st.label}</span>{/if}
+							</div>
+							<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-400">
+								<span class="flex items-center gap-1.5 text-gray-300"><Avatar user={person(r)} class="size-4 text-[9px]" />{r.source === 'redownload' ? 'Redownload by ' : ''}{r.userName || 'Someone'}</span>
+								{#if admin && r.profileName}<span>{r.profileName}</span>{/if}
+								<span>{ago(r.createdAt)}</span>
+							</div>
+							{#if st && st.step >= 0 && r.status !== 'available'}<StepBar status={r.status} progress={r.progress} class="mt-1.5 max-w-xs" />{/if}
+							{#if r.error && (r.status === 'failed' || r.status === 'declined' || r.status === 'removed')}<p class="mt-1 line-clamp-2 text-xs {r.status === 'failed' ? 'text-red-300' : 'text-gray-400'}">{r.status === 'declined' ? 'Reason: ' : ''}{r.error}</p>{/if}
+							{#if (r.status === 'available' && statusOf(`${r.type}:${r.tmdbId}`)?.plex) || (admin && r.status === 'pending')}
+								<div class="mt-auto flex justify-end gap-2 pt-2">
+									{#if r.status === 'available' && statusOf(`${r.type}:${r.tmdbId}`)?.plex}
+										<a href={statusOf(`${r.type}:${r.tmdbId}`)?.plex} target="_blank" rel="noopener" class="btn-plex px-3 py-1 text-xs" onclick={(e) => e.stopPropagation()}><PlexMark class="size-3.5" color="#111827" />Play</a>
+									{/if}
+									{#if admin && r.status === 'pending'}
+										<button class="btn px-3 py-1 text-xs" disabled={busy === r.id} onclick={(e) => (e.stopPropagation(), approve(r))}>{busy === r.id ? 'Approving…' : 'Approve'}</button>
+									{/if}
+								</div>
 							{/if}
 						</div>
 					</div>

@@ -99,7 +99,7 @@ func (s *Server) recentlyAdded(w http.ResponseWriter, r *http.Request, _ *store.
 // otherwise your own.
 func (s *Server) recentRequests(w http.ResponseWriter, r *http.Request, u *store.User) {
 	owner := u.ID
-	if (u.Can("viewRequests") || u.Can("manageRequests")) && r.URL.Query().Get("mine") == "" {
+	if r.URL.Query().Get("mine") == "" {
 		owner = 0
 	}
 	list, err := s.Store.Requests(owner, 20)

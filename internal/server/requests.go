@@ -16,11 +16,7 @@ import (
 // ---------- requests ----------
 
 func (s *Server) requestList(w http.ResponseWriter, r *http.Request, u *store.User) {
-	owner := u.ID
-	if u.Can("viewRequests") || u.Can("manageRequests") {
-		owner = 0 // everyone's
-	}
-	list, err := s.Store.Requests(owner, 200)
+	list, err := s.Store.Requests(0, 200) // everyone's: anyone signed in can see all requests
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return

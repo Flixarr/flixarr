@@ -10,16 +10,11 @@ import (
 	"github.com/Flixarr/flixarr/internal/store"
 )
 
-// requestDetail is a request's details window: its timeline and what Radarr / Sonarr say now. Your own
-// requests, or anyone's if you can see everyone's; release names, folders and links only for people who
-// manage requests.
+// requestDetail is a request's details window: its timeline and what Radarr / Sonarr say now. Anyone
+// signed in can open any request; release names, folders and links only for people who manage requests.
 func (s *Server) requestDetail(w http.ResponseWriter, r *http.Request, u *store.User) {
 	req, ok := s.requestByID(w, r)
 	if !ok {
-		return
-	}
-	if req.UserID != u.ID && !u.Can("viewRequests") && !u.Can("manageRequests") {
-		writeErr(w, http.StatusNotFound, "That request doesn't exist.")
 		return
 	}
 	writeJSON(w, http.StatusOK, s.Requests.Detail(r.Context(), req, u.Can("manageRequests")))

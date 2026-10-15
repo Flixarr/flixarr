@@ -55,3 +55,10 @@ export const EVENT_TEXT: Record<string, string> = {
 	grabbed: 'Found a download', downloading: 'Downloading', importing: 'Downloaded, adding to Plex', available: 'In Plex',
 	failed: 'Failed', expired: 'Removed from Plex', removed: 'Removed', pending: 'Waiting for approval'
 };
+
+// What a request asked for: "Whole show", "Season 2", "Seasons 1, 3", "4 episodes" ('' for movies).
+export const askedFor = (r: Pick<Request, 'type' | 'mode' | 'seasons' | 'episodes'>) =>
+	r.type !== 'series' ? '' : r.mode === 'all' ? 'Whole show' : r.mode === 'episodes' ? `${r.episodes.length} episodes` : r.seasons.length === 1 ? `Season ${r.seasons[0]}` : `Seasons ${r.seasons.join(', ')}`;
+
+// A timeline dot's colour for a request step.
+export const eventDot = (s: string) => (s === 'failed' ? 'bg-red-500' : s === 'available' ? 'bg-green-500' : ['declined', 'expired', 'removed'].includes(s) ? 'bg-gray-500' : 'bg-primary');
