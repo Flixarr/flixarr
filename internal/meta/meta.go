@@ -158,7 +158,7 @@ func (c *Client) Counters() Counters {
 
 // allowed paths under /v1 (anything else is rejected before leaving the server)
 func allowed(p string) bool {
-	for _, pre := range []string{"lists/", "movie/", "series/", "person/", "collection/", "search", "discover/", "genres/"} {
+	for _, pre := range []string{"lists/", "movie/", "series/", "person/", "collection/", "search", "discover/", "genres/", "credit/", "contributors"} {
 		if strings.HasPrefix(p, pre) {
 			return true
 		}
@@ -168,7 +168,7 @@ func allowed(p string) bool {
 
 func kindOf(p string) string {
 	switch {
-	case strings.HasPrefix(p, "person/"):
+	case strings.HasPrefix(p, "person/"), strings.HasPrefix(p, "credit/"):
 		return KindPeople
 	case strings.HasPrefix(p, "search"):
 		return KindSearches

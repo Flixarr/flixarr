@@ -50,3 +50,14 @@ func TestKeepAutomatic(t *testing.T) {
 		t.Errorf("fixed lists = %v, want 3h", got)
 	}
 }
+
+func TestAllowedPaths(t *testing.T) {
+	for _, p := range []string{"credit/651dd86d74507d00e2105e2c", "contributors", "movie/603"} {
+		if !allowed(p) {
+			t.Fatalf("%s refused", p)
+		}
+	}
+	if allowed("admin/secrets") {
+		t.Fatal("an unknown path was let through")
+	}
+}
