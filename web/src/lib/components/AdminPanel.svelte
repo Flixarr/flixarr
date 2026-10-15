@@ -124,6 +124,12 @@
 
 	const count = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 	let deleteOpen = $state(false);
+	// Media and History fold away; the choice is remembered on this device.
+	let folded = $state<Record<string, boolean>>(JSON.parse(localStorage.getItem('flixarr:admin-folded') ?? '{}'));
+	function fold(k: string) {
+		folded = { ...folded, [k]: !folded[k] };
+		localStorage.setItem('flixarr:admin-folded', JSON.stringify(folded));
+	}
 	const deletable = $derived(!!info && ((info.live.inArr && can('redownload')) || info.requests.length > 0 || info.issues.length > 0));
 
 	// History: the title's whole story, oldest first like a request's timeline (requests' steps, issues,
@@ -169,6 +175,11 @@
 	}
 </script>
 
+{#snippet foldHead(t: string, k: string)}
+	<button class="mb-2.5 flex w-full items-center gap-2 text-left text-base font-bold" aria-expanded={!folded[k]} onclick={() => fold(k)}>
+		{t}<Icon name="chevron" class="size-3.5 text-gray-500 transition {folded[k] ? '' : 'rotate-90'}" />
+	</button>
+{/snippet}
 {#snippet head(t: string, n?: number)}<h3 class="mb-2.5 text-base font-bold">{t}{#if n}<span class="ml-1.5 text-sm font-normal text-gray-500">{n}</span>{/if}</h3>{/snippet}
 
 <Modal bind:open title={series ? 'Manage series' : 'Manage movie'} sub={item.title} side>
@@ -209,7 +220,8 @@
 			<!-- History -->
 			{#if info.history?.length}
 				<section>
-					{@render head('History')}
+					{@render foldHead('History', 'history')}
+					{#if !folded.history}
 					{#if story5.earlier}<button class="mb-2 text-xs text-gray-400 hover:text-white" onclick={() => (allHistory = !allHistory)}>{allHistory ? 'Show less' : `Show ${story5.earlier} earlier`}</button>{/if}
 					<ol class="relative ml-1.5 space-y-3 border-l border-gray-700/60 pl-4">
 						{#each story5.shown as h, i (i)}
@@ -222,6 +234,7 @@
 							</li>
 						{/each}
 					</ol>
+					{/if}
 				</section>
 			{/if}
 
@@ -247,7 +260,8 @@
 
 			<!-- Media -->
 			<section>
-				{@render head('Media')}
+				{@render foldHead('Media', 'media')}
+				{#if !folded.media}
 				<div class="card divide-y divide-gray-700/40">
 					{#if info.live.file}
 						<div class="p-3">
@@ -284,6 +298,7 @@
 						</div>
 					{/if}
 				</div>
+				{/if}
 			</section>
 
 			<!-- Issues: open ones stand out, and can be answered or resolved right here -->
