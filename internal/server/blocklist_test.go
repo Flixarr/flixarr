@@ -1,9 +1,13 @@
 package server
 
 import (
+	"io"
+	"log/slog"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/Flixarr/flixarr/internal/requests"
 	"github.com/Flixarr/flixarr/internal/secret"
 	"github.com/Flixarr/flixarr/internal/store"
 )
@@ -28,5 +32,37 @@ func TestHideBlocked(t *testing.T) {
 	}
 	if got := string(s.hideBlocked(body, admin)); got != string(body) {
 		t.Fatalf("admins still see it: %s", got)
+	}
+}
+
+func TestTitleDelete(t *testing.T) {
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	st, _ := store.Open(dir, box)
+	t.Cleanup(func() { st.Close() })
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	s := &Server{Store: st, Log: log, Requests: &requests.Service{Store: st, Log: log}}
+	admin, _ := st.CreateUser(store.User{PlexID: 1, Username: "admin", Role: "Admin"})
+	mod, _ := st.CreateUser(store.User{PlexID: 2, Username: "mod", Perms: []string{"manageRequests"}})
+	st.CreateRequest(store.Request{Type: "movie", TmdbID: 603, Title: "The Matrix", UserID: admin.ID, Status: "available"})
+	call := func(u *store.User, body string) int {
+		r := httptest.NewRequest("POST", "/api/titles/movie/603/delete", strings.NewReader(body))
+		r.SetPathValue("type", "movie")
+		r.SetPathValue("id", "603")
+		w := httptest.NewRecorder()
+		s.titleDelete(w, r, u)
+		return w.Code
+	}
+	if c := call(admin, `{}`); c != 400 {
+		t.Fatalf("nothing ticked: %d", c)
+	}
+	if c := call(mod, `{"files":true}`); c != 403 {
+		t.Fatalf("files without Redownload: %d", c)
+	}
+	if c := call(mod, `{"data":true}`); c != 200 {
+		t.Fatalf("data only: %d", c)
+	}
+	if got, _ := st.RequestsForTitle("movie", 603); len(got) != 0 {
+		t.Fatal("requests left")
 	}
 }

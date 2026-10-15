@@ -34,7 +34,6 @@ const (
 )
 
 var errNotFound = errors.New("Plex answered 404 Not Found")
-var errForbidden = errors.New("Plex answered 403 Forbidden")
 
 // Library keeps the Plex connection and syncs its items.
 type Library struct {
@@ -86,9 +85,6 @@ func (l *Library) do(ctx context.Context, method, base, path, token string, out 
 	}
 	if res.StatusCode == http.StatusNotFound {
 		return errNotFound
-	}
-	if res.StatusCode == http.StatusForbidden {
-		return errForbidden
 	}
 	if res.StatusCode >= 300 {
 		return fmt.Errorf("Plex answered %s", res.Status)
@@ -449,29 +445,6 @@ func (l *Library) Lookup(keys []string) (map[string]Item, error) {
 		out[k] = Item{RatingKey: it.RatingKey, URL: fmt.Sprintf("%s#!/server/%s/details?key=%s", web, machine, url.QueryEscape("/library/metadata/"+it.RatingKey))}
 	}
 	return out, nil
-}
-
-// Delete removes a title from Plex with its files (Plex's own Delete; needs "Allow media deletion" on
-// in Plex). deleted=false: Plex didn't have it (or isn't connected).
-func (l *Library) Delete(ctx context.Context, typ string, tmdbID int) (deleted bool, err error) {
-	base, tok, ok := l.conn()
-	if !ok {
-		return false, nil
-	}
-	key := fmt.Sprintf("%s:%d", typ, tmdbID)
-	items, err := l.Store.PlexItemsFor([]string{key})
-	if err != nil || items[key].RatingKey == "" {
-		return false, err
-	}
-	var out any
-	err = l.do(ctx, http.MethodDelete, base, "/library/metadata/"+url.PathEscape(items[key].RatingKey), tok, &out)
-	switch {
-	case errors.Is(err, errNotFound):
-		return false, nil
-	case errors.Is(err, errForbidden):
-		return false, errors.New("Plex doesn't allow deleting; turn on Allow media deletion in Plex's settings (Library)")
-	}
-	return err == nil, err
 }
 
 // SetWebURL sets where Play on Plex and Open in Plex go: blank for app.plex.tv, or the address Plex's

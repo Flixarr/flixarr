@@ -9,17 +9,6 @@ import (
 	"github.com/Flixarr/flixarr/internal/arr"
 )
 
-// notConnected: no Radarr (or Sonarr) is set up for this kind of title. Reads "Radarr isn't connected".
-type notConnected string
-
-func (n notConnected) Error() string { return string(n) + " isn't connected" }
-
-// IsNotConnected says whether err is notConnected.
-func IsNotConnected(err error) bool {
-	var nc notConnected
-	return errors.As(err, &nc)
-}
-
 // ArrName is Radarr for movies, Sonarr for series.
 func ArrName(typ string) string { return arr.Kinds[kindOf(typ)] }
 
@@ -48,7 +37,7 @@ func (s *Service) RemoveFromArr(ctx context.Context, typ string, tmdbID int) (fo
 		return false, err
 	}
 	if !ok {
-		return false, notConnected(ArrName(typ))
+		return false, fmt.Errorf("%s isn't connected", ArrName(typ))
 	}
 	c := client(v)
 	item, err := inArr(ctx, c, typ, tmdbID)

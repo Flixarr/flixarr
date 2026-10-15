@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -89,77 +90,51 @@ func (s *Server) titleFix(w http.ResponseWriter, r *http.Request, _ *store.User)
 	writeJSON(w, http.StatusOK, map[string]any{"done": done})
 }
 
-// titleRemove is Remove from Radarr / Sonarr: the title and its files go; requests for it end.
-func (s *Server) titleRemove(w http.ResponseWriter, r *http.Request, u *store.User) {
-	typ, id, ok := titleParams(r)
-	if !ok {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
-		return
-	}
-	in, err := s.Requests.RemoveFromArr(r.Context(), typ, id)
-	if err != nil {
-		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
-		return
-	}
-	if !in {
-		writeErr(w, http.StatusConflict, "It isn't in "+requests.ArrName(typ)+".")
-		return
-	}
-	s.Log.Info("title removed", "type", typ, "tmdb", id, "by", u.Username)
-	writeJSON(w, http.StatusOK, map[string]any{"done": "Removed it and its files from " + requests.ArrName(typ) + "."})
-}
-
-// titleClear is Clear data: Flixarr forgets the title (requests, issues, Plex and Maintainerr rows).
-func (s *Server) titleClear(w http.ResponseWriter, r *http.Request, u *store.User) {
-	typ, id, ok := titleParams(r)
-	if !ok {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
-		return
-	}
-	if err := s.Requests.ClearTitle(typ, id); err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
-		return
-	}
-	s.syncIssueAlerts(nil, u, "")
-	s.Log.Info("title data cleared", "type", typ, "tmdb", id, "by", u.Username)
-	writeJSON(w, http.StatusOK, map[string]any{"done": "Cleared its data."})
-}
-
-// titleDelete is Delete everywhere: Maintainerr lets go of it, Radarr / Sonarr remove it with its files,
-// Plex deletes what's left, and Flixarr clears its data. It stops at the first step that fails, so
-// nothing is cleared while the files are still there.
+// titleDelete is the admin panel's Delete: {files, data}. files: Radarr / Sonarr delete the title with
+// its files (Maintainerr lets go of it first if it kept it; Plex is asked to scan and drops it). data:
+// Flixarr forgets its requests and issues. Files go first, so nothing is cleared if that fails.
 func (s *Server) titleDelete(w http.ResponseWriter, r *http.Request, u *store.User) {
 	typ, id, ok := titleParams(r)
-	if !ok {
+	var in struct {
+		Files bool `json:"files"`
+		Data  bool `json:"data"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in); err != nil || !ok || (!in.Files && !in.Data) {
 		writeErr(w, http.StatusBadRequest, "Bad request.")
+		return
+	}
+	if in.Files && !u.Can("redownload") {
+		writeErr(w, http.StatusForbidden, "You don't have permission to delete files.")
 		return
 	}
 	ctx := r.Context()
 	done := []string{}
-	if _, kept := s.Store.KeepFor(typ, id); kept && s.Maint != nil {
-		if err := s.Maint.LetGo(ctx, typ, id); err != nil {
-			writeErr(w, http.StatusConflict, "Maintainerr didn't let go of it: "+err.Error()+".")
+	if in.Files {
+		if _, kept := s.Store.KeepFor(typ, id); kept && s.Maint != nil {
+			if err := s.Maint.LetGo(ctx, typ, id); err != nil {
+				writeErr(w, http.StatusConflict, "Maintainerr didn't let go of it: "+err.Error()+".")
+				return
+			}
+		}
+		found, err := s.Requests.RemoveFromArr(ctx, typ, id)
+		if err != nil {
+			writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
 			return
 		}
-		done = append(done, "Maintainerr no longer keeps it.")
+		if !found {
+			writeErr(w, http.StatusConflict, "It isn't in "+requests.ArrName(typ)+".")
+			return
+		}
+		done = append(done, "Deleted it and its files from "+requests.ArrName(typ)+".")
 	}
-	if in, err := s.Requests.RemoveFromArr(ctx, typ, id); err != nil && !requests.IsNotConnected(err) {
-		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
-		return
-	} else if in {
-		done = append(done, "Removed it and its files from "+requests.ArrName(typ)+".")
+	if in.Data {
+		if err := s.Requests.ClearTitle(typ, id); err != nil {
+			writeErr(w, http.StatusInternalServerError, "Database error.")
+			return
+		}
+		s.syncIssueAlerts(nil, u, "")
+		done = append(done, "Cleared its requests and issues.")
 	}
-	if gone, err := s.Library.Delete(ctx, typ, id); err != nil {
-		writeErr(w, http.StatusConflict, strings.Join(append(done, capitalize(err.Error())+"."), " "))
-		return
-	} else if gone {
-		done = append(done, "Deleted it from Plex.")
-	}
-	if err := s.Requests.ClearTitle(typ, id); err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
-		return
-	}
-	s.syncIssueAlerts(nil, u, "")
-	s.Log.Info("title deleted everywhere", "type", typ, "tmdb", id, "by", u.Username)
-	writeJSON(w, http.StatusOK, map[string]any{"done": strings.Join(append(done, "Cleared its data."), " ")})
+	s.Log.Info("title deleted", "type", typ, "tmdb", id, "files", in.Files, "data", in.Data, "by", u.Username)
+	writeJSON(w, http.StatusOK, map[string]any{"done": strings.Join(done, " ")})
 }

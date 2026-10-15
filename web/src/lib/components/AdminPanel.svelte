@@ -14,6 +14,7 @@
 	import PlexMark from './PlexMark.svelte';
 	import RequestDetail from './RequestDetail.svelte';
 	import RedownloadModal from './RedownloadModal.svelte';
+	import DeleteModal from './DeleteModal.svelte';
 	import LeavingActions from './LeavingActions.svelte';
 
 	type Download = { season?: number; episode?: number; percent: number; timeLeft?: string; state: string; size: number; release?: string; problem?: string; detail?: string };
@@ -28,7 +29,7 @@
 	let detail = $state(0);
 	let detailOpen = $state(false);
 	let redownloadOpen = $state(false);
-	let confirm = $state<'' | 'remove' | 'clear' | 'delete' | 'block'>('');
+	let confirm = $state<'' | 'block'>('');
 	let replyTo = $state(0);
 	let reply = $state('');
 	const key = $derived(`${item.type}:${item.id}`);
@@ -120,44 +121,12 @@
 		}
 	}
 
-	// Remove from Radarr / Sonarr, Clear data and Delete everywhere: each asks first (the confirm says
-	// exactly what goes), then the panel shows what's left.
-	async function run(action: 'remove' | 'clear' | 'delete') {
-		confirm = '';
-		busy = action;
-		try {
-			const d = await api<{ done: string }>(`/titles/${item.type}/${item.id}/${action}`, { method: 'POST' });
-			if (action !== 'remove') remember(key, null);
-			notify(d.done);
-			load();
-		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not do it.', 'orange');
-			load();
-		} finally {
-			busy = '';
-		}
-	}
-	// Only what this title is actually in: Radarr / Sonarr, Plex, Maintainerr (kept), and Flixarr itself.
-	const places = $derived(info ? [info.live.inArr ? info.live.server : '', info.plex ? 'Plex' : '', info.kept ? 'Maintainerr' : '', 'Flixarr'].filter(Boolean) : []);
-	const list = (a: string[]) => (a.length < 2 ? a.join('') : `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`);
 	const count = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
-	// What each one takes, from what the panel shows.
-	const goes = $derived.by(() => {
-		if (!info) return { remove: [], clear: [], delete: [] } as Record<string, string[]>;
-		const files = info.live.hasFile ? `${series ? 'Its files' : 'The file'}${info.live.file?.size ? ` (${fmtBytes(info.live.file.size)})` : ''} are deleted.` : '';
-		const data = [info.requests.length ? count(info.requests.length, 'request') : '', info.issues.length ? count(info.issues.length, 'open issue') : ''].filter(Boolean);
-		const open = info.requests.filter((r) => ['sent', 'grabbed', 'downloading', 'importing', 'available'].includes(r.status)).length;
-		return {
-			remove: [`${item.title} is removed from ${info.live.server}.`, files, open ? `${count(open, 'request')} for it end as failed, so it can be requested again.` : '', info.plex ? 'Plex drops it after its next scan.' : ''].filter(Boolean),
-			clear: [`Everything Flixarr has for it goes${data.length ? `: ${data.join(' and ')}` : ''}, with their history and comments.`, `Nothing changes in ${info.live.server || 'Radarr or Sonarr'} or Plex. If it's in Plex, it shows up again after the next scan.`],
-			delete: [
-				info.live.inArr ? `Removed from ${info.live.server}${info.live.hasFile ? ' with its files' : ''}${info.live.file?.size ? ` (${fmtBytes(info.live.file.size)})` : ''}.` : '',
-				info.plex ? 'Deleted from Plex.' : '',
-				info.kept ? 'Maintainerr stops keeping it.' : '',
-				`Flixarr's data for it is cleared${data.length ? ` (${data.join(', ')})` : ''}.`
-			].filter(Boolean)
-		};
-	});
+	let deleteOpen = $state(false);
+	// What the Delete window can offer.
+	const forDelete = $derived(
+		info && { inArr: info.live.inArr, server: info.live.server, size: info.live.file?.size ?? 0, downloading: info.live.queue.length > 0, plex: !!info.plex, kept: info.kept, requests: info.requests.length, issues: info.issues.length }
+	);
 
 	async function block(on: boolean) {
 		confirm = '';
@@ -339,17 +308,15 @@
 			</section>
 
 			<section>
-				<h3 class="mb-2.5 text-base font-bold text-red-300">Remove</h3>
+				<h3 class="mb-2.5 text-base font-bold text-red-300">Delete</h3>
 				<div class="divide-y divide-red-500/20 rounded-xl ring-1 ring-red-500/30">
-					{#snippet danger(action: 'remove' | 'clear' | 'delete' | 'block', label: string, help: string)}
+					{#snippet danger(action: 'block', label: string, help: string)}
 						<div class="p-3">
 							{#if confirm === action}
 								<div class="space-y-2 text-xs">
 									<p class="font-semibold text-gray-100">{label}?</p>
-									{#if action === 'block'}<p class="text-gray-300">Nobody can request it until it's unblocked (Settings, Blocklist).</p>
-									{:else}<ul class="list-disc space-y-1 pl-4 text-gray-300">{#each goes[action] as g}<li>{g}</li>{/each}</ul>
-										<p class="text-gray-500">This can't be undone.</p>{/if}
-									<div class="flex justify-end gap-2"><button class="btn-ghost px-3 py-1 text-xs" onclick={() => (confirm = '')}>Cancel</button><button class="inline-flex items-center rounded-lg bg-red-600/90 px-3 py-1 text-xs font-medium text-white hover:bg-red-600" onclick={() => (action === 'block' ? block(true) : run(action))}>{label}</button></div>
+									<p class="text-gray-300">Nobody can request it until it's unblocked (Settings, Blocklist).</p>
+									<div class="flex justify-end gap-2"><button class="btn-ghost px-3 py-1 text-xs" onclick={() => (confirm = '')}>Cancel</button><button class="inline-flex items-center rounded-lg bg-red-600/90 px-3 py-1 text-xs font-medium text-white hover:bg-red-600" onclick={() => block(true)}>{label}</button></div>
 								</div>
 							{:else}
 								<div class="flex items-center justify-between gap-3">
@@ -367,9 +334,10 @@
 					{:else if !info.plex && !openReq}
 						{@render danger('block', 'Block', 'Stops anyone from requesting it.')}
 					{/if}
-					{@render danger('clear', 'Clear data', 'Removes its requests and issues from Flixarr. Nothing else changes.')}
-					{#if info.live.inArr && can('redownload')}{@render danger('remove', `Remove from ${info.live.server}`, `Removes the ${series ? 'show' : 'movie'} from ${info.live.server} and deletes its files.`)}{/if}
-					{#if can('redownload') && (info.live.inArr || info.plex)}{@render danger('delete', 'Delete everywhere', `Removes it from ${list(places)} and deletes its files.`)}{/if}
+					<div class="flex items-center justify-between gap-3 p-3">
+						<span class="min-w-0"><span class="block text-sm font-medium text-gray-100">Delete</span><span class="block text-[11px] text-gray-500">Choose what goes: the {series ? 'show' : 'movie'} and its files, its requests and issues in Flixarr, or both.</span></span>
+						<button class="shrink-0 rounded-lg border border-red-500/40 px-3 py-1.5 text-xs font-medium text-red-300 transition hover:bg-red-500/10" disabled={!!busy} onclick={() => (deleteOpen = true)}>Delete…</button>
+					</div>
 				</div>
 			</section>
 		</div>
@@ -377,3 +345,4 @@
 </Modal>
 {#if detail}<RequestDetail bind:open={detailOpen} id={detail} onchanged={() => load()} />{/if}
 <RedownloadModal bind:open={redownloadOpen} {item} />
+{#if forDelete}<DeleteModal bind:open={deleteOpen} {item} t={forDelete} ondone={load} />{/if}
