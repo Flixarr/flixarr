@@ -44,7 +44,7 @@
 	<div class="space-y-4 p-5 text-sm">
 		<p class="text-gray-300">
 			{series ? 'The files for the seasons you pick are deleted' : 'The current file is deleted'} and {series ? 'new copies are downloaded' : 'a new copy is downloaded'}.
-			The release {series ? 'they' : 'it'} came from won't be grabbed again. Until {series ? 'they arrive, those seasons are' : 'it arrives, it is'} not in Plex.
+			{series ? 'Those releases are' : 'That release is'} blocked so {series ? "they aren't" : "it isn't"} downloaded again. Until {series ? 'they arrive, those seasons are' : 'it arrives, it is'} not in Plex.
 		</p>
 		{#if series}
 			{#if list.length}

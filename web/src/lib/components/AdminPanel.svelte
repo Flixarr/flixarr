@@ -137,6 +137,9 @@
 			busy = '';
 		}
 	}
+	// Only what this title is actually in: Radarr / Sonarr, Plex, Maintainerr (kept), and Flixarr itself.
+	const places = $derived(info ? [info.live.inArr ? info.live.server : '', info.plex ? 'Plex' : '', info.kept ? 'Maintainerr' : '', 'Flixarr'].filter(Boolean) : []);
+	const list = (a: string[]) => (a.length < 2 ? a.join('') : `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`);
 	const count = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 	// What each one takes, from what the panel shows.
 	const goes = $derived.by(() => {
@@ -264,7 +267,7 @@
 					{/if}
 					{#if info.live.link || info.plex}
 						<div class="grid grid-cols-2 gap-2 p-3">
-							{#if info.live.link}<a href={info.live.link} target="_blank" rel="noopener" class="btn-ghost justify-center px-3 py-2 text-xs {info.plex ? '' : 'col-span-2'}"><Icon name="external" class="size-3.5" />Open in {info.live.server}</a>{/if}
+							{#if info.live.link}<a href={info.live.link} target="_blank" rel="noopener" class="btn-ghost justify-center px-3 py-2 text-xs {info.plex ? '' : 'col-span-2'}"><img src="/logos/{series ? 'sonarr' : 'radarr'}.svg" alt="" class="size-3.5" />Open in {info.live.server}</a>{/if}
 							{#if info.plex}<a href={info.plex} target="_blank" rel="noopener" class="btn-ghost justify-center px-3 py-2 text-xs {info.live.link ? '' : 'col-span-2'}"><PlexMark class="size-3.5" color="#e5a00d" />Open in Plex</a>{/if}
 						</div>
 					{/if}
@@ -320,16 +323,16 @@
 			<section>
 				{@render head('Actions')}
 				<div class="space-y-3">
-					{#if info.live.inArr}
+					{#if info.live.inArr && !info.live.hasFile}
 						<div>
-							<button class="btn-ghost w-full justify-center py-2.5" disabled={!!busy} onclick={fix}><Icon name="check" class="size-4" />{busy === 'fix' ? 'Fixing…' : 'Fix'}</button>
-							<p class="mt-1.5 text-[11px] text-gray-500">{openReq ? 'Adds it back if it went missing, turns monitoring back on for what was asked, and starts a search.' : `Makes sure ${info.live.server} is watching for it and starts a search.`}</p>
+							<button class="btn-ghost w-full justify-center py-2.5" disabled={!!busy} onclick={fix}><Icon name="search" class="size-4" />{busy === 'fix' ? 'Searching…' : 'Search again'}</button>
+							<p class="mt-1.5 text-[11px] text-gray-500">Asks {info.live.server} to look for a download now, and turns monitoring back on if it was off.</p>
 						</div>
 					{/if}
 					{#if info.live.hasFile && can('redownload')}
 						<div>
 							<button class="btn-ghost w-full justify-center py-2.5" onclick={() => (redownloadOpen = true)}><Icon name="refresh" class="size-4" />Redownload</button>
-							<p class="mt-1.5 text-[11px] text-gray-500">Deletes the current {series ? 'files of the seasons you pick' : 'file'} and downloads a new copy. The release it came from isn't grabbed again.</p>
+							<p class="mt-1.5 text-[11px] text-gray-500">{series ? `Deletes the files of the seasons you pick from ${info.live.server}, blocks those releases so they aren't downloaded again, and downloads new ones.` : `Deletes the file from ${info.live.server}, blocks that release so it isn't downloaded again, and downloads a new one.`}</p>
 						</div>
 					{/if}
 				</div>
@@ -364,9 +367,9 @@
 					{:else if !info.plex && !openReq}
 						{@render danger('block', 'Block', 'Stops anyone from requesting it.')}
 					{/if}
-					{#if info.live.inArr && can('redownload')}{@render danger('remove', `Remove from ${info.live.server}`, `Takes it out of ${info.live.server} with its files.`)}{/if}
-					{@render danger('clear', 'Clear data', 'Forgets its requests and issues in Flixarr only.')}
-					{#if can('redownload')}{@render danger('delete', 'Delete everywhere', `${info.live.server || 'Radarr or Sonarr'}, Plex, Maintainerr and Flixarr.`)}{/if}
+					{@render danger('clear', 'Clear data', 'Removes its requests and issues from Flixarr. Nothing else changes.')}
+					{#if info.live.inArr && can('redownload')}{@render danger('remove', `Remove from ${info.live.server}`, `Removes the ${series ? 'show' : 'movie'} from ${info.live.server} and deletes its files.`)}{/if}
+					{#if can('redownload') && (info.live.inArr || info.plex)}{@render danger('delete', 'Delete everywhere', `Removes it from ${list(places)} and deletes its files.`)}{/if}
 				</div>
 			</section>
 		</div>
