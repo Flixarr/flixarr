@@ -124,6 +124,7 @@
 
 	const count = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 	let deleteOpen = $state(false);
+	const deletable = $derived(!!info && ((info.live.inArr && can('redownload')) || info.requests.length > 0 || info.issues.length > 0));
 
 	// History: the title's whole story, newest first (requests' steps, issues, Plex, Redownload, Delete).
 	let allHistory = $state(false);
@@ -326,6 +327,7 @@
 			<div class="flex flex-wrap empty:hidden"><LeavingActions type={item.type as 'movie' | 'series'} id={item.id} title={item.title} /></div>
 
 			<!-- Actions: repairs first, then what removes things (each asks first) -->
+			{#if info.live.inArr && (!info.live.hasFile || can('redownload'))}
 			<section>
 				{@render head('Actions')}
 				<div class="space-y-3">
@@ -343,7 +345,9 @@
 					{/if}
 				</div>
 			</section>
+			{/if}
 
+			{#if deletable || info.blocked || (!info.plex && !openReq)}
 			<section>
 				<h3 class="mb-2.5 text-base font-bold text-red-300">Delete</h3>
 				<div class="divide-y divide-red-500/20 rounded-xl ring-1 ring-red-500/30">
@@ -371,12 +375,15 @@
 					{:else if !info.plex && !openReq}
 						{@render danger('block', 'Block', 'Stops anyone from requesting it.')}
 					{/if}
+					{#if deletable}
 					<div class="flex items-center justify-between gap-3 p-3">
 						<span class="min-w-0"><span class="block text-sm font-medium text-gray-100">Delete</span><span class="block text-[11px] text-gray-500">Choose what goes: the {series ? 'show' : 'movie'} and its files, its requests and issues in Flixarr, or both.</span></span>
 						<button class="shrink-0 rounded-lg border border-red-500/40 px-3 py-1.5 text-xs font-medium text-red-300 transition hover:bg-red-500/10" disabled={!!busy} onclick={() => (deleteOpen = true)}>Delete…</button>
 					</div>
+					{/if}
 				</div>
 			</section>
+			{/if}
 		</div>
 	{/if}
 </Modal>
