@@ -24,7 +24,7 @@ import (
 var Events = []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved", "server_problem", "request_leaving"}
 
 // Channels Flixarr can send through.
-var Channels = []string{"discord", "webhook", "email", "push"}
+var Channels = []string{"discord", "webhook", "email", "push", "telegram", "slack", "pushover", "gotify", "ntfy", "pushbullet"}
 
 // Config is one channel's settings. Secret fields (the Discord webhook URL, the webhook's address and
 // Authorization header) are stored encrypted and never sent back to the browser.
@@ -48,6 +48,10 @@ type Config struct {
 	Password string `json:"password,omitempty"`
 	From     string `json:"from,omitempty"`
 	FromName string `json:"fromName,omitempty"`
+	// Telegram, Slack, Pushover, Gotify, ntfy, Pushbullet (see services.go)
+	Token    string `json:"token,omitempty"`  // the service's token (Slack: its webhook URL)
+	Target   string `json:"target,omitempty"` // Telegram chat ID, Pushover user key, ntfy topic
+	Server   string `json:"server,omitempty"` // Gotify / ntfy address
 	TestTo   string `json:"testTo,omitempty"` // where Send test goes (not saved)
 	TestUser int64  `json:"-"`                // whose devices the Web Push test goes to
 }
@@ -57,6 +61,18 @@ var defaults = map[string]Config{
 	"webhook": {Events: []string{"request_available", "request_failed"}, Method: "POST"},
 	"push":    {Events: []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved", "server_problem", "request_leaving"}},
 	"email":   {Events: []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved", "server_problem", "request_leaving"}, Port: 587, Security: "starttls", FromName: "Flixarr"},
+	"ntfy":    {Events: adminEvents, Server: "https://ntfy.sh"},
+}
+
+// adminEvents are the text channels' starting events (they go to one place, like Discord).
+var adminEvents = []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved", "server_problem"}
+
+func init() {
+	for _, ch := range Simple {
+		if _, ok := defaults[ch]; !ok {
+			defaults[ch] = Config{Events: adminEvents}
+		}
+	}
 }
 
 // Notifier loads the channel settings and sends.
@@ -198,6 +214,9 @@ func (c Config) validate(ch string) error {
 			return fmt.Errorf("that %s doesn't look right", what)
 		}
 		return nil
+	}
+	if slices.Contains(Simple, ch) {
+		return c.validateSimple(ch)
 	}
 	switch ch {
 	case "discord":
@@ -415,6 +434,9 @@ func (n *Notifier) deliver(ctx context.Context, ch string, c Config, m Message) 
 			ids = []int64{c.TestUser}
 		}
 		return n.push(ctx, ids, m)
+	}
+	if slices.Contains(Simple, ch) {
+		return n.deliverSimple(ctx, ch, c, m)
 	}
 	return errors.New("unknown channel")
 }

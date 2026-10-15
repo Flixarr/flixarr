@@ -29,7 +29,7 @@
 		['plex', 'Plex', 'play', 'Server, libraries, scans'],
 		['services', 'Services', 'plus', 'Radarr, Sonarr'],
 		['profiles', 'Quality profiles', 'flag', "Flixarr's profiles for Radarr and Sonarr"],
-		['notifications', 'Notifications', 'bell', 'Discord, webhooks, email, push'],
+		['notifications', 'Notifications', 'bell', 'Discord, Telegram, Slack, email, push and more'],
 		['discover', 'Discover', 'discover', 'Discover page rows'],
 		['blocklist', 'Blocklist', 'close', "Titles that can't be requested"],
 		['cache', 'Cache', 'refresh', 'Saved results, images'],

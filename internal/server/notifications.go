@@ -17,6 +17,7 @@ type channelView struct {
 	URLHint        string `json:"urlHint,omitempty"`
 	AuthSet        bool   `json:"authSet"`
 	PasswordSet    bool   `json:"passwordSet"`
+	TokenSet       bool   `json:"tokenSet"`
 }
 
 func hint(s string) string {
@@ -31,8 +32,8 @@ func viewOf(c notify.Config) channelView {
 	if u, err := url.Parse(c.URL); err == nil && u.Host != "" {
 		v.URLHint = u.Scheme + "://" + u.Host + "/…" // the path can hold a token, so only the host is shown
 	}
-	v.PasswordSet = c.Password != ""
-	v.WebhookURL, v.Auth, v.Password = "", "", ""
+	v.PasswordSet, v.TokenSet = c.Password != "", c.Token != ""
+	v.WebhookURL, v.Auth, v.Password, v.Token = "", "", "", ""
 	return v
 }
 
@@ -72,6 +73,9 @@ func (s *Server) merged(w http.ResponseWriter, r *http.Request) (string, notify.
 	}
 	if c.Password == "" && !in.ClearAuth {
 		c.Password = old.Password
+	}
+	if c.Token == "" && !in.ClearAuth {
+		c.Token = old.Token
 	}
 	if c.Events == nil {
 		c.Events = []string{}

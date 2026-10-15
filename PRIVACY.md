@@ -39,7 +39,7 @@ Radarr, Sonarr, Maintainerr and your Plex server are contacted at the addresses 
 
 ### Notifications (only what you set up)
 
-Settings → Notifications sends messages only to what an admin turns on: Discord or other webhooks at the addresses entered there, email through the mail server entered there, and push notifications through each browser's own push service (for example Google's or Apple's) for people who allow them. A message names the title and the person it's about.
+Settings → Notifications sends messages only to what an admin turns on: Discord, Slack or other webhooks at the addresses entered there, Telegram, Pushover, Pushbullet, Gotify or ntfy with the tokens entered there, email through the mail server entered there, and push notifications through each browser's own push service (for example Google's or Apple's) for people who allow them. A message names the title and the person it's about.
 
 ### Images
 

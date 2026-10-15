@@ -10,6 +10,7 @@
 		on: boolean; events: string[]; botName?: string; poster: boolean; mentionHere: boolean; method?: string;
 		webhookUrlHint?: string; urlHint?: string; authSet: boolean;
 		host?: string; port?: number; security?: string; username?: string; from?: string; fromName?: string; passwordSet?: boolean;
+		target?: string; server?: string; tokenSet?: boolean;
 	};
 	type Info = { channels: Record<string, Channel>; events: string[]; appUrl: string };
 
@@ -17,8 +18,24 @@
 		['discord', 'Discord', 'Channel webhook'],
 		['webhook', 'Webhook', 'Any service (n8n, Home Assistant…)'],
 		['email', 'Email', 'SMTP, to the people involved'],
-		['push', 'Web Push', 'Browser and phone notifications']
+		['push', 'Web Push', 'Browser and phone notifications'],
+		['telegram', 'Telegram', 'A chat or group'],
+		['slack', 'Slack', 'Channel webhook'],
+		['pushover', 'Pushover', 'Phone notifications'],
+		['gotify', 'Gotify', 'Self-hosted'],
+		['ntfy', 'ntfy', 'ntfy.sh or self-hosted'],
+		['pushbullet', 'Pushbullet', 'Phone and browser']
 	];
+	// The text services: which fields each one needs, with where to find them.
+	type Field = { label: string; placeholder: string; help: string; optional?: boolean };
+	const SIMPLE: Record<string, { token: Field; target?: Field; server?: Field }> = {
+		telegram: { token: { label: 'Bot token', placeholder: '123456:ABC…', help: 'Make a bot with @BotFather in Telegram; it gives you the token.' }, target: { label: 'Chat ID', placeholder: '-1001234567890', help: 'Add the bot to the chat, then get the chat ID (for example from @userinfobot).' } },
+		slack: { token: { label: 'Webhook URL', placeholder: 'https://hooks.slack.com/services/…', help: 'In Slack: an app with Incoming Webhooks turned on, Add New Webhook to Workspace, pick the channel.' } },
+		pushover: { token: { label: 'Application token', placeholder: 'azGDORePK8gMaC0QOYAMyEEuzJnyUi', help: 'Create an application on pushover.net to get its API token.' }, target: { label: 'User key', placeholder: 'uQiRzpo4DXghDmr9QzzfQu27cmVRsG', help: 'Shown on your pushover.net dashboard (or a group key).' } },
+		gotify: { server: { label: 'Gotify address', placeholder: 'https://gotify.example.com', help: '' }, token: { label: 'Application token', placeholder: 'AbCdEf…', help: 'In Gotify: Apps, Create Application, copy its token.' } },
+		ntfy: { server: { label: 'Server', placeholder: 'https://ntfy.sh', help: 'ntfy.sh or your own ntfy server.' }, target: { label: 'Topic', placeholder: 'flixarr-alerts', help: 'Subscribe to the same topic in the ntfy app.' }, token: { label: 'Access token', placeholder: 'tk_…', help: 'Only if the topic is protected.', optional: true } },
+		pushbullet: { token: { label: 'Access token', placeholder: 'o.AbCdEf…', help: 'pushbullet.com, Settings, Account, Create Access Token.' } }
+	};
 	const EVENTS: Record<string, [string, string]> = {
 		request_submitted: ['Request submitted', 'Someone requests something.'],
 		request_approved: ['Request approved', 'A waiting request was approved.'],
@@ -50,11 +67,14 @@
 		form = { ...info!.channels[k], secret: '', auth: '', clearAuth: false };
 	}
 	const saved = $derived(info?.channels[tab]);
-	const hasSecret = $derived(tab === 'push' ? true : tab === 'discord' ? !!saved?.webhookUrlHint : tab === 'email' ? !!(form.host?.trim() && form.from?.trim()) : !!saved?.urlHint);
+	const hasSecret = $derived(
+		tab === 'push' ? true : tab === 'discord' ? !!saved?.webhookUrlHint : tab === 'email' ? !!(form.host?.trim() && form.from?.trim()) : SIMPLE[tab] ? !!saved?.tokenSet || !!SIMPLE[tab].token.optional : !!saved?.urlHint
+	);
 
 	function body() {
 		const b: Record<string, unknown> = { on: form.on, events: form.events, poster: form.poster, mentionHere: form.mentionHere, botName: form.botName, method: form.method };
 		if (tab === 'discord') b.webhookUrl = form.secret.trim();
+		else if (SIMPLE[tab]) Object.assign(b, { token: form.secret.trim(), target: form.target?.trim(), server: form.server?.trim(), clearAuth: form.clearAuth });
 		else if (tab === 'email') Object.assign(b, { host: form.host?.trim(), port: Number(form.port), security: form.security, username: form.username?.trim(), password: form.secret, from: form.from?.trim(), fromName: form.fromName, clearAuth: form.clearAuth });
 		else Object.assign(b, { url: form.secret.trim(), auth: form.auth.trim(), clearAuth: form.clearAuth });
 		return JSON.stringify(b);
@@ -125,6 +145,20 @@
 				</div>
 				<div class="py-3"><Toggle checked={form.poster} label="Include the poster" onchange={(on) => (form.poster = on)} /></div>
 				<div class="py-3"><Toggle checked={form.mentionHere} label="Mention @here for new requests" about="Pings everyone online in the channel when someone requests something." onchange={(on) => (form.mentionHere = on)} /></div>
+			{:else if SIMPLE[tab]}
+				{@const f = SIMPLE[tab]}
+				{#if f.server}
+					<div class="py-3"><label for="n-server" class="block text-sm">{f.server.label}</label><input id="n-server" class={input} bind:value={form.server} placeholder={f.server.placeholder} autocomplete="off" spellcheck="false" />{#if f.server.help}<p class="mt-1 text-xs text-gray-500">{f.server.help}</p>{/if}</div>
+				{/if}
+				{#if f.target}
+					<div class="py-3"><label for="n-target" class="block text-sm">{f.target.label}</label><input id="n-target" class={input} bind:value={form.target} placeholder={f.target.placeholder} autocomplete="off" spellcheck="false" /><p class="mt-1 text-xs text-gray-500">{f.target.help}</p></div>
+				{/if}
+				<div class="py-3">
+					<label for="n-token" class="block text-sm">{f.token.label}{#if f.token.optional} <span class="text-gray-500">(optional)</span>{/if}</label>
+					<input id="n-token" class={input} type="password" autocomplete="off" spellcheck="false" bind:value={form.secret} placeholder={saved?.tokenSet && !form.clearAuth ? 'Saved. Paste a new one to replace it.' : f.token.placeholder} />
+					<p class="mt-1 text-xs text-gray-500">{f.token.help}</p>
+					{#if saved?.tokenSet && f.token.optional && !form.clearAuth}<button class="mt-1 text-xs text-gray-500 hover:text-red-300" onclick={() => (form.clearAuth = true)}>Remove it</button>{/if}
+				</div>
 			{:else if tab === 'push'}
 				<p class="py-3 text-sm text-gray-400">No setup needed. Each person turns it on for each of their devices in their Profile. On iPhone, Flixarr has to be added to the home screen first (iOS 16.4 or newer). Like email, it goes to the people involved. Send test goes to your own devices.</p>
 			{:else if tab === 'email'}
