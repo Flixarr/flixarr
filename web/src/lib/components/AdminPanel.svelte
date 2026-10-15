@@ -349,7 +349,7 @@
 
 			{#if deletable || info.blocked || (!info.plex && !openReq)}
 			<section>
-				<h3 class="mb-2.5 text-base font-bold text-red-300">Delete</h3>
+				<h3 class="mb-2.5 text-base font-bold text-red-300">{deletable ? 'Delete' : 'Block'}</h3>
 				<div class="divide-y divide-red-500/20 rounded-xl ring-1 ring-red-500/30">
 					{#snippet danger(action: 'block', label: string, help: string)}
 						<div class="p-3">
