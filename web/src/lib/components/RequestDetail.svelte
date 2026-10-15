@@ -75,7 +75,7 @@
 		}))
 	);
 	const person = (name: string, avatar = '') => ({ username: name || '?', avatar }) as User;
-	const facts = $derived(r ? [r.year, series ? 'Series' : 'Movie', ...(title?.genres?.slice(0, 2) ?? []), title?.runtime ? `${Math.floor(title.runtime / 60) ? Math.floor(title.runtime / 60) + 'h ' : ''}${title.runtime % 60}m` : ''].filter(Boolean) : []);
+	const facts = $derived(r ? [r.year, series ? 'Series' : 'Movie', ...(title?.genres?.slice(0, 2) ?? []), !series && title?.runtime ? `${Math.floor(title.runtime / 60) ? Math.floor(title.runtime / 60) + 'h ' : ''}${title.runtime % 60}m` : ''].filter(Boolean) : []);
 
 	async function act(what: 'approve' | 'decline' | 'retry' | 'fix', body: object = {}) {
 		busy = what;
@@ -204,7 +204,7 @@
 				<section>
 					{@render head(series ? 'Files' : 'File')}
 					<div class="card">
-						<FolderCard path={d.live.file.path} size={d.live.file.size} quality={d.live.file.quality} release={d.live.file.release} sub={series ? `${episodes} episode${episodes === 1 ? '' : 's'}` : ''} />
+						<FolderCard path={d.live.file.path} size={d.live.file.size} quality={series ? `${episodes} episode${episodes === 1 ? '' : 's'}` : d.live.file.quality} release={d.live.file.release} />
 					</div>
 				</section>
 			{/if}
