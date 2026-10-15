@@ -13,6 +13,7 @@ export interface Card {
 	genres: number[];
 	overview: string;
 	character?: string;
+	creditId?: string; // a person's series credit: opens the show with their episodes marked
 }
 
 export interface Page<T> {

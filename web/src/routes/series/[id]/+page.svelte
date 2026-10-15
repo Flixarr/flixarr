@@ -42,6 +42,18 @@
 		api<Record<number, number>>(`/plex/seasons/${tid}`).then((d) => tid === page.params.id && (inPlex = d)).catch(() => {});
 	});
 
+	// Opened from a person's page (?credit=…): which seasons and episodes they're in, marked below.
+	type Credit = { person: string; character: string; seasons: number[]; episodes: [number, number][] };
+	let credit = $state<Credit | null>(null);
+	$effect(() => {
+		const c = page.url.searchParams.get('credit');
+		credit = null;
+		if (c && /^[0-9a-f]{24}$/.test(c)) meta<Credit>(`credit/${c}`).then((d) => (credit = d)).catch(() => {});
+	});
+	const creditIn = (n: number) => (credit ? credit.episodes.filter(([s]) => s === n).length : 0);
+	const creditEp = (n: number, e: number) => !!credit?.episodes.some(([s, x]) => s === n && x === e);
+	const creditSeason = (n: number) => !!credit && (creditIn(n) > 0 || (!credit.episodes.length && credit.seasons.includes(n)));
+
 	function openSeason(n: number, isOpen: boolean) {
 		if (!isOpen || !t || episodes[n]) return;
 		episodes[n] = 'loading';
@@ -88,15 +100,19 @@
 					</div>
 				</section>
 				<section class="space-y-3 px-4 laptop:px-0">
+					{#if credit?.person}
+						<p class="rounded-lg bg-primary/10 px-3 py-2 text-sm text-gray-200 ring-1 ring-primary/30">{credit.episodes.length ? `${credit.person} is in ${credit.episodes.length} episode${credit.episodes.length === 1 ? '' : 's'}` : `${credit.person} is in the marked seasons`}{credit.character ? ` (as ${credit.character})` : ''}. They're marked below.</p>
+					{/if}
 					<div class="flex items-center justify-between"><h2 class="text-base font-semibold">Seasons</h2>
 						<span class="text-xs text-gray-400">{t.next ? 'Next episode ' + fmtDate(t.next) : t.status === 'Ended' ? 'Series ended' : ''}</span></div>
 					<div class="space-y-2">
 						{#each t.seasons as s (s.n)}
-							<details class="group card overflow-hidden" ontoggle={(e) => openSeason(s.n, (e.currentTarget as HTMLDetailsElement).open)}>
+							<details class="group card overflow-hidden {creditSeason(s.n) ? 'ring-1 ring-primary/50' : ''}" ontoggle={(e) => openSeason(s.n, (e.currentTarget as HTMLDetailsElement).open)}>
 								<summary class="flex cursor-pointer list-none items-center gap-3 p-3 hover:bg-white/5">
 									{#if s.poster}<Img path={s.poster} kind="poster" sizes="40px" class="aspect-[2/3] w-10 shrink-0 rounded-md bg-gray-800 ring-1 ring-gray-700/60" />
 									{:else}<div class="grid h-15 w-10 place-items-center rounded-md bg-gray-800 text-xs text-gray-500">S{s.n}</div>{/if}
 									<div class="min-w-0 flex-1"><div class="truncate text-sm font-medium">{s.name}</div><div class="text-xs text-gray-400">{s.episodes} episodes{s.air ? ' · ' + s.air.slice(0, 4) : ''}</div></div>
+									{#if creditSeason(s.n)}<span class="shrink-0 rounded-md bg-primary/15 px-1.5 py-0.5 text-[11px] text-primary-light ring-1 ring-primary/40">{creditIn(s.n) ? `${creditIn(s.n)} with ${credit?.person.split(' ')[0]}` : `With ${credit?.person.split(' ')[0]}`}</span>{/if}
 									{#if inPlex[s.n]}
 										<span class="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] ring-1 {inPlex[s.n] >= s.episodes ? 'bg-green-500/15 text-green-400 ring-green-500/40' : 'bg-green-500/10 text-green-300 ring-green-500/30'}">{inPlex[s.n] >= s.episodes ? 'In Plex' : `${inPlex[s.n]} of ${s.episodes} in Plex`}</span>
 									{/if}
@@ -109,10 +125,10 @@
 										<div class="p-3 text-xs text-red-400">Couldn't load episodes.</div>
 									{:else}
 										{#each (episodes[s.n] as Season).episodes as e (e.n)}
-											<div class="flex gap-3 border-b border-gray-700/30 p-3 last:border-0">
+											<div class="flex gap-3 border-b border-gray-700/30 p-3 last:border-0 {creditEp(s.n, e.n) ? 'bg-primary/10' : ''}">
 												<div class="aspect-video w-28 shrink-0 overflow-hidden rounded-md bg-gray-800 tablet:w-36">{#if e.still}<Img path={e.still} kind="still" sizes="(min-width: 640px) 144px, 112px" class="h-full w-full" />{/if}</div>
 												<div class="min-w-0 flex-1">
-													<div class="flex items-center gap-2 text-sm"><span class="text-xs text-gray-500">E{e.n}</span><span class="truncate font-medium">{e.name}</span></div>
+													<div class="flex items-center gap-2 text-sm"><span class="text-xs text-gray-500">E{e.n}</span><span class="truncate font-medium">{e.name}</span>{#if creditEp(s.n, e.n)}<span class="shrink-0 rounded bg-primary/20 px-1.5 py-0.5 text-[10px] font-semibold text-primary-light">{credit?.person.split(' ')[0]}</span>{/if}</div>
 													<div class="text-xs text-gray-500">{fmtDate(e.air)}{e.runtime ? ' · ' + e.runtime + 'm' : ''}</div>
 													<p class="mt-1 line-clamp-2 text-xs text-gray-400">{e.overview}</p>
 												</div>
