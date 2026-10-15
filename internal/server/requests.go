@@ -240,6 +240,7 @@ func (s *Server) redownload(w http.ResponseWriter, r *http.Request, u *store.Use
 		return
 	}
 	s.Log.Info("redownload asked", "by", u.Username, "type", in.Type, "tmdb", in.TmdbID)
+	s.Store.AddTitleEvent(in.Type, in.TmdbID, "redownload", store.SeasonsText(in.Seasons), u.ID, "")
 	writeJSON(w, http.StatusOK, map[string]any{"done": done})
 }
 

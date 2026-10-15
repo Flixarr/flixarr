@@ -126,3 +126,33 @@ func TestSeriesCoverageFor(t *testing.T) {
 		t.Fatal("blocked keys")
 	}
 }
+
+func TestTitleHistory(t *testing.T) {
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	st, _ := Open(dir, box)
+	t.Cleanup(func() { st.Close() })
+	u, _ := st.CreateUser(User{PlexID: 1, Username: "eryn", Role: "Admin"})
+	r, _ := st.CreateRequest(Request{Type: "series", TmdbID: 1396, Title: "Breaking Bad", UserID: u.ID, Status: "sent", Mode: "seasons", Seasons: []int{2}})
+	time.Sleep(1100 * time.Millisecond)
+	r.Status = "available"
+	st.UpdateRequest(r)
+	st.SavePlexItem(PlexItem{Type: "series", TmdbID: 1396, RatingKey: "7", AddedAt: time.Now().Add(time.Hour).Unix(), SeenAt: "x"})
+	is, _ := st.CreateIssue(Issue{Type: "series", TmdbID: 1396, Title: "Breaking Bad", Kind: "Audio", Sub: "Too quiet", UserID: u.ID})
+	st.SetIssueStatus(is.ID, u.ID, "resolved")
+	st.AddTitleEvent("series", 1396, "redownload", "Season 2", u.ID, time.Now().Add(2*time.Hour).UTC().Format(time.RFC3339))
+	before, _ := st.TitleHistory("series", 1396)
+	kinds := map[string]HistoryItem{}
+	for _, x := range before {
+		kinds[x.Kind] = x
+	}
+	if kinds["request:requested"].Detail != "Season 2" || kinds["request:requested"].Who != "eryn" || kinds["request:available"].At == "" || kinds["issue"].Note != "Audio: Too quiet" || kinds["resolved"].Who != "eryn" {
+		t.Fatalf("history: %+v", before)
+	}
+	st.ClearTitle("series", 1396)
+	st.AddTitleEvent("series", 1396, "cleared", "", u.ID, time.Now().Add(3*time.Hour).UTC().Format(time.RFC3339))
+	h, err := st.TitleHistory("series", 1396)
+	if err != nil || len(h) != 3 || h[0].Kind != "cleared" || h[1].Kind != "redownload" || h[1].Who != "eryn" || h[2].Kind != "plex" {
+		t.Fatalf("after clearing, only title events stay: %+v %v", h, err)
+	}
+}

@@ -60,6 +60,7 @@ func (s *Server) titleAdmin(w http.ResponseWriter, r *http.Request, _ *store.Use
 		issues = append(issues, a)
 	}
 	_, kept := s.Store.KeepFor(typ, id)
+	history, _ := s.Store.TitleHistory(typ, id)
 	key := typ + ":" + strconv.Itoa(id)
 	plex := ""
 	if got, err := s.Library.Lookup([]string{key}); err == nil {
@@ -72,6 +73,7 @@ func (s *Server) titleAdmin(w http.ResponseWriter, r *http.Request, _ *store.Use
 		"plex":     plex,
 		"issues":   issues,
 		"kept":     kept,
+		"history":  history,
 	})
 }
 
@@ -126,6 +128,7 @@ func (s *Server) titleDelete(w http.ResponseWriter, r *http.Request, u *store.Us
 			return
 		}
 		done = append(done, "Deleted it and its files from "+requests.ArrName(typ)+".")
+		s.Store.AddTitleEvent(typ, id, "deleted", requests.ArrName(typ), u.ID, "")
 	}
 	if in.Data {
 		if err := s.Requests.ClearTitle(typ, id); err != nil {
@@ -134,6 +137,7 @@ func (s *Server) titleDelete(w http.ResponseWriter, r *http.Request, u *store.Us
 		}
 		s.syncIssueAlerts(nil, u, "")
 		done = append(done, "Cleared its requests and issues.")
+		s.Store.AddTitleEvent(typ, id, "cleared", "", u.ID, "") // after the clear: history keeps this step
 	}
 	s.Log.Info("title deleted", "type", typ, "tmdb", id, "files", in.Files, "data", in.Data, "by", u.Username)
 	writeJSON(w, http.StatusOK, map[string]any{"done": strings.Join(done, " ")})

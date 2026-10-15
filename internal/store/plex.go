@@ -1,6 +1,9 @@
 package store
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 // PlexItem is a title in Plex.
 type PlexItem struct {
@@ -20,6 +23,13 @@ func (s *Store) SavePlexItem(it PlexItem) (isNew bool, err error) {
 	_, err = s.db.Exec(`INSERT INTO plex_items (type, tmdb_id, rating_key, section, title, added_at, seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(type, tmdb_id) DO UPDATE SET rating_key = excluded.rating_key, section = excluded.section, title = excluded.title, added_at = excluded.added_at, seen_at = MAX(seen_at, excluded.seen_at)`,
 		it.Type, it.TmdbID, it.RatingKey, it.Section, it.Title, it.AddedAt, it.SeenAt)
+	if n == 0 && err == nil {
+		at := ""
+		if it.AddedAt > 0 {
+			at = time.Unix(it.AddedAt, 0).UTC().Format(time.RFC3339)
+		}
+		s.AddTitleEvent(it.Type, it.TmdbID, "plex", "", 0, at) // History: when it arrived in Plex
+	}
 	return n == 0 && err == nil, err
 }
 
