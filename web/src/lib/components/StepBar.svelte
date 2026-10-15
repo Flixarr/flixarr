@@ -1,6 +1,7 @@
 <script lang="ts">
 	// Where a request is, as a segmented bar: Requested → Downloading → Available for everyone, or every
-	// step (Requested → Grabbed → Downloading → Importing → Available) with full. Labels under it optional.
+	// step (Requested → Grabbed → Downloading → Importing → Available) with full. Labels under it optional
+	// (not on phones, where five would be cut to nothing).
 	import { simple, step, SIMPLE_STEPS, STEPS } from '#lib/requeststatus.ts';
 	import type { Request } from '#lib/types.ts';
 	let { status, progress = 0, full = false, labels = false, class: cls = '' }: { status: Request['status']; progress?: number; full?: boolean; labels?: boolean; class?: string } = $props();
@@ -17,7 +18,7 @@
 		{#each names as n, i (n)}
 			<div>
 				<div class="h-1.5 overflow-hidden rounded-full bg-gray-700/60"><div class="h-full rounded-full {done ? 'bg-green-500' : 'bg-primary'}" style="width:{i < at ? 100 : i === at ? now : 0}%"></div></div>
-				{#if labels}<div class="mt-1 truncate text-[11px] {i <= at ? 'text-gray-300' : 'text-gray-500'}">{n}</div>{/if}
+				{#if labels}<div class="mt-1 hidden truncate text-[11px] tablet:block {i <= at ? 'text-gray-300' : 'text-gray-500'}">{n}</div>{/if}
 			</div>
 		{/each}
 	</div>
