@@ -1,9 +1,11 @@
 package server
 
 import (
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -64,5 +66,26 @@ func TestTitleDelete(t *testing.T) {
 	}
 	if got, _ := st.RequestsForTitle("movie", 603); len(got) != 0 {
 		t.Fatal("requests left")
+	}
+}
+
+func TestRequestDetailForEveryone(t *testing.T) {
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	st, _ := store.Open(dir, box)
+	t.Cleanup(func() { st.Close() })
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	s := &Server{Store: st, Log: log, Requests: &requests.Service{Store: st, Log: log}}
+	admin, _ := st.CreateUser(store.User{PlexID: 1, Username: "admin", Role: "Admin"})
+	user, _ := st.CreateUser(store.User{PlexID: 2, Username: "eryn", Perms: []string{"requestMovies"}})
+	req, _ := st.CreateRequest(store.Request{Type: "movie", TmdbID: 603, Title: "The Matrix", UserID: admin.ID, Status: "failed", Error: "Radarr said no"})
+	r := httptest.NewRequest("GET", "/api/requests/1/detail", nil)
+	r.SetPathValue("id", strconv.FormatInt(req.ID, 10))
+	w := httptest.NewRecorder()
+	s.requestDetail(w, r, user)
+	var d requests.Detail
+	json.Unmarshal(w.Body.Bytes(), &d)
+	if w.Code != 200 || d.Request.ID != req.ID || d.Request.Detail != "" || d.Live.Link != "" || strings.Contains(d.Request.Error, "Radarr") {
+		t.Fatalf("someone else's request, as a user: %d %+v", w.Code, d.Request)
 	}
 }

@@ -240,7 +240,7 @@
 				<button class="btn px-4 py-1.5 text-xs" disabled={!!busy} onclick={() => act('approve')}>{busy === 'approve' ? 'Approving…' : 'Approve'}</button>
 			{:else if r.status === 'failed'}
 				<button class="btn px-4 py-1.5 text-xs" disabled={!!busy} onclick={() => act('retry')}>{busy === 'retry' ? 'Trying…' : 'Try again'}</button>
-			{:else if !ended && !d?.live.hasFile}
+			{:else if !ended && !d?.live.hasFile && !d?.live.queue.length}
 				<button class="btn-ghost px-3 py-1.5 text-xs" disabled={!!busy} onclick={() => act('fix')}>{busy === 'fix' ? 'Searching…' : 'Search again'}</button>
 			{/if}
 		{:else if r && r.status === 'pending' && r.userId === session.me?.id}

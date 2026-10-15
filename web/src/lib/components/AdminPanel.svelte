@@ -317,11 +317,11 @@
 			<div class="flex flex-wrap empty:hidden"><LeavingActions type={item.type as 'movie' | 'series'} id={item.id} title={item.title} /></div>
 
 			<!-- Actions: repairs first, then what removes things (each asks first) -->
-			{#if info.live.inArr && (!info.live.hasFile || can('redownload'))}
+			{#if info.live.inArr && ((!info.live.hasFile && !info.live.queue.length) || (info.live.hasFile && can('redownload')))}
 			<section>
 				{@render head('Actions')}
 				<div class="space-y-3">
-					{#if info.live.inArr && !info.live.hasFile}
+					{#if info.live.inArr && !info.live.hasFile && !info.live.queue.length}
 						<div>
 							<button class="btn-ghost w-full justify-center py-2.5" disabled={!!busy} onclick={fix}><Icon name="search" class="size-4" />{busy === 'fix' ? 'Searching…' : 'Search again'}</button>
 							<p class="mt-1.5 text-[11px] text-gray-500">Asks {info.live.server} to look for a download now, and turns monitoring back on if it was off.</p>
