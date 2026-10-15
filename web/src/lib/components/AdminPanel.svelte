@@ -126,8 +126,13 @@
 	let deleteOpen = $state(false);
 	const deletable = $derived(!!info && ((info.live.inArr && can('redownload')) || info.requests.length > 0 || info.issues.length > 0));
 
-	// History: the title's whole story, newest first (requests' steps, issues, Plex, Redownload, Delete).
+	// History: the title's whole story, oldest first like a request's timeline (requests' steps, issues,
+	// Plex, Redownload, Delete). Folded, it shows the newest 5; the earlier ones open above them.
 	let allHistory = $state(false);
+	const story5 = $derived.by(() => {
+		const all = [...(info?.history ?? [])].reverse();
+		return { shown: allHistory ? all : all.slice(-5), earlier: Math.max(0, all.length - 5) };
+	});
 	function story(h: History): { text: string; dot: string } {
 		const by = h.who ? ` by ${h.who}` : '';
 		if (h.kind.startsWith('request:')) {
@@ -136,7 +141,7 @@
 			return { text: (EVENT_TEXT[st] ?? st) + (st === 'requested' || st === 'approved' || st === 'declined' ? by : '') + (h.detail ? ` · ${h.detail}` : ''), dot };
 		}
 		const t: Record<string, string> = {
-			plex: 'Added to Plex', issue: `Issue reported${by}: ${h.note}`, resolved: `Issue resolved${by}: ${h.note}`,
+			plex: series ? 'First episodes in Plex' : 'Added to Plex', issue: `Issue reported${by}: ${h.note}`, resolved: `Issue resolved${by}: ${h.note}`,
 			redownload: `Redownload${h.note ? ` (${h.note})` : ''}${by}`, deleted: `Deleted from ${h.note} with its files${by}`, cleared: `Requests and issues cleared${by}`
 		};
 		const dot = h.kind === 'plex' ? 'bg-green-500' : h.kind === 'issue' ? 'bg-yellow-500' : h.kind === 'deleted' || h.kind === 'cleared' ? 'bg-gray-500' : 'bg-primary';
@@ -205,8 +210,9 @@
 			{#if info.history?.length}
 				<section>
 					{@render head('History')}
+					{#if story5.earlier}<button class="mb-2 text-xs text-gray-400 hover:text-white" onclick={() => (allHistory = !allHistory)}>{allHistory ? 'Show less' : `Show ${story5.earlier} earlier`}</button>{/if}
 					<ol class="relative ml-1.5 space-y-3 border-l border-gray-700/60 pl-4">
-						{#each allHistory ? info.history : info.history.slice(0, 5) as h, i (i)}
+						{#each story5.shown as h, i (i)}
 							{@const s = story(h)}
 							<li class="relative">
 								<span class="absolute -left-[21px] top-1 size-2.5 rounded-full ring-2 ring-gray-900 {s.dot}"></span>
@@ -216,7 +222,6 @@
 							</li>
 						{/each}
 					</ol>
-					{#if info.history.length > 5}<button class="mt-2 text-xs text-gray-400 hover:text-white" onclick={() => (allHistory = !allHistory)}>{allHistory ? 'Show less' : `Show all (${info.history.length})`}</button>{/if}
 				</section>
 			{/if}
 
