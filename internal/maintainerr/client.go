@@ -184,18 +184,6 @@ func (c *Client) exclusion(ctx context.Context, plexID string, action int) error
 	return nil
 }
 
-// Exclusion is a title kept out of the rules.
-type Exclusion struct {
-	PlexID string `json:"mediaServerId"`
-}
-
-// Exclusions lists the titles kept out of the rules.
-func (c *Client) Exclusions(ctx context.Context) ([]Exclusion, error) {
-	var list []Exclusion
-	err := c.do(ctx, http.MethodGet, "/rules/exclusion", nil, &list)
-	return list, err
-}
-
 // Postpone pushes a title's deletion back by days (from today).
 func (c *Client) Postpone(ctx context.Context, collectionID int, plexID string, days int) error {
 	return c.do(ctx, http.MethodPost, "/collections/media/postpone", map[string]any{"collectionId": collectionID, "mediaId": plexID, "days": days}, nil)
