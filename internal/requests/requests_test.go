@@ -431,10 +431,9 @@ func TestRequestAlerts(t *testing.T) {
 }
 
 func TestEpisodeRequests(t *testing.T) {
-	EpisodesReady = true // switched off in the app for now; the code is kept working
-	defer func() { EpisodesReady = false }()
 	s, st, _, sonarr, admin, _ := setup(t)
 	ctx := context.Background()
+	s.SetModes(TVModes{Whole: true, Seasons: true, Episodes: true, Default: "whole"})
 	r, err := s.Create(ctx, admin, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad", Episodes: [][2]int{{1, 1}, {2, 1}}})
 	if err != nil || r.Status != "sent" || r.Mode != "episodes" {
 		t.Fatalf("create: %+v %v", r, err)
@@ -586,17 +585,17 @@ func TestWholeShowFollowsNewSeasons(t *testing.T) {
 	}
 }
 
-func TestEpisodesOffForNow(t *testing.T) {
+func TestEpisodesOffUntilTurnedOn(t *testing.T) {
 	s, _, _, _, admin, _ := setup(t)
 	if m := s.Modes(); m.Episodes {
-		t.Fatalf("episodes offered: %+v", m)
-	}
-	s.SetModes(TVModes{Seasons: true, Episodes: true, Default: "episodes"})
-	if m := s.Modes(); m.Episodes || m.Default != "seasons" {
-		t.Fatalf("saved episodes mode: %+v", m)
+		t.Fatalf("episodes offered by default: %+v", m)
 	}
 	if _, err := s.Create(context.Background(), admin, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad", Episodes: [][2]int{{1, 1}}}); err == nil {
-		t.Fatal("episode request allowed")
+		t.Fatal("episode request allowed while off")
+	}
+	s.SetModes(TVModes{Seasons: true, Episodes: true, Default: "episodes"})
+	if m := s.Modes(); !m.Episodes || m.Default != "episodes" {
+		t.Fatalf("turned on: %+v", m)
 	}
 }
 

@@ -106,31 +106,16 @@ type TVModes struct {
 	Default  string `json:"default"` // whole | seasons | episodes
 }
 
-// EpisodesReady turns on requesting single episodes. Off until whole-show and season requests are
-// finished; the code stays so it can come back without a rework.
-var EpisodesReady = false
-
-// Modes returns the series request modes (whole show and seasons on, whole show first, until changed).
+// Modes returns the series request modes (whole show and seasons on, whole show first, single
+// episodes off, until changed in Settings, Requests).
 func (s *Service) Modes() TVModes {
-	m := TVModes{Whole: true, Seasons: true, Episodes: EpisodesReady, Default: "whole"}
+	m := TVModes{Whole: true, Seasons: true, Default: "whole"}
 	json.Unmarshal([]byte(s.Store.Setting(KeyTVModes, "")), &m)
-	if !EpisodesReady {
-		m.Episodes = false
-		if !m.Whole && !m.Seasons {
-			m.Whole = true
-		}
-		if m.Default == "episodes" || (m.Default == "whole" && !m.Whole) || (m.Default == "seasons" && !m.Seasons) {
-			m.Default = map[bool]string{true: "whole", false: "seasons"}[m.Whole]
-		}
-	}
 	return m
 }
 
 // SetModes saves the series request modes; at least one stays on, and the default is one that's on.
 func (s *Service) SetModes(m TVModes) (TVModes, error) {
-	if !EpisodesReady {
-		m.Episodes = false
-	}
 	if !m.Whole && !m.Seasons && !m.Episodes {
 		return m, errors.New("keep at least one way to request series")
 	}

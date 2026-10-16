@@ -281,7 +281,7 @@ func (s *Server) requestSettings(w http.ResponseWriter, r *http.Request, _ *stor
 			}
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"approvalRequired": s.Requests.ApprovalRequired(), "tvModes": s.Requests.Modes(), "episodesReady": requests.EpisodesReady})
+	writeJSON(w, http.StatusOK, map[string]any{"approvalRequired": s.Requests.ApprovalRequired(), "tvModes": s.Requests.Modes()})
 }
 
 // requestOptions is what the request window needs: where it goes, the qualities to pick from
