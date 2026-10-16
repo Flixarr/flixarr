@@ -13,7 +13,35 @@ import (
 )
 
 func (s *Server) backupList(w http.ResponseWriter, r *http.Request, _ *store.User) {
-	writeJSON(w, http.StatusOK, map[string]any{"backups": s.Backups.List(), "keep": s.Backups.Keep()})
+	o := s.Backups.LoadOffsite()
+	set := o.S3.SecretKey != ""
+	o.S3.SecretKey = "" // never sent back
+	writeJSON(w, http.StatusOK, map[string]any{"backups": s.Backups.List(), "keep": s.Backups.Keep(),
+		"offsite": map[string]any{"folder": o.Folder, "s3": o.S3, "secretKeySet": set, "last": s.Backups.LastOffsite()}})
+}
+
+// backupOffsite saves where offsite copies go ({folder, s3}; a blank secret key keeps the saved one),
+// then copies the newest backup there right away so it's known to work.
+func (s *Server) backupOffsite(w http.ResponseWriter, r *http.Request, u *store.User) {
+	var in backup.Offsite
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&in); err != nil {
+		writeErr(w, http.StatusBadRequest, "Bad request.")
+		return
+	}
+	if in.S3.SecretKey == "" && in.S3.Endpoint != "" {
+		in.S3.SecretKey = s.Backups.LoadOffsite().S3.SecretKey
+	}
+	if err := s.Backups.SaveOffsite(in); err != nil {
+		writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
+		return
+	}
+	if list := s.Backups.List(); len(list) > 0 {
+		if err := s.Backups.CopyOffsite(r.Context(), list[0].Name); err != nil {
+			writeErr(w, http.StatusBadGateway, "Saved, but copying the newest backup failed: "+err.Error()+".")
+			return
+		}
+	}
+	s.backupList(w, r, u)
 }
 
 func (s *Server) backupCreate(w http.ResponseWriter, r *http.Request, _ *store.User) {
@@ -21,6 +49,10 @@ func (s *Server) backupCreate(w http.ResponseWriter, r *http.Request, _ *store.U
 	if err != nil {
 		s.Log.Error("backup", "err", err)
 		writeErr(w, http.StatusInternalServerError, "Couldn't save a backup: "+err.Error()+".")
+		return
+	}
+	if err := s.Backups.CopyOffsite(r.Context(), b.Name); err != nil {
+		writeErr(w, http.StatusBadGateway, "Saved here, but the offsite copy failed: "+err.Error()+".")
 		return
 	}
 	writeJSON(w, http.StatusCreated, b)

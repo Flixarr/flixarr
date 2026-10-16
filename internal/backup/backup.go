@@ -2,6 +2,7 @@
 package backup
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -77,7 +78,16 @@ func (m *Manager) Run() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("Saved %s (%d KB)", b.Name, b.Size/1024), nil
+	msg := fmt.Sprintf("Saved %s (%d KB)", b.Name, b.Size/1024)
+	if o := m.LoadOffsite(); o.Folder != "" || o.S3.On() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		if err := m.CopyOffsite(ctx, b.Name); err != nil {
+			return msg, fmt.Errorf("saved, but the offsite copy failed: %w", err)
+		}
+		msg += ", copied offsite"
+	}
+	return msg, nil
 }
 
 // List returns the backups, newest first.

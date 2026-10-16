@@ -35,7 +35,7 @@ Never sent: your users, usernames or emails, your requests, your Plex server det
 
 ### Your own services
 
-Radarr, Sonarr, Maintainerr and your Plex server are contacted at the addresses you enter, and nowhere else.
+Radarr, Sonarr, Maintainerr and your Plex server are contacted at the addresses you enter, and nowhere else. Offsite backups, when set up in Settings, Backups, go only to the folder or S3-compatible bucket you enter.
 
 ### Notifications (only what you set up)
 
