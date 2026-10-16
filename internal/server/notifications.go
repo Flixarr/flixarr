@@ -42,7 +42,15 @@ func (s *Server) notifyList(w http.ResponseWriter, r *http.Request, _ *store.Use
 	for _, ch := range notify.Channels {
 		out[ch] = viewOf(s.Notify.Load(ch))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"channels": out, "events": notify.Events, "appUrl": s.Store.Setting("app_url", "")})
+	writeJSON(w, http.StatusOK, map[string]any{"channels": out, "events": s.withoutMaintainerr(notify.Events), "appUrl": s.Store.Setting("app_url", "")})
+}
+
+// withoutMaintainerr drops the Leaving soon event until Maintainerr is connected (it can't happen).
+func (s *Server) withoutMaintainerr(events []string) []string {
+	if s.maintainerrOn() {
+		return events
+	}
+	return slices.DeleteFunc(slices.Clone(events), func(e string) bool { return e == "request_leaving" })
 }
 
 // merged reads a channel form; secrets left empty keep the saved value.

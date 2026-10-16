@@ -66,7 +66,11 @@ func (s *Server) discoverRows() []discoverRow {
 }
 
 func (s *Server) discoverRowsGet(w http.ResponseWriter, r *http.Request, _ *store.User) {
-	writeJSON(w, http.StatusOK, s.discoverRows())
+	rows := s.discoverRows()
+	if !s.maintainerrOn() { // Leaving Soon only exists with Maintainerr
+		rows = slices.DeleteFunc(rows, func(x discoverRow) bool { return x.Key == "leaving-soon" })
+	}
+	writeJSON(w, http.StatusOK, rows)
 }
 
 // discoverRowsSet saves Settings → Discover (admins).

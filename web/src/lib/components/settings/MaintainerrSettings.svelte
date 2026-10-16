@@ -112,11 +112,18 @@
 {#if info}
 	<div>
 		<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Maintainerr</div>
-		<p class="-mt-1 mb-3 text-xs text-gray-500">Optional. If Maintainerr removes titles by rules, Flixarr shows what's leaving and when, lets people ask to keep a title, and keeps new requests safe for a while.</p>
 		{#if !info.connected}
-			<button class="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-gray-700 p-6 text-sm text-gray-400 transition hover:border-gray-500 hover:text-white" onclick={edit}>
-				<Icon name="plus" class="size-4" />Add Maintainerr
-			</button>
+			<!-- Not connected: what it would add, so admins know it's there. Nothing else in Flixarr mentions it until then. -->
+			<div class="card space-y-3 p-4 text-sm">
+				<p class="text-gray-300">Optional. <a href="https://maintainerr.info" target="_blank" rel="noopener" class="text-primary-light hover:underline">Maintainerr</a> removes titles from Plex by rules you set. Connect it and Flixarr adds:</p>
+				<ul class="list-disc space-y-1 pl-5 text-gray-400">
+					<li>a Leaving Soon row on Discover</li>
+					<li>leaving dates on titles, with Keep and Ask to keep buttons</li>
+					<li>a heads up a week before something someone requested leaves</li>
+					<li>new requests kept safe from its rules for a while</li>
+				</ul>
+				<button class="btn-ghost w-full justify-center py-2.5" onclick={edit}><Icon name="plus" class="size-4" />Add Maintainerr</button>
+			</div>
 		{:else}
 			<div class="card divide-y divide-gray-700/40">
 				<div class="flex items-center gap-3 p-4">

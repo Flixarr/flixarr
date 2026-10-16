@@ -105,6 +105,11 @@ func (s *Server) maintainerrTest(w http.ResponseWriter, r *http.Request, _ *stor
 	writeJSON(w, http.StatusOK, st)
 }
 
+// maintainerrOn says whether Maintainerr is set up.
+func (s *Server) maintainerrOn() bool {
+	return s.Store.Setting(maintainerr.KeyURL, "") != ""
+}
+
 // maintainerrRemove disconnects Maintainerr. Titles Flixarr kept stay kept in Maintainerr.
 func (s *Server) maintainerrRemove(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	s.Store.SetSetting(maintainerr.KeyURL, "")
