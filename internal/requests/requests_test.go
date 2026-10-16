@@ -12,6 +12,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Flixarr/flixarr/internal/arr"
 	"github.com/Flixarr/flixarr/internal/secret"
 	"github.com/Flixarr/flixarr/internal/store"
 )
@@ -63,7 +64,7 @@ func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(`[]`))
 			return
 		}
-		json.NewEncoder(w).Encode([]any{map[string]any{"title": "Breaking Bad", "tvdbId": 81189, "id": id,
+		json.NewEncoder(w).Encode([]any{map[string]any{"title": "Breaking Bad", "tmdbId": 1396, "tvdbId": 81189, "id": id,
 			"seasons": []any{map[string]any{"seasonNumber": 0, "monitored": true}, map[string]any{"seasonNumber": 1, "monitored": true}, map[string]any{"seasonNumber": 2, "monitored": true}, map[string]any{"seasonNumber": 3, "monitored": true}}}})
 	case (p == "movie" || p == "series") && r.Method == http.MethodPost:
 		if f.reject {
@@ -785,5 +786,16 @@ func TestFixEpisodes(t *testing.T) {
 	}
 	if list, _ := st.OpenRequests("series", 1396); len(list) != 1 || list[0].Source != "redownload" || list[0].Mode != "episodes" {
 		t.Fatalf("its own request: %+v", list)
+	}
+}
+
+func TestSeriesLookupIgnoresOtherShows(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[{"title":"Wings","tmdbId":2506,"tvdbId":71962,"id":394}]`)) // Sonarr's TVDB fallback
+	}))
+	defer srv.Close()
+	got, err := seriesLookup(context.Background(), &arr.Client{URL: srv.URL, APIKey: "k"}, 71962)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("matched another show: %v %v", got, err)
 	}
 }

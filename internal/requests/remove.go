@@ -20,12 +20,29 @@ func inArr(ctx context.Context, c *arr.Client, typ string, tmdbID int) (map[stri
 	if typ == "movie" {
 		err = c.Get(ctx, fmt.Sprintf("movie?tmdbId=%d", tmdbID), &found)
 	} else {
-		err = c.Get(ctx, "series/lookup?term="+url.QueryEscape(fmt.Sprintf("tmdb:%d", tmdbID)), &found)
+		found, err = seriesLookup(ctx, c, tmdbID)
 	}
 	if err != nil || len(found) == 0 || num(found[0]["id"]) == 0 {
 		return nil, err
 	}
 	return found[0], nil
+}
+
+// seriesLookup asks Sonarr for a series by TMDB ID. Sonarr falls back to a TVDB ID match when its
+// metadata doesn't know the TMDB ID (TMDB 71962 came back as Wings, TVDB 71962), so only results with
+// that tmdbId count.
+func seriesLookup(ctx context.Context, c *arr.Client, tmdbID int) ([]map[string]any, error) {
+	var found []map[string]any
+	if err := c.Get(ctx, "series/lookup?term="+url.QueryEscape(fmt.Sprintf("tmdb:%d", tmdbID)), &found); err != nil {
+		return nil, err
+	}
+	out := []map[string]any{}
+	for _, x := range found {
+		if num(x["tmdbId"]) == tmdbID {
+			out = append(out, x)
+		}
+	}
+	return out, nil
 }
 
 // RemoveFromArr takes a title out of Radarr/Sonarr with its files (Seerr's "Remove from Radarr"). It

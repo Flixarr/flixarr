@@ -32,7 +32,7 @@ func (a *arrLog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"movie/5":               `{"id":5,"monitored":false}`,
 		"history/movie":         `[{"id":9,"eventType":"downloadFolderImported","downloadId":"A"},{"id":8,"eventType":"grabbed","downloadId":"A"},{"id":3,"eventType":"grabbed","downloadId":"OLD"}]`,
 		"config/downloadclient": `{"autoRedownloadFailed":true}`,
-		"series/lookup":         `[{"id":7}]`,
+		"series/lookup":         `[{"id":7,"tmdbId":1396}]`,
 		"episode": `[{"id":71,"seasonNumber":1,"episodeFileId":701},{"id":72,"seasonNumber":1,"episodeFileId":701},
 			{"id":81,"seasonNumber":2,"episodeFileId":801}]`,
 		"history/series": `[{"id":20,"eventType":"downloadFolderImported","downloadId":"S2","episodeId":81},

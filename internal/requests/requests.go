@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -390,8 +389,8 @@ func (s *Service) sendMovie(ctx context.Context, v store.Server, r *store.Reques
 
 func (s *Service) sendSeries(ctx context.Context, v store.Server, r *store.Request) error {
 	c := client(v)
-	var found []map[string]any
-	if err := c.Get(ctx, "series/lookup?term="+url.QueryEscape(fmt.Sprintf("tmdb:%d", r.TmdbID)), &found); err != nil {
+	found, err := seriesLookup(ctx, c, r.TmdbID)
+	if err != nil {
 		return fmt.Errorf("Sonarr couldn't find it: %w", err)
 	}
 	if len(found) == 0 {
