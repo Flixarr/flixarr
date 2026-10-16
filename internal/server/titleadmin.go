@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -136,4 +137,55 @@ func (s *Server) titleDelete(w http.ResponseWriter, r *http.Request, u *store.Us
 	}
 	s.Log.Info("title deleted", "type", typ, "tmdb", id, "files", in.Files, "data", in.Data, "by", u.Username)
 	writeJSON(w, http.StatusOK, map[string]any{"done": strings.Join(done, " ")})
+}
+
+// titleEpisodes is the Fix episodes window: a series' episodes in Sonarr and Plex.
+func (s *Server) titleEpisodes(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	_, id, ok := titleParams(r)
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "Bad request.")
+		return
+	}
+	inPlex, _ := s.Library.Episodes(r.Context(), id)
+	eps, err := s.Requests.Episodes(r.Context(), id, inPlex)
+	if err != nil {
+		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"episodes": eps})
+}
+
+// titleFixEpisodes fixes picked episodes: {episodes: [[season, episode]], title, year, poster}.
+func (s *Server) titleFixEpisodes(w http.ResponseWriter, r *http.Request, u *store.User) {
+	_, id, ok := titleParams(r)
+	var in struct {
+		Episodes [][2]int `json:"episodes"`
+		Title    string   `json:"title"`
+		Year     string   `json:"year"`
+		Poster   string   `json:"poster"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 65536)).Decode(&in); err != nil || !ok || len(in.Episodes) > 2000 {
+		writeErr(w, http.StatusBadRequest, "Bad request.")
+		return
+	}
+	done, err := s.Requests.FixEpisodes(r.Context(), id, in.Episodes, requests.For{UserID: u.ID, Title: in.Title, Year: in.Year, Poster: in.Poster})
+	if err != nil {
+		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
+		return
+	}
+	s.Store.AddTitleEvent("series", id, "redownload", plexParts(in.Episodes), u.ID, "")
+	writeJSON(w, http.StatusOK, map[string]any{"done": done})
+}
+
+// plexParts is "S1E3, S2E1" (the first few, then how many more).
+func plexParts(eps [][2]int) string {
+	out := []string{}
+	for i, e := range eps {
+		if i == 6 {
+			out = append(out, fmt.Sprintf("and %d more", len(eps)-6))
+			break
+		}
+		out = append(out, fmt.Sprintf("S%dE%d", e[0], e[1]))
+	}
+	return strings.Join(out, ", ")
 }

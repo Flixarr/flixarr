@@ -25,7 +25,7 @@
 		['reportIssues', 'Report issues', 'Report problems on titles in the library.'],
 		['manageIssues', 'Manage issues', "See, resolve and remove anyone's issues."],
 		['watchlist', 'Plex Watchlist requests', 'Can switch on requests from their Plex Watchlist (in their Profile).'],
-		['redownload', 'Redownload', "Delete a title's file and get a new copy (for a bad download). The release it came from isn't grabbed again."]
+		['redownload', 'Fix and redownload', 'Fix missing or bad episodes and movies: search again, or delete the file, block its release and download a new copy. Also needed to delete files from the admin panel.']
 	];
 	const ROLES = ['Admin', 'Trusted', 'User', 'Custom'];
 	const ROLE_TONE: Record<string, string> = {

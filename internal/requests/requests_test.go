@@ -43,6 +43,11 @@ func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		id = 77
 	}
 	switch {
+	case r.Method == http.MethodDelete && p == "episodefile/bulk":
+		b, _ := io.ReadAll(r.Body)
+		f.deleted = append(f.deleted, p+" "+string(b))
+	case p == "history/series":
+		w.Write([]byte(`[]`))
 	case r.Method == http.MethodDelete && (p == "movie/77" || p == "series/77"):
 		f.deleted = append(f.deleted, p+"?"+r.URL.RawQuery)
 	case p == "movie" && r.Method == http.MethodGet:
@@ -102,7 +107,7 @@ func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Write(b)
 	case p == "episode" && r.Method == http.MethodGet:
 		json.NewEncoder(w).Encode([]any{
-			map[string]any{"id": 501, "seasonNumber": 1, "episodeNumber": 1, "hasFile": f.epFile},
+			map[string]any{"id": 501, "seasonNumber": 1, "episodeNumber": 1, "hasFile": f.epFile, "episodeFileId": map[bool]int{true: 9001}[f.epFile]},
 			map[string]any{"id": 502, "seasonNumber": 1, "episodeNumber": 2, "hasFile": false},
 			map[string]any{"id": 503, "seasonNumber": 2, "episodeNumber": 1, "hasFile": f.epFile}})
 	case p == "episode/monitor":
@@ -750,5 +755,35 @@ func TestLiveForHidesReleaseNamesFromUsers(t *testing.T) {
 	}
 	if admin.File.Release != "The.Matrix.1999.1080p" || admin.Queue[0].Release != "The.Matrix.1999.2160p" || !strings.HasSuffix(admin.Link, "/movie/the-matrix-1999") {
 		t.Fatalf("for admins: %+v %+v", admin, admin.File)
+	}
+}
+
+func TestFixEpisodes(t *testing.T) {
+	s, st, _, sonarr, admin, _ := setup(t)
+	ctx := context.Background()
+	if _, err := s.FixEpisodes(ctx, 1396, [][2]int{{1, 1}}, For{UserID: admin.ID, Title: "Breaking Bad"}); err == nil {
+		t.Fatal("fixed a show Sonarr doesn't have")
+	}
+	sonarr.inLib, sonarr.epFile = true, true
+	eps, err := s.Episodes(ctx, 1396, map[int][]int{1: {1}})
+	if err != nil || len(eps) != 3 || !eps[0].HasFile || !eps[0].InPlex || eps[1].HasFile {
+		t.Fatalf("episodes: %+v %v", eps, err)
+	}
+	done, err := s.FixEpisodes(ctx, 1396, [][2]int{{1, 1}, {1, 2}}, For{UserID: admin.ID, Title: "Breaking Bad"})
+	if err != nil || !strings.Contains(done, "Deleted 1 file") || !strings.Contains(done, "1 missing episode") {
+		t.Fatalf("fix: %q %v", done, err)
+	}
+	if len(sonarr.deleted) != 1 || !strings.Contains(sonarr.deleted[0], "9001") {
+		t.Fatalf("deleted: %v", sonarr.deleted)
+	}
+	if ids, _ := sonarr.monitor["episodeIds"].([]any); len(ids) != 2 || sonarr.monitor["monitored"] != true {
+		t.Fatalf("monitored: %v", sonarr.monitor)
+	}
+	last := sonarr.cmds[len(sonarr.cmds)-1]
+	if last["name"] != "EpisodeSearch" || len(last["episodeIds"].([]any)) != 2 {
+		t.Fatalf("search: %v", last)
+	}
+	if list, _ := st.OpenRequests("series", 1396); len(list) != 1 || list[0].Source != "redownload" || list[0].Mode != "episodes" {
+		t.Fatalf("its own request: %+v", list)
 	}
 }

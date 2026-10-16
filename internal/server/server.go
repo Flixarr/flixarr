@@ -113,6 +113,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/titles/{type}/{id}/admin", s.auth(s.allow("manageRequests", s.titleAdmin)))
 	mux.HandleFunc("POST /api/titles/{type}/{id}/fix", s.auth(s.allow("manageRequests", s.titleFix)))
 	mux.HandleFunc("POST /api/titles/{type}/{id}/delete", s.auth(s.allow("manageRequests", s.titleDelete)))
+	mux.HandleFunc("GET /api/titles/{type}/{id}/episodes", s.auth(s.allow("redownload", s.titleEpisodes)))
+	mux.HandleFunc("POST /api/titles/{type}/{id}/episodes/fix", s.auth(s.allow("redownload", s.titleFixEpisodes)))
 	mux.HandleFunc("POST /api/redownload", s.auth(s.allow("redownload", s.redownload)))
 	mux.HandleFunc("DELETE /api/requests/{id}", s.auth(s.requestDelete))
 	mux.HandleFunc("GET /api/settings/requests", s.auth(s.admin(s.requestSettings)))

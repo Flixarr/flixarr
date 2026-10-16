@@ -12,6 +12,7 @@
 	import Icon from '#lib/components/Icon.svelte';
 	import RequestButton from '#lib/components/RequestButton.svelte';
 	import IssueModal from '#lib/components/IssueModal.svelte';
+	import RedownloadModal from '#lib/components/RedownloadModal.svelte';
 	import AdminPanel from '#lib/components/AdminPanel.svelte';
 	import LeavingActions from '#lib/components/LeavingActions.svelte';
 	import { can } from '#lib/session.svelte.ts';
@@ -37,6 +38,7 @@
 	const inLib = $derived(!!brief?.plex || brief?.status === 'available');
 	const waiting = $derived(!!brief && ['approved', 'sent', 'grabbed', 'downloading', 'importing', 'failed'].includes(brief.status));
 	let issueOpen = $state(false);
+	let fixOpen = $state(false);
 	let adminOpen = $state(false);
 </script>
 
@@ -51,12 +53,14 @@
 		{#snippet actions()}
 			{#if m}<RequestButton item={m} bind:req={brief} />{/if}
 			{#if m && (inLib || waiting) && can('reportIssues')}<button class="btn-ghost act" onclick={() => (issueOpen = true)}><Icon name="issues" class="size-4" />Report issue</button>{/if}
+			{#if m && inLib && can('redownload') && !can('manageRequests')}<button class="btn-ghost act" onclick={() => (fixOpen = true)}><Icon name="refresh" class="size-4" />Redownload</button>{/if}
 			{#if m && can('manageRequests')}<button class="btn-ghost act" onclick={() => (adminOpen = true)}><Icon name="settings" class="size-4" />Admin</button>{/if}
 			{#if m?.trailer}<button class="btn-ghost act" onclick={() => (trailer = true)}><Icon name="play" class="size-4" />Trailer</button>{/if}
 			{#if m && brief?.plex}<LeavingActions type="movie" id={m.id} title={m.title} />{/if}
 		{/snippet}
 	</DetailHeader>
 	<IssueModal bind:open={issueOpen} item={m} inLibrary={inLib} {waiting} />
+	{#if can('redownload')}<RedownloadModal bind:open={fixOpen} item={m} />{/if}
 	{#if m && can('manageRequests')}<AdminPanel bind:open={adminOpen} item={m} />{/if}
 
 	<main class="relative z-10 mx-auto max-w-[1600px] space-y-9 pt-9 laptop:px-10">

@@ -16,6 +16,7 @@
 	import PlexMark from './PlexMark.svelte';
 	import RequestDetail from './RequestDetail.svelte';
 	import RedownloadModal from './RedownloadModal.svelte';
+	import FixEpisodesModal from './FixEpisodesModal.svelte';
 	import DeleteModal from './DeleteModal.svelte';
 	import LeavingActions from './LeavingActions.svelte';
 
@@ -317,7 +318,7 @@
 			<div class="flex flex-wrap empty:hidden"><LeavingActions type={item.type as 'movie' | 'series'} id={item.id} title={item.title} /></div>
 
 			<!-- Actions: repairs first, then what removes things (each asks first) -->
-			{#if info.live.inArr && ((!info.live.hasFile && !info.live.queue.length) || (info.live.hasFile && can('redownload')))}
+			{#if info.live.inArr && ((!info.live.hasFile && !info.live.queue.length) || ((info.live.hasFile || series) && can('redownload')))}
 			<section>
 				{@render head('Actions')}
 				<div class="space-y-3">
@@ -327,10 +328,10 @@
 							<p class="mt-1.5 text-[11px] text-gray-500">Asks {info.live.server} to look for a download now, and turns monitoring back on if it was off.</p>
 						</div>
 					{/if}
-					{#if info.live.hasFile && can('redownload')}
+					{#if (info.live.hasFile || series) && can('redownload')}
 						<div>
-							<button class="btn-ghost w-full justify-center py-2.5" onclick={() => (redownloadOpen = true)}><Icon name="refresh" class="size-4" />Redownload</button>
-							<p class="mt-1.5 text-[11px] text-gray-500">{series ? `Deletes the files of the seasons you pick from ${info.live.server}, blocks those releases so they aren't downloaded again, and downloads new ones.` : `Deletes the file from ${info.live.server}, blocks that release so it isn't downloaded again, and downloads a new one.`}</p>
+							<button class="btn-ghost w-full justify-center py-2.5" onclick={() => (redownloadOpen = true)}><Icon name="refresh" class="size-4" />{series ? 'Fix episodes' : 'Redownload'}</button>
+							<p class="mt-1.5 text-[11px] text-gray-500">{series ? 'Pick seasons or single episodes. Missing ones are searched for again; ones with a file are deleted, their release blocked, and downloaded again.' : `Deletes the file from ${info.live.server}, blocks that release so it isn't downloaded again, and downloads a new one.`}</p>
 						</div>
 					{/if}
 				</div>
@@ -378,5 +379,5 @@
 	{/if}
 </Modal>
 {#if detail}<RequestDetail bind:open={detailOpen} id={detail} onchanged={() => load()} />{/if}
-<RedownloadModal bind:open={redownloadOpen} {item} />
+{#if series}<FixEpisodesModal bind:open={redownloadOpen} item={item as Series} ondone={load} />{:else}<RedownloadModal bind:open={redownloadOpen} {item} />{/if}
 {#if forDelete}<DeleteModal bind:open={deleteOpen} {item} t={forDelete} ondone={load} />{/if}

@@ -12,6 +12,7 @@
 	import Icon from '#lib/components/Icon.svelte';
 	import RequestButton from '#lib/components/RequestButton.svelte';
 	import IssueModal from '#lib/components/IssueModal.svelte';
+	import FixEpisodesModal from '#lib/components/FixEpisodesModal.svelte';
 	import AdminPanel from '#lib/components/AdminPanel.svelte';
 	import LeavingActions from '#lib/components/LeavingActions.svelte';
 	import { can } from '#lib/session.svelte.ts';
@@ -65,6 +66,7 @@
 	const inLib = $derived(!!brief?.plex || brief?.status === 'available');
 	const waiting = $derived(!!brief && ['approved', 'sent', 'grabbed', 'downloading', 'importing', 'failed'].includes(brief.status));
 	let issueOpen = $state(false);
+	let fixOpen = $state(false);
 	let adminOpen = $state(false);
 </script>
 
@@ -79,17 +81,20 @@
 		{#snippet actions()}
 			{#if t}<RequestButton item={t} bind:req={brief} />{/if}
 			{#if t && (inLib || waiting) && can('reportIssues')}<button class="btn-ghost act" onclick={() => (issueOpen = true)}><Icon name="issues" class="size-4" />Report issue</button>{/if}
+			{#if t && (inLib || waiting) && can('redownload') && !can('manageRequests')}<button class="btn-ghost act" onclick={() => (fixOpen = true)}><Icon name="refresh" class="size-4" />Fix episodes</button>{/if}
 			{#if t && can('manageRequests')}<button class="btn-ghost act" onclick={() => (adminOpen = true)}><Icon name="settings" class="size-4" />Admin</button>{/if}
 			{#if t?.trailer}<button class="btn-ghost act" onclick={() => (trailer = true)}><Icon name="play" class="size-4" />Trailer</button>{/if}
 			{#if t && brief?.plex}<LeavingActions type="series" id={t.id} title={t.title} />{/if}
 		{/snippet}
 	</DetailHeader>
 	<IssueModal bind:open={issueOpen} item={t} inLibrary={inLib} {waiting} />
+	{#if can('redownload')}<FixEpisodesModal bind:open={fixOpen} item={t} />{/if}
 	{#if t && can('manageRequests')}<AdminPanel bind:open={adminOpen} item={t} />{/if}
 
 	<main class="relative z-10 mx-auto max-w-[1600px] space-y-9 pt-9 laptop:px-10">
 		<div class="grid gap-9 laptop:grid-cols-[1fr_340px]">
-			<div class="space-y-9">
+			<!-- min-w-0: a grid column otherwise grows to its longest line (episode names), wider than a phone -->
+			<div class="min-w-0 space-y-9">
 				<section class="space-y-3 px-4 laptop:px-0">
 					<h2 class="text-base font-semibold">Overview</h2>
 					{#if t.tagline}<p class="italic text-gray-400">“{t.tagline}”</p>{/if}
