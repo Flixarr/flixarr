@@ -125,7 +125,9 @@ func (s *Service) FixEpisodes(ctx context.Context, tmdbID int, picked [][2]int, 
 		}
 		marked = markFailed(ctx, c, hist, func(h map[string]any) bool { return withFile[num(h["episodeId"])] })
 		notes = append(notes, fmt.Sprintf("Deleted %d file%s.", len(files), plural(len(files))))
-		if marked > 0 {
+		if marked == 1 {
+			notes = append(notes, "The release it came from won't be grabbed again.")
+		} else if marked > 1 {
 			notes = append(notes, "The releases they came from won't be grabbed again.")
 		}
 	}
