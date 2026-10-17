@@ -105,7 +105,7 @@ export interface Job {
 
 export type ServiceKind = 'radarr' | 'sonarr';
 
-export interface ProfileStatus { key: string; name: string; label: string; description: string; arrName: string; installed: boolean; arrId?: number; state: '' | 'ok' | 'update' | 'customized' | 'missing'; updateAvailable: boolean; updatedAt?: string }
+export interface ProfileStatus { key: string; name: string; label: string; description: string; arrName: string; installed: boolean; arrId?: number; state: '' | 'ok' | 'update' | 'customized' | 'missing'; updateAvailable: boolean; skipped?: boolean; rev?: string; updatedAt?: string }
 export interface FlixarrProfile { id: string; name: string; label: string; description: string; arrName: string; apps: ServiceKind[] }
 
 export interface ServiceView {

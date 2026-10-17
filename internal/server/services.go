@@ -282,6 +282,35 @@ func (s *Server) serviceProfileUseFlixarr(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, s.viewOf(v))
 }
 
+// serviceProfileSkip keeps a profile's current version until the next Flixarr version comes.
+func (s *Server) serviceProfileSkip(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	v, ok, err := s.Store.FirstServer(r.PathValue("kind"))
+	if err != nil || !ok {
+		writeErr(w, http.StatusNotFound, "Not connected.")
+		return
+	}
+	if err := s.Profiles.Skip(v, r.PathValue("key")); err != nil {
+		writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
+		return
+	}
+	writeJSON(w, http.StatusOK, s.viewOf(v))
+}
+
+// serviceProfileChanges says what Update would change in a profile (it only reads).
+func (s *Server) serviceProfileChanges(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	v, ok, err := s.Store.FirstServer(r.PathValue("kind"))
+	if err != nil || !ok {
+		writeErr(w, http.StatusNotFound, "Not connected.")
+		return
+	}
+	c, err := s.Profiles.Changes(r.Context(), v, r.PathValue("key"))
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		return
+	}
+	writeJSON(w, http.StatusOK, c)
+}
+
 // profilesInfo lists Flixarr's quality profiles (for the first-setup window, before anything is added).
 func (s *Server) profilesInfo(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	d := s.Profiles.Doc()

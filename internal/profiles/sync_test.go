@@ -171,10 +171,35 @@ func TestAddSyncCustomize(t *testing.T) {
 	if n, err := m.Sync(ctx, v); err != nil || n != 0 || fake.posts != posts {
 		t.Fatalf("idle sync: %d %v", n, err)
 	}
-	// A new version is pushed to an untouched profile.
+	// A new version only waits: nothing changes in Radarr until an admin presses Update (#94).
 	m.doc = testDoc("r2", -9999)
-	if n, err := m.Sync(ctx, v); err != nil || n != 1 {
-		t.Fatalf("update sync: %d %v", n, err)
+	if _, err := m.Sync(ctx, v); err != nil || fake.posts != posts {
+		t.Fatalf("sync changed Radarr: %v", err)
+	}
+	stat, _ := m.Status(v)
+	if stat[0].State != "update" || !stat[0].UpdateAvailable {
+		t.Fatalf("status with a new version: %+v", stat[0])
+	}
+	if n := m.UpdateTodo(); n != 1 || len(st.OpenTodoKeys("profiles-update")) != 1 {
+		t.Fatalf("to-do: %d", n)
+	}
+	ch, err := m.Changes(ctx, v, "standard")
+	if err != nil || ch.Edited || len(ch.ScoresChanged) != 1 || len(ch.FormatsAdded)+len(ch.FormatsRemoved)+len(ch.QualitiesAdded)+len(ch.QualitiesRemoved) != 0 || ch.ScoresChanged[0].From != -10000 || ch.ScoresChanged[0].To != -9999 {
+		t.Fatalf("changes: %+v %v", ch, err)
+	}
+	// Skip: no longer offered, and the to-do goes.
+	if err := m.Skip(v, "standard"); err != nil {
+		t.Fatal(err)
+	}
+	if stat, _ = m.Status(v); stat[0].State != "ok" || stat[0].UpdateAvailable || !stat[0].Skipped {
+		t.Fatalf("status after skip: %+v", stat[0])
+	}
+	if len(st.OpenTodoKeys("profiles-update")) != 0 {
+		t.Fatal("to-do left after skip")
+	}
+	// Update applies it.
+	if err := m.UseFlixarrVersion(ctx, v, "standard"); err != nil {
+		t.Fatal(err)
 	}
 	json.Unmarshal(fake.profiles[links[0].ArrID], &p)
 	for _, f := range p.FormatItems {
@@ -188,10 +213,11 @@ func TestAddSyncCustomize(t *testing.T) {
 	edit["cutoffFormatScore"] = 500
 	fake.profiles[links[0].ArrID], _ = json.Marshal(edit)
 	m.doc = testDoc("r3", -10000)
-	if n, _ := m.Sync(ctx, v); n != 0 {
+	posts = fake.posts
+	if m.Sync(ctx, v); fake.posts != posts {
 		t.Fatal("pushed over someone's edit")
 	}
-	stat, _ := m.Status(v)
+	stat, _ = m.Status(v)
 	if stat[0].State != "customized" || !stat[0].UpdateAvailable {
 		t.Fatalf("status after edit: %+v", stat[0])
 	}

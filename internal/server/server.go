@@ -146,6 +146,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/services/{kind}/refresh", s.auth(s.admin(s.serviceRefresh)))
 	mux.HandleFunc("POST /api/services/{kind}/profiles", s.auth(s.admin(s.serviceProfilesAdd)))
 	mux.HandleFunc("POST /api/services/{kind}/profiles/{key}/use-flixarr", s.auth(s.admin(s.serviceProfileUseFlixarr)))
+	mux.HandleFunc("POST /api/services/{kind}/profiles/{key}/skip", s.auth(s.admin(s.serviceProfileSkip)))
+	mux.HandleFunc("GET /api/services/{kind}/profiles/{key}/changes", s.auth(s.admin(s.serviceProfileChanges)))
 	mux.HandleFunc("GET /api/profiles", s.auth(s.admin(s.profilesInfo)))
 	mux.HandleFunc("PUT /api/services/{kind}", s.auth(s.admin(s.serviceSave)))
 	mux.HandleFunc("DELETE /api/services/{kind}", s.auth(s.admin(s.serviceDelete)))

@@ -290,12 +290,12 @@
 						<div class="flex items-center gap-3 rounded-lg bg-gray-900/50 px-3 py-2 ring-1 ring-gray-700/50">
 							<span class="min-w-0 flex-1"><span class="block text-sm">{p.label}</span>
 								<span class="block text-xs {p.state === 'ok' ? 'text-green-400' : p.state === 'customized' ? 'text-yellow-300' : 'text-gray-400'}">
-									{#if p.state === 'ok'}Added · up to date{:else if p.state === 'update'}Added · updating on the next sync{:else if p.state === 'customized'}Edited in {KINDS.find((x) => x.kind === kind)?.name}{p.updateAvailable ? ' · a newer Flixarr version is available' : ''}{:else if p.state === 'missing'}Deleted in {KINDS.find((x) => x.kind === kind)?.name}{:else}Not added{/if}
+									{#if p.state === 'ok'}Added · up to date{:else if p.state === 'update'}Added · a newer version is ready{:else if p.state === 'customized'}Edited in {KINDS.find((x) => x.kind === kind)?.name}{p.updateAvailable ? ' · a newer Flixarr version is available' : ''}{:else if p.state === 'missing'}Deleted in {KINDS.find((x) => x.kind === kind)?.name}{:else}Not added{/if}
 								</span></span>
 							{#if !p.installed}
 								<button class="btn-ghost shrink-0 px-3 py-1 text-xs" disabled={profileBusy !== ''} onclick={() => profileAction(p.key, 'add')}>{profileBusy === p.key ? 'Adding…' : p.state === 'missing' ? 'Add again' : 'Add'}</button>
-							{:else if p.state === 'customized' && p.updateAvailable}
-								<button class="btn-ghost shrink-0 px-3 py-1 text-xs" disabled={profileBusy !== ''} onclick={() => profileAction(p.key, 'use-flixarr')}>{profileBusy === p.key ? 'Updating…' : "Use Flixarr's version"}</button>
+							{:else if p.updateAvailable}
+								<button class="btn-ghost shrink-0 px-3 py-1 text-xs" disabled={profileBusy !== ''} onclick={() => profileAction(p.key, 'use-flixarr')}>{profileBusy === p.key ? 'Updating…' : p.state === 'customized' ? "Use Flixarr's version" : 'Update'}</button>
 							{/if}
 						</div>
 					{/each}
