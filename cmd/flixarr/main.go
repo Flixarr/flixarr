@@ -29,6 +29,7 @@ import (
 	"github.com/Flixarr/flixarr/internal/profiles"
 	"github.com/Flixarr/flixarr/internal/requests"
 	"github.com/Flixarr/flixarr/internal/secret"
+	"github.com/Flixarr/flixarr/internal/seerr"
 	"github.com/Flixarr/flixarr/internal/server"
 	"github.com/Flixarr/flixarr/internal/store"
 	"github.com/Flixarr/flixarr/internal/update"
@@ -191,6 +192,16 @@ func main() {
 	runner.RunNow(runCtx, "profiles-sync")
 	runner.RunNow(runCtx, "arr-status") // fill the cards right away instead of waiting for the first minute
 
+	// Import from Seerr (Settings → Import): progress goes to admins' open pages, a few times a second at most.
+	var lastImport time.Time
+	importer := &seerr.Importer{Store: st, Meta: mc, Log: log, OnProgress: func(state seerr.State) {
+		if state.Running && time.Since(lastImport) < 250*time.Millisecond {
+			return
+		}
+		lastImport = time.Now()
+		hub.Publish(live.Event{Type: "import", Data: state, For: live.Admins})
+	}}
+
 	srv := &server.Server{
 		Store:    st,
 		Plex:     plex.New(clientID, version.Full()),
@@ -205,6 +216,7 @@ func main() {
 		Notify:   notifier,
 		Maint:    maint,
 		Backups:  backups,
+		Seerr:    importer,
 		Live:     hub,
 		Web:      webui.FS(),
 		Log:      log,

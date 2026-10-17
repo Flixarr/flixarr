@@ -19,6 +19,7 @@
 	import NotificationsSettings from '#lib/components/settings/NotificationsSettings.svelte';
 	import BackupsSettings from '#lib/components/settings/BackupsSettings.svelte';
 	import BlocklistSettings from '#lib/components/settings/BlocklistSettings.svelte';
+	import ImportSettings from '#lib/components/settings/ImportSettings.svelte';
 	import { tapWhere, servicesUnread } from '#lib/alerts.svelte.ts';
 
 	// Section key → label, icon, one-line description (side menu / phone list).
@@ -35,6 +36,7 @@
 		['cache', 'Cache', 'refresh', 'Saved results, images'],
 		['jobs', 'Jobs', 'clock', 'Scheduled tasks'],
 		['backups', 'Backups', 'folder', 'Daily copies of your data'],
+		['import', 'Import', 'arrow', 'Bring everything over from Seerr'],
 		['about', 'About', 'info', 'Version, updates, credits']
 	];
 
@@ -141,6 +143,8 @@
 					<BlocklistSettings />
 				{:else if tab === 'backups'}
 					<BackupsSettings />
+				{:else if tab === 'import'}
+					<ImportSettings />
 				{:else if tab === 'jobs'}
 					<JobsSettings />
 				{:else if tab === 'about'}

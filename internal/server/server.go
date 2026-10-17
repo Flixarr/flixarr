@@ -25,6 +25,7 @@ import (
 	"github.com/Flixarr/flixarr/internal/plexlib"
 	"github.com/Flixarr/flixarr/internal/profiles"
 	"github.com/Flixarr/flixarr/internal/requests"
+	"github.com/Flixarr/flixarr/internal/seerr"
 	"github.com/Flixarr/flixarr/internal/store"
 	"github.com/Flixarr/flixarr/internal/update"
 	"github.com/Flixarr/flixarr/internal/version"
@@ -47,6 +48,7 @@ type Server struct {
 	Notify   *notify.Notifier
 	Maint    *maintainerr.Watcher
 	Backups  *backup.Manager
+	Seerr    *seerr.Importer
 	Live     *live.Hub
 	Web      fs.FS // built web app (index + assets)
 	Log      *slog.Logger
@@ -171,6 +173,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/push", s.auth(s.pushSubscribe))
 	mux.HandleFunc("DELETE /api/push", s.auth(s.pushSubscribe))
 	mux.HandleFunc("GET /api/notifications", s.auth(s.admin(s.notifyList)))
+	mux.HandleFunc("GET /api/import/seerr", s.auth(s.admin(s.seerrState)))
+	mux.HandleFunc("POST /api/import/seerr/preview", s.auth(s.admin(s.seerrPreview)))
+	mux.HandleFunc("POST /api/import/seerr", s.auth(s.admin(s.seerrImport)))
 	mux.HandleFunc("POST /api/notifications", s.auth(s.admin(s.notifyAdd)))
 	mux.HandleFunc("POST /api/notifications/test", s.auth(s.admin(s.notifyTest)))
 	mux.HandleFunc("PUT /api/notifications/{id}", s.auth(s.admin(s.notifySave)))

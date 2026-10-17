@@ -1,15 +1,17 @@
 <script lang="ts">
 	// The rest of first-run setup, right after the admin's first sign-in: pick the Plex server (one you own)
-	// and its libraries, connect Radarr and Sonarr, done. Every step can be skipped and changed later in
+	// and its libraries, bring things over from Seerr if switching, connect Radarr and Sonarr, done. Every step can be skipped and changed later in
 	// Settings.
 	import { goto } from '$app/navigation';
 	import { api } from '#lib/api.ts';
 	import { session, loadSession } from '#lib/session.svelte.ts';
 	import PlexSettings from '#lib/components/settings/PlexSettings.svelte';
 	import ServicesSettings from '#lib/components/settings/ServicesSettings.svelte';
+	import ImportSettings from '#lib/components/settings/ImportSettings.svelte';
 
 	const STEPS = [
 		{ key: 'plex', title: 'Your Plex server', about: "Pick the Plex server Flixarr works with and the libraries it reads. Titles in them show as available, and Flixarr hears from Plex the moment something new is added." },
+		{ key: 'seerr', title: 'Switching from Seerr?', about: 'Bring over your users, requests, issues and Radarr and Sonarr from Seerr, Overseerr or Jellyseerr. Starting fresh? Skip this.' },
 		{ key: 'services', title: 'Radarr and Sonarr', about: 'Requests are sent to Radarr (movies) and Sonarr (series). Connect them now, or later in Settings → Services.' },
 		{ key: 'done', title: "You're all set", about: '' }
 	];
@@ -40,6 +42,8 @@
 	<div class="mt-6 space-y-4">
 		{#if step.key === 'plex'}
 			<PlexSettings />
+		{:else if step.key === 'seerr'}
+			<ImportSettings setup />
 		{:else if step.key === 'services'}
 			<ServicesSettings />
 		{:else}
