@@ -62,7 +62,7 @@
 </script>
 
 {#snippet alertsPanel()}
-	<div class="flex flex-col overflow-hidden rounded-xl border border-gray-700/60 bg-gray-900 shadow-2xl">
+	<div class="flex flex-col overflow-hidden rounded-xl border border-gray-600/70 bg-gray-900 shadow-[0_24px_64px_-8px_rgba(0,0,0,0.95),0_8px_24px_rgba(0,0,0,0.7)]">
 		<div class="flex items-center justify-between gap-3 border-b border-gray-700/40 px-4 py-3">
 			<span class="font-semibold">Alerts</span>
 			<span class="flex items-center gap-3">
