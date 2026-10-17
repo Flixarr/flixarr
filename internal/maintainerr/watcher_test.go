@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Flixarr/flixarr/internal/jobs"
 	"github.com/Flixarr/flixarr/internal/secret"
 	"github.com/Flixarr/flixarr/internal/store"
 )
@@ -142,5 +143,26 @@ func TestSync(t *testing.T) {
 	json.Unmarshal([]byte(strings.TrimPrefix(ex[len(ex)-1], "POST /api/rules/exclusion ")), &last)
 	if last["action"] != float64(1) {
 		t.Fatalf("not unexcluded: %v", ex[len(ex)-1])
+	}
+}
+
+// A title whose time is up leaves on the next removal run from now, not "any day now" (a run that
+// already passed didn't take it).
+func TestLeaveAt(t *testing.T) {
+	runs, err := jobs.Parse("0 4 1 * *") // 4 AM on the 1st
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.Local)
+	added := time.Date(2026, 8, 20, 0, 0, 0, 0, time.Local)
+	if got := leaveAt(added, 30, runs, now); !got.Equal(time.Date(2026, 11, 1, 4, 0, 0, 0, time.Local)) {
+		t.Errorf("overdue: %v", got)
+	}
+	added = time.Date(2026, 10, 10, 0, 0, 0, 0, time.Local)
+	if got := leaveAt(added, 30, runs, now); !got.Equal(time.Date(2026, 12, 1, 4, 0, 0, 0, time.Local)) {
+		t.Errorf("not due yet: %v", got)
+	}
+	if got := leaveAt(added, 30, nil, now); !got.Equal(added.Add(30 * 24 * time.Hour)) {
+		t.Errorf("no schedule: %v", got)
 	}
 }

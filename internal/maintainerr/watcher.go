@@ -128,12 +128,7 @@ func (w *Watcher) Sync(ctx context.Context) (string, error) {
 				if m.TmdbID == 0 || m.Added.IsZero() {
 					continue
 				}
-				at := m.Added.Add(time.Duration(col.DeleteAfterDays) * 24 * time.Hour)
-				if runs != nil {
-					if next := runs.Next(at.In(time.Local)); !next.IsZero() {
-						at = next
-					}
-				}
+				at := leaveAt(m.Added, col.DeleteAfterDays, runs, time.Now())
 				items = append(items, store.Leaving{Type: typ, TmdbID: m.TmdbID, PlexID: m.PlexID, CollectionID: col.ID, Collection: col.Title, LeaveAt: at.Format(time.RFC3339)})
 				st.Leaving++
 			}
@@ -395,4 +390,21 @@ func (w *Watcher) asksChanged() {
 			w.Store.ResolveTodo(t)
 		}
 	}
+}
+
+// leaveAt is when Maintainerr removes a title: its first removal run once its time is up. A title whose
+// time is already up leaves on the next run from now (the runs before it didn't take it).
+func leaveAt(added time.Time, days int, runs *jobs.Schedule, now time.Time) time.Time {
+	at := added.Add(time.Duration(days) * 24 * time.Hour)
+	if runs == nil {
+		return at
+	}
+	from := at
+	if from.Before(now) {
+		from = now
+	}
+	if next := runs.Next(from.In(time.Local)); !next.IsZero() {
+		return next
+	}
+	return at
 }
