@@ -176,6 +176,13 @@ func (s *Store) UserByPlexID(plexID int64) (*User, error) {
 	return scanUser(s.db.QueryRow(`SELECT `+userCols+` FROM users WHERE plex_id = ?`, plexID))
 }
 
+// AvatarKnown reports whether u is someone's saved avatar address.
+func (s *Store) AvatarKnown(u string) bool {
+	var n int
+	s.db.QueryRow(`SELECT COUNT(*) FROM users WHERE avatar = ?`, u).Scan(&n)
+	return n > 0
+}
+
 // CreateUser inserts a user and returns it.
 func (s *Store) CreateUser(u User) (*User, error) {
 	if u.Perms == nil {

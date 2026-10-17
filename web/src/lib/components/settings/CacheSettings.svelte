@@ -2,10 +2,11 @@
 	import { api, fmtBytes, fmtNum, fmtDate, prefs } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
-	import type { CacheState } from '#lib/types.ts';
+	import type { CacheState, HitMiss } from '#lib/types.ts';
 	import Toggle from '#lib/components/Toggle.svelte';
 	import Modal from '#lib/components/Modal.svelte';
 	import Tip from '#lib/components/Tip.svelte';
+	import Tooltip from '#lib/components/Tooltip.svelte';
 	import Select from '#lib/components/Select.svelte';
 
 	const KINDS = { titles: ['Titles', 'Movies, series, seasons, collections'], people: ['People', 'Cast and crew pages'], lists: ['Lists', 'Discover rows, browse pages, genres'], searches: ['Searches', 'Search results'] };
@@ -15,6 +16,7 @@
 	const MAX = [5000, 10000, 25000, 50000, 100000];
 	const DAYS = [7, 14, 30, 60, 90];
 	const API_OFF = 'Cache API responses is off.';
+	const NONE: HitMiss = { hits: 0, misses: 0 };
 
 	type TimeKey = 'pagesMinutes' | 'listsMinutes' | 'searchesMinutes' | 'maxResults';
 
@@ -23,7 +25,7 @@
 	let confirmImages = $state(false);
 	let busy = $state('');
 
-	const total = $derived(st ? st.kinds.reduce((a, k) => ({ count: a.count + k.count, bytes: a.bytes + k.bytes }), { count: st.images.count, bytes: st.images.bytes }) : null);
+	const total = $derived(st ? st.kinds.reduce((a, k) => ({ count: a.count + k.count, bytes: a.bytes + k.bytes }), { count: st.images.count + st.avatars.count, bytes: st.images.bytes + st.avatars.bytes }) : null);
 	// Average size of one saved result, measured on whatever server this runs on once 50 are saved; a typical figure before that.
 	const results = $derived(st ? st.kinds.reduce((a, k) => ({ count: a.count + k.count, bytes: a.bytes + k.bytes }), { count: 0, bytes: 0 }) : { count: 0, bytes: 0 });
 	const measured = $derived(results.count >= 50);
@@ -83,9 +85,10 @@
 	</div>
 {/snippet}
 
-{#snippet stored(label: string, about: string, count: number, bytes: number, onflush: () => void)}
+{#snippet stored(label: string, about: string, count: number, bytes: number, hm: HitMiss, onflush: () => void)}
 	<div class="flex items-center gap-3 py-3 text-sm">
 		<span class="min-w-0 flex-1"><span class="block">{label}</span><span class="block text-xs text-gray-500">{about}</span></span>
+		<Tooltip text="Lookups since {since}" align="right"><span class="block text-right text-xs"><span class="block tabular-nums text-gray-300">{fmtNum(hm.hits)} hit{hm.hits === 1 ? '' : 's'}</span><span class="block tabular-nums text-gray-500">{fmtNum(hm.misses)} miss{hm.misses === 1 ? '' : 'es'}</span></span></Tooltip>
 		<span class="text-right"><span class="block tabular-nums">{fmtNum(count)}</span><span class="block text-xs text-gray-500">{fmtBytes(bytes)}</span></span>
 		<button class="btn-ghost px-2.5 py-1 text-xs" disabled={!count || busy !== ''} onclick={onflush}>Flush</button>
 	</div>
@@ -108,7 +111,7 @@
 			<div class="text-xs text-gray-500">{fmtNum(st.counters.misses)} fetched from the Flixarr API</div>
 			{#if st.counters.stale}<div class="text-xs text-yellow-400">{fmtNum(st.counters.stale)} served while the API was down</div>{/if}
 		</div>
-		{@render stat('Cache size', fmtBytes(total.bytes), `${fmtNum(total.count - st.images.count)} results · ${fmtNum(st.images.count)} images`)}
+		{@render stat('Cache size', fmtBytes(total.bytes), `${fmtNum(results.count)} results · ${fmtNum(st.images.count + st.avatars.count)} images`)}
 	</div>
 
 	<div>
@@ -168,9 +171,10 @@
 		{@render heading('Storage')}
 		<div class="card divide-y divide-gray-700/40 px-4">
 			{#each st.kinds as k (k.kind)}
-				{@render stored(KINDS[k.kind][0], KINDS[k.kind][1], k.count, k.bytes, () => flush(k.kind, KINDS[k.kind][0]))}
+				{@render stored(KINDS[k.kind][0], KINDS[k.kind][1], k.count, k.bytes, st.counters.byKind?.[k.kind] ?? NONE, () => flush(k.kind, KINDS[k.kind][0]))}
 			{/each}
-			{@render stored('Saved images', 'Posters and backdrops', st.images.count, st.images.bytes, () => (confirmImages = true))}
+			{@render stored('Saved images', 'Posters and backdrops', st.images.count, st.images.bytes, st.images, () => (confirmImages = true))}
+			{@render stored('User avatars', 'Plex profile pictures, always saved', st.avatars.count, st.avatars.bytes, st.avatars, () => flush('avatars', 'User avatars'))}
 			<div class="flex items-center gap-3 py-3 text-sm">
 				<span class="flex-1 font-medium">Total</span>
 				<span class="text-right"><span class="block font-medium tabular-nums">{fmtNum(total.count)}</span><span class="block text-xs text-gray-500">{fmtBytes(total.bytes)}</span></span>
@@ -180,7 +184,7 @@
 	</div>
 
 	<Modal bind:open={confirmAll} title="Flush everything?" sub="{fmtNum(total.count)} item{total.count === 1 ? '' : 's'} · {fmtBytes(total.bytes)}">
-		<p class="p-5 text-sm text-gray-300">Every saved result and image is deleted. Pages load from the Flixarr API, and images from TMDB, again until the cache fills back up.</p>
+		<p class="p-5 text-sm text-gray-300">Every saved result, image and avatar is deleted. Pages load from the Flixarr API, images from TMDB and avatars from Plex again until the cache fills back up.</p>
 		{#snippet footer()}
 			<button class="btn-ghost" onclick={() => (confirmAll = false)}>Cancel</button>
 			<button class="btn px-6" disabled={busy !== ''} onclick={() => flush('all', 'Everything')}>Flush all</button>

@@ -1,8 +1,15 @@
 package meta
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
+
+	"github.com/Flixarr/flixarr/internal/secret"
+	"github.com/Flixarr/flixarr/internal/store"
 )
 
 func TestFreshFor(t *testing.T) {
@@ -59,5 +66,38 @@ func TestAllowedPaths(t *testing.T) {
 	}
 	if allowed("admin/secrets") {
 		t.Fatal("an unknown path was let through")
+	}
+}
+
+// Each Storage row counts its own hits and misses; the totals still add up.
+func TestCountersByKind(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "s-maxage=3600")
+		w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	st, err := store.Open(dir, box)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	c := New(srv.URL, "test", st)
+	ctx := context.Background()
+	for _, p := range []string{"movie/603", "movie/603", "person/1", "lists/trending", "lists/trending", "lists/trending"} {
+		if _, _, err := c.Get(ctx, p, url.Values{}); err != nil {
+			t.Fatalf("%s: %v", p, err)
+		}
+	}
+	got := c.Counters()
+	want := map[string]HitMiss{KindTitles: {1, 1}, KindPeople: {0, 1}, KindLists: {2, 1}, KindSearches: {0, 0}}
+	for k, w := range want {
+		if got.ByKind[k] != w {
+			t.Errorf("%s: %+v, want %+v", k, got.ByKind[k], w)
+		}
+	}
+	if got.Hits != 3 || got.Misses != 3 {
+		t.Errorf("totals %d hits %d misses", got.Hits, got.Misses)
 	}
 }

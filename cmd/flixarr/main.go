@@ -100,7 +100,7 @@ func main() {
 			return plural(n, "result") + " removed", err
 		}})
 	runner.Add(&jobs.Job{ID: "image-cleanup", Name: "Image cache cleanup", Default: "0 5 * * 0",
-		About: "Removes saved posters and backdrops nobody has viewed for a while (Settings → Cache).",
+		About: "Removes saved posters, backdrops and avatars nobody has viewed for a while (Settings → Cache).",
 		Run: func(context.Context) (string, error) {
 			n, err := ic.Cleanup()
 			return plural(int64(n), "image") + " removed", err

@@ -84,9 +84,12 @@ export interface CacheState {
 	settings: CacheConfig;
 	defaults: CacheConfig;
 	kinds: CacheKind[];
-	counters: { hits: number; misses: number; stale: number; since: string };
-	images: { enabled: boolean; days: number; defaultDays: number; count: number; bytes: number };
+	counters: { hits: number; misses: number; stale: number; since: string; byKind: Record<string, HitMiss> };
+	images: { enabled: boolean; days: number; defaultDays: number; count: number; bytes: number } & HitMiss;
+	avatars: { count: number; bytes: number } & HitMiss;
 }
+
+export interface HitMiss { hits: number; misses: number }
 
 export interface Job {
 	id: string;

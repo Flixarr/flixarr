@@ -96,6 +96,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/update/check", s.auth(s.admin(s.updateCheck)))
 	mux.HandleFunc("PUT /api/update/settings", s.auth(s.admin(s.updateSettings)))
 	mux.HandleFunc("GET /api/image/{size}/{file}", s.auth(s.image))
+	mux.HandleFunc("GET /api/avatar", s.auth(s.avatar))
 	mux.HandleFunc("GET /api/cache", s.auth(s.admin(s.cacheInfo)))
 	mux.HandleFunc("PUT /api/cache/settings", s.auth(s.admin(s.cacheSettings)))
 	mux.HandleFunc("DELETE /api/cache/{kind}", s.auth(s.admin(s.cacheFlush)))
