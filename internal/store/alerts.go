@@ -192,6 +192,18 @@ func (s *Store) TapAlertKey(userID int64, key string) error {
 	return err
 }
 
+// HideAlertKey keeps a key's newest news alert out of one person's bell (they did it themselves).
+func (s *Store) HideAlertKey(userID int64, key string) error {
+	_, err := s.db.Exec(`INSERT INTO alert_seen (user_id, alert_id, seen_at) SELECT ?, id, '1970-01-01T00:00:00Z' FROM alerts WHERE key = ? ORDER BY id DESC LIMIT 1
+		ON CONFLICT(user_id, alert_id) DO UPDATE SET seen_at = excluded.seen_at`, userID, key)
+	return err
+}
+
+// DropAlertsTo removes the news alerts that open a page that's gone (a deleted issue).
+func (s *Store) DropAlertsTo(link string) {
+	s.db.Exec(`DELETE FROM alerts WHERE kind = 'news' AND link = ?`, link)
+}
+
 // TapAll marks everything in a person's bell tapped (to-dos stay until handled).
 func (s *Store) TapAll(userID int64, can func(string) bool) error {
 	list, err := s.Bell(userID, can)

@@ -228,6 +228,9 @@ func (s *Server) issueAlerts(is store.Issue, by *store.User, what string) {
 		}
 	case what == "resolved" || what == "deleted":
 		s.Store.ResolveTodo(todo)
+		if what == "deleted" {
+			s.Store.DropAlertsTo(thread)
+		}
 		if what == "resolved" && (by == nil || by.ID != is.UserID) {
 			s.Store.AddNews(store.Alert{Audience: fmt.Sprintf("user:%d", is.UserID), Title: "Fixed", Detail: is.Title + " · " + kind, Link: thread, Poster: is.Poster})
 		}
@@ -235,7 +238,7 @@ func (s *Server) issueAlerts(is store.Issue, by *store.User, what string) {
 		if by != nil && by.ID == is.UserID {
 			// The reporter replied: news for the people handling it.
 			s.Store.AddNews(store.Alert{Audience: "can:manageIssues", Title: name + " replied", Detail: is.Title + " · " + kind, Link: thread, Poster: is.Poster, Key: "reply:" + what, Repeat: true})
-			s.Store.TapAlertKey(by.ID, "reply:"+what)
+			s.Store.HideAlertKey(by.ID, "reply:"+what)
 		} else {
 			s.Store.AddNews(store.Alert{Audience: fmt.Sprintf("user:%d", is.UserID), Title: name + " replied", Detail: is.Title + " · " + kind, Link: thread, Poster: is.Poster})
 		}
