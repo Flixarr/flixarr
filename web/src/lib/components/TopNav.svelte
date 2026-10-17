@@ -62,16 +62,15 @@
 </script>
 
 {#snippet alertsPanel()}
-	<div class="flex min-h-0 flex-1 flex-col overflow-hidden bg-gray-900 tablet:rounded-xl tablet:border tablet:border-gray-700/60 tablet:shadow-2xl">
+	<div class="flex flex-col overflow-hidden rounded-xl border border-gray-700/60 bg-gray-900 shadow-2xl">
 		<div class="flex items-center justify-between gap-3 border-b border-gray-700/40 px-4 py-3">
 			<span class="font-semibold">Alerts</span>
 			<span class="flex items-center gap-3">
 				{#if untapped()}<button class="text-xs text-gray-400 hover:text-white" onclick={readAllAlerts}>Mark all as read</button>{/if}
-				<button class="text-gray-400 hover:text-white tablet:hidden" aria-label="Close" onclick={() => (menu = '')}><Icon name="close" class="size-5" /></button>
 			</span>
 		</div>
 		{#if alerts.list.length}
-			<div class="min-h-0 flex-1 divide-y divide-gray-700/40 overflow-y-auto tablet:max-h-[60vh] tablet:flex-none">
+			<div class="max-h-[70vh] divide-y divide-gray-700/40 overflow-y-auto tablet:max-h-[60vh]">
 				{#each alerts.list as a (a.id)}
 					<button class="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-white/5 {a.kind === 'todo' ? 'border-l-2 border-l-primary' : ''}" onclick={() => { menu = ''; if (!a.tapped) tapAlert(a.id); goto(a.link); }}>
 						{#if a.poster}<img src={img(a.poster, 'w92')} alt="" class="h-12 w-8 shrink-0 rounded object-cover {a.tapped ? 'opacity-50' : ''}" />
@@ -147,10 +146,10 @@
 	</div>
 </header>
 
-<!-- Phones: the alerts window fills the screen. It sits outside the header because the header's backdrop
-     blur makes it the box that fixed children are placed in, which squeezed the window to the bar's height. -->
+<!-- Phones: the alerts dropdown spans the screen's width under the top bar. It sits outside the header
+     because the header's backdrop blur makes it the box fixed children are placed in (#101). -->
 {#if menu === 'notif'}
-	<div class="fixed inset-0 z-50 flex flex-col bg-gray-950 pt-[env(safe-area-inset-top)] tablet:hidden" data-menu>
+	<div class="fixed inset-x-3 top-[calc(4rem+max(0px,calc(env(safe-area-inset-top)-0.75rem)))] z-50 tablet:hidden" data-menu>
 		{@render alertsPanel()}
 	</div>
 {/if}
