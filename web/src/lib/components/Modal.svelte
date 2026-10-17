@@ -3,6 +3,7 @@
 	// iOS ignores overflow:hidden on body, so the body is pinned at its scroll offset and restored on close.
 	import type { Snippet } from 'svelte';
 	import Icon from './Icon.svelte';
+	import { lock } from '#lib/scrolllock.ts';
 
 	// `top` replaces the standard title bar (the close button stays, top right). `center` keeps it a
 	// centered dialog on phones too (the trailer: a video doesn't belong in a bottom sheet). Panels that slide in
@@ -13,16 +14,12 @@
 
 	$effect(() => {
 		if (!open) return;
-		const y = scrollY;
-		document.documentElement.classList.add('modal-open');
-		Object.assign(document.body.style, { position: 'fixed', top: `-${y}px`, left: '0', right: '0' });
+		const unlock = lock();
 		const onKey = (e: KeyboardEvent) => e.key === 'Escape' && (open = false);
 		addEventListener('keydown', onKey);
 		return () => {
 			removeEventListener('keydown', onKey);
-			document.documentElement.classList.remove('modal-open');
-			Object.assign(document.body.style, { position: '', top: '', left: '', right: '' });
-			scrollTo(0, y);
+			unlock();
 		};
 	});
 </script>

@@ -110,9 +110,7 @@
 @keyframes board-swap { 0%, 40% { opacity: 0; } 50%, 90% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .board-swap { animation: none; } }
 
-/* Modal scroll lock (design rule 2): Modal.svelte pins the body in place. No overflow: hidden here: on an
-   iPhone home-screen app that shrinks the screen by the status bar's height and leaves a dark strip at the
-   bottom of full-height panels (#102). */
+/* While a window is open (lib/scrolllock.ts keeps the page still; no pinning, no overflow: hidden). */
 html.modal-open,
 html.modal-open body { overscroll-behavior: none; }
 

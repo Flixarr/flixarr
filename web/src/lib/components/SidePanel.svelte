@@ -5,21 +5,18 @@
 	import type { Snippet } from 'svelte';
 	import { fade, fly } from 'svelte/transition';
 	import Icon from './Icon.svelte';
+	import { lock } from '#lib/scrolllock.ts';
 
 	let { open = $bindable(false), title, sub = '', children }: { open?: boolean; title: string; sub?: string; children: Snippet } = $props();
 
 	$effect(() => {
 		if (!open) return;
-		const y = scrollY;
-		document.documentElement.classList.add('modal-open');
-		Object.assign(document.body.style, { position: 'fixed', top: `-${y}px`, left: '0', right: '0' });
+		const unlock = lock();
 		const onKey = (e: KeyboardEvent) => e.key === 'Escape' && (open = false);
 		addEventListener('keydown', onKey);
 		return () => {
 			removeEventListener('keydown', onKey);
-			document.documentElement.classList.remove('modal-open');
-			Object.assign(document.body.style, { position: '', top: '', left: '', right: '' });
-			scrollTo(0, y);
+			unlock();
 		};
 	});
 </script>

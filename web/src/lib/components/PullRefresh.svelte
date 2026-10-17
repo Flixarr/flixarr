@@ -2,6 +2,7 @@
 	// Pull down at the top of a page to reload it. Only in the home-screen app: there iOS has no pull to
 	// refresh of its own (browsers do, so it stays off there).
 	import Icon from './Icon.svelte';
+	import { locked } from '#lib/scrolllock.ts';
 
 	let pull = $state(0); // px the indicator has come down
 	const READY = 70;
@@ -12,7 +13,7 @@
 		let x0 = 0, y0 = 0, on = false;
 		const start = (e: TouchEvent) => {
 			// Not while a window is open (the page is pinned then) or the page is scrolled.
-			on = scrollY <= 0 && document.body.style.position !== 'fixed' && e.touches.length === 1;
+			on = scrollY <= 0 && !locked() && e.touches.length === 1;
 			x0 = e.touches[0].clientX;
 			y0 = e.touches[0].clientY;
 		};
