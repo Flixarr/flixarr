@@ -31,14 +31,14 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 	<div class="fixed inset-0 z-50 flex overscroll-none {side ? 'items-stretch justify-end bg-gray-950/70' : `justify-center bg-gray-950/80 backdrop-blur-sm tablet:items-center tablet:p-4 ${center ? 'items-center p-3' : 'items-end'}`}"
 		onclick={(e) => e.target === e.currentTarget && (open = false)}>
-		<div class="card w-full overflow-y-auto overscroll-contain bg-gray-900 {side ? 'h-dvh rounded-none tablet:max-w-md tablet:rounded-l-xl' : `max-h-[90dvh] tablet:rounded-b-xl ${center ? '' : 'rounded-b-none'} ${wide ? 'tablet:max-w-3xl' : 'tablet:max-w-lg'}`}" role="dialog" aria-modal="true" aria-label={title}>
+		<div class="card w-full overflow-y-auto overscroll-contain bg-gray-900 {side ? 'rounded-none pb-[env(safe-area-inset-bottom)] tablet:max-w-md tablet:rounded-l-xl tablet:pb-0' : `max-h-[90dvh] tablet:rounded-b-xl ${center ? '' : 'rounded-b-none'} ${wide ? 'tablet:max-w-3xl' : 'tablet:max-w-lg'}`}" role="dialog" aria-modal="true" aria-label={title}>
 			{#if top}
 				<div class="relative">
 					{@render top()}
 					<button class="absolute right-3 top-3 rounded-lg p-1 text-gray-300 hover:bg-white/10 hover:text-white" onclick={() => (open = false)} aria-label="Close"><Icon name="close" /></button>
 				</div>
 			{:else}
-				<div class="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-gray-700/40 bg-gray-900/95 px-5 py-4 backdrop-blur">
+				<div class="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-gray-700/40 bg-gray-900/95 px-5 py-4 backdrop-blur {side ? 'pt-[max(1rem,env(safe-area-inset-top))] tablet:pt-4' : ''}">
 					<div><div class="font-semibold">{title}</div>{#if sub}<div class="text-xs text-gray-400">{sub}</div>{/if}</div>
 					<button class="rounded-lg p-1 text-gray-400 hover:bg-white/10 hover:text-white" onclick={() => (open = false)} aria-label="Close"><Icon name="close" /></button>
 				</div>
