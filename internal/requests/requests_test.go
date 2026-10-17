@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Flixarr/flixarr/internal/arr"
 	"github.com/Flixarr/flixarr/internal/secret"
@@ -414,25 +415,58 @@ func TestRequestAlerts(t *testing.T) {
 	ctx := context.Background()
 	st.SetSetting(KeyApproval, "true")
 	r, _ := s.Create(ctx, user, New{Type: "movie", TmdbID: 603, Title: "The Matrix"})
-	if a, _ := st.ActiveAlerts(admin.ID, store.CanAll); len(a) != 1 || a[0].Title != "1 request waiting" {
-		t.Fatalf("admin alerts: %+v", a)
+	bell := func(id int64, can func(string) bool) []store.Alert { l, _ := st.Bell(id, can); return l }
+	if a := bell(admin.ID, store.CanAll); len(a) != 1 || a[0].Kind != "todo" || a[0].Title != "eryn requested" {
+		t.Fatalf("admin to-do: %+v", a)
 	}
+	if a := bell(user.ID, store.CanNone); len(a) != 0 {
+		t.Fatalf("nothing for the user yet: %+v", a)
+	}
+	// An admin approves: the to-do goes; the user hears Approved (and the request is sent).
+	st.DecideRequest(r.ID, admin.ID, "approved")
+	r.Status = "approved"
+	r = s.Send(ctx, r)
+	s.Decided(r, admin)
+	if a := bell(admin.ID, store.CanAll); len(a) != 0 {
+		t.Fatalf("admin to-do should be gone: %+v", a)
+	}
+	if a := bell(user.ID, store.CanNone); len(a) != 1 || a[0].Title != "Approved" {
+		t.Fatalf("user hears approved: %+v", a)
+	}
+	// In Plex: Ready to watch, its own alert. Ready again later: Ready to watch again.
 	r.Status = "available"
 	st.UpdateRequest(r)
 	s.Alert(r)
-	got, _ := st.ActiveAlerts(user.ID, store.CanNone)
-	if len(got) != 1 || got[0].Detail != "The Matrix is ready to watch" || !got[0].Unread {
-		t.Fatalf("user alerts: %+v", got)
+	got := bell(user.ID, store.CanNone)
+	if len(got) != 2 || got[0].Title != "Ready to watch" || got[0].Detail != "The Matrix" || !got[0].New {
+		t.Fatalf("ready: %+v", got)
 	}
-	if a, _ := st.ActiveAlerts(admin.ID, store.CanAll); len(a) != 0 {
-		t.Fatalf("admin should see nothing now: %+v", a)
+	time.Sleep(1100 * time.Millisecond)
+	s.Alert(r)
+	if got := bell(user.ID, store.CanNone); got[0].Title != "Ready to watch again" {
+		t.Fatalf("again: %+v", got[0])
 	}
-	// First look marks it seen; the next look clears it.
-	s.SeenAlerts(user.ID)
-	st.MarkAlertsSeen(user.ID)
-	s.SeenAlerts(user.ID)
-	if got, _ = st.ActiveAlerts(user.ID, store.CanNone); len(got) != 0 {
-		t.Fatalf("not cleared: %+v", got)
+	// An admin approving their own request is no news to them.
+	mine, _ := s.Create(ctx, admin, New{Type: "movie", TmdbID: 604, Title: "Reloaded"})
+	s.Decided(mine, admin)
+	for _, a := range bell(admin.ID, store.CanAll) {
+		if a.Title == "Approved" {
+			t.Fatal("an admin was told they approved their own request")
+		}
+	}
+	// A failed request: the user hears it and admins get a to-do, gone when it's retried.
+	f, _ := st.CreateRequest(store.Request{Type: "movie", TmdbID: 605, Title: "Revolutions", UserID: user.ID, Status: "failed", Error: "no release"})
+	s.Alert(f)
+	if a := bell(user.ID, store.CanNone); a[0].Title != "Couldn't get it" {
+		t.Fatalf("user failed: %+v", a[0])
+	}
+	if a := bell(admin.ID, store.CanAll); len(a) != 1 || a[0].Title != "Request failed" {
+		t.Fatalf("admin failed: %+v", a)
+	}
+	f.Status = "sent"
+	s.Alert(f)
+	if a := bell(admin.ID, store.CanAll); len(a) != 0 {
+		t.Fatalf("retried, to-do should be gone: %+v", a)
 	}
 }
 
@@ -508,7 +542,7 @@ func TestRecheckAfterPlexRemoval(t *testing.T) {
 	if r, _ = st.Request(r.ID); r.Status != "removed" || !strings.HasPrefix(r.Error, "Removed from Plex and Radarr") {
 		t.Fatalf("gone everywhere: %+v", r)
 	}
-	if a, _ := st.ActiveAlerts(user.ID, store.CanNone); len(a) != 1 || a[0].Detail != "The Matrix was removed" {
+	if a, _ := st.Bell(user.ID, store.CanNone); len(a) == 0 || a[0].Title != "Removed" || !strings.HasPrefix(a[0].Detail, "The Matrix") {
 		t.Fatalf("alert: %+v", a)
 	}
 	radarr.gone, radarr.hasFile = false, false
@@ -676,7 +710,7 @@ func TestExpiredByMaintainerr(t *testing.T) {
 	if r, _ = st.Request(r.ID); r.Status != "expired" || !strings.Contains(r.Error, "Maintainer") {
 		t.Fatalf("got %+v", r)
 	}
-	if a, _ := st.ActiveAlerts(user.ID, store.CanNone); len(a) != 1 || a[0].Detail != "The Matrix left Plex" {
+	if a, _ := st.Bell(user.ID, store.CanNone); len(a) == 0 || a[0].Title != "Left Plex" {
 		t.Fatalf("alert: %+v", a)
 	}
 	// Expired doesn't count against limits and can be asked for again.

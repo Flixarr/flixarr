@@ -19,7 +19,7 @@
 	import NotificationsSettings from '#lib/components/settings/NotificationsSettings.svelte';
 	import BackupsSettings from '#lib/components/settings/BackupsSettings.svelte';
 	import BlocklistSettings from '#lib/components/settings/BlocklistSettings.svelte';
-	import { markAlertsSeen, servicesUnread } from '#lib/alerts.svelte.ts';
+	import { tapWhere, servicesUnread } from '#lib/alerts.svelte.ts';
 
 	// Section key → label, icon, one-line description (side menu / phone list).
 	const SECTIONS: [string, string, string, string][] = [
@@ -66,7 +66,7 @@
 	});
 	// Reaching Services is the end of the red-dot trail.
 	$effect(() => {
-		if (tab === 'services' && hash === 'services' && servicesUnread()) markAlertsSeen();
+		if (tab === 'services' && hash === 'services' && servicesUnread()) tapWhere('arr:');
 	});
 	$effect(() => {
 		if (isAdmin) api<{ status: UpdateStatus; payload: Record<string, string> }>('/update').then((d) => { upd = d.status; payload = d.payload; });

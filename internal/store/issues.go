@@ -4,8 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"strconv"
-	"strings"
 )
 
 // Issue is a problem reported on a title in the library.
@@ -142,36 +140,6 @@ func (s *Store) AddComment(issueID, userID int64, body string) (int64, error) {
 	id, _ := res.LastInsertId()
 	_, err = s.db.Exec(`UPDATE issues SET updated_at = ? WHERE id = ?`, t, issueID)
 	return id, err
-}
-
-// OpenIssueSig names what's open for the bell: every open issue ("i12") and the newest comment on any of
-// them ("c40"), so a new issue or a new reply turns the bell unread and one closing doesn't.
-func (s *Store) OpenIssueSig() (n int, sig string) {
-	rows, err := s.db.Query(`SELECT id FROM issues WHERE status = 'open' ORDER BY id`)
-	if err != nil {
-		return 0, ""
-	}
-	parts := []string{}
-	for rows.Next() {
-		var id int64
-		if rows.Scan(&id) == nil {
-			parts = append(parts, "i"+strconv.FormatInt(id, 10))
-		}
-	}
-	rows.Close()
-	var c int64
-	s.db.QueryRow(`SELECT COALESCE(MAX(c.id), 0) FROM issue_comments c JOIN issues i ON i.id = c.issue_id WHERE i.status = 'open'`).Scan(&c)
-	if c > 0 {
-		parts = append(parts, "c"+strconv.FormatInt(c, 10))
-	}
-	return len(parts) - map[bool]int{true: 1, false: 0}[c > 0], strings.Join(parts, ",")
-}
-
-// OpenIssueCount is how many issues are open (the nav badge for people who manage issues).
-func (s *Store) OpenIssueCount() int {
-	var n int
-	s.db.QueryRow(`SELECT COUNT(*) FROM issues WHERE status = 'open'`).Scan(&n)
-	return n
 }
 
 // OpenIssuesForTitle lists a title's open issues, newest first.

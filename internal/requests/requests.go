@@ -303,8 +303,8 @@ func (s *Service) Create(ctx context.Context, u *store.User, in New) (store.Requ
 	}
 	s.notify("request_submitted", r)
 	s.Publish(r)
-	if r.Status == "pending" || r.Status == "failed" {
-		s.Alert(r)
+	if r.Status == "pending" {
+		s.Alert(r) // sent or failed was alerted by Send
 	}
 	return r, nil
 }
@@ -341,6 +341,7 @@ func (s *Service) Send(ctx context.Context, r store.Request) store.Request {
 	}
 	s.Store.UpdateRequest(r)
 	s.Publish(r)
+	s.Alert(r)
 	return r
 }
 

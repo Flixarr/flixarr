@@ -129,3 +129,10 @@ func SeasonsText(list []int) string {
 	}
 	return s
 }
+
+// TitleEventSince says whether a title had an event of this kind after a time.
+func (s *Store) TitleEventSince(typ string, tmdbID int, kind, after string) bool {
+	var n int
+	s.db.QueryRow(`SELECT COUNT(*) FROM title_events WHERE type = ? AND tmdb_id = ? AND kind = ? AND at > ?`, typ, tmdbID, kind, after).Scan(&n)
+	return n > 0
+}

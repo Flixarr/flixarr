@@ -78,6 +78,7 @@ func (s *Service) RemoveFromArr(ctx context.Context, typ string, tmdbID int) (fo
 			r.Error = fmt.Sprintf("Removed from %s.", ArrName(typ))
 			s.Store.UpdateRequest(r)
 			s.Publish(r)
+			s.Alert(r)
 		}
 	}
 	s.mu.Unlock()
@@ -102,7 +103,7 @@ func (s *Service) ClearTitle(typ string, tmdbID int) error {
 	for _, r := range reqs {
 		r.Status = "deleted"
 		s.Publish(r)
+		s.Forget(r)
 	}
-	s.alertWaiting()
 	return nil
 }

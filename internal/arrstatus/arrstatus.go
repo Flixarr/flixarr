@@ -41,7 +41,7 @@ func (m *Monitor) Forget(v store.Server) {
 	m.mu.Lock()
 	delete(m.snaps, v.ID)
 	m.mu.Unlock()
-	m.Store.ResolveAlert(alertKey(v))
+	m.Store.ResolveTodo(alertKey(v))
 }
 
 // RefreshOne reads one server now.
@@ -120,14 +120,14 @@ type told struct {
 }
 
 // tell sends a server's problem out if it's new.
-func (m *Monitor) tell(v store.Server, a store.Alert) {
+func (m *Monitor) tell(v store.Server, a store.Alert, sig string) {
 	m.mu.Lock()
 	if m.told == nil {
 		m.told = map[int64]told{}
 	}
 	last, seen := m.told[v.ID]
-	news := !seen || store.Louder(last.sig, a.Sig) || (!last.cleared.IsZero() && time.Since(last.cleared) > 30*time.Minute)
-	m.told[v.ID] = told{sig: a.Sig}
+	news := !seen || louder(last.sig, sig) || (!last.cleared.IsZero() && time.Since(last.cleared) > 30*time.Minute)
+	m.told[v.ID] = told{sig: sig}
 	m.mu.Unlock()
 	if news && m.OnProblem != nil {
 		m.OnProblem(v, a)
@@ -150,9 +150,10 @@ func alertKey(v store.Server) string { return fmt.Sprintf("arr:%s:%d", v.Kind, v
 // syncAlert raises, updates or clears the server's single bell alert from its snapshot.
 func (m *Monitor) syncAlert(v store.Server, snap arr.Snapshot) {
 	key := alertKey(v)
-	a := store.Alert{Key: key, Title: v.Name, Link: "/settings#services"}
+	a := store.Alert{Key: key, Audience: "admins", Link: "/settings#services"}
+	sig := "" // what's wrong, for the notification: a new kind of problem is news
 	if !snap.Connected {
-		a.Severity, a.Detail, a.Sig = "error", "Not reachable. "+snap.Error, "offline"
+		a.Title, a.Detail, sig = v.Name+" can't be reached", snap.Error, "offline"
 	} else {
 		stuck, failed := 0, 0
 		for _, q := range snap.Queue {
@@ -174,23 +175,20 @@ func (m *Monitor) syncAlert(v store.Server, snap arr.Snapshot) {
 			parts, kinds = append(parts, count(n, "health issue", "health issues")), append(kinds, "health")
 		}
 		if len(parts) == 0 {
-			if err := m.Store.ResolveAlert(key); err != nil {
+			if err := m.Store.ResolveTodo(key); err != nil {
 				m.Log.Warn("alert", "err", err)
 			}
 			m.cleared(v)
 			return
 		}
-		a.Severity = "warning"
-		if failed > 0 {
-			a.Severity = "error"
-		}
+		a.Title = v.Name + " needs attention"
 		a.Detail = strings.Join(parts, " · ")
-		a.Sig = strings.Join(kinds, ",") // a new kind of problem turns it unread; one clearing doesn't
+		sig = strings.Join(kinds, ",")
 	}
-	if err := m.Store.RaiseAlert(a); err != nil {
+	if _, err := m.Store.RaiseTodo(a); err != nil {
 		m.Log.Warn("alert", "err", err)
 	}
-	m.tell(v, a)
+	m.tell(v, a, sig)
 }
 
 func count(n int, one, many string) string {
@@ -198,4 +196,18 @@ func count(n int, one, many string) string {
 		return "1 " + one
 	}
 	return fmt.Sprintf("%d %s", n, many)
+}
+
+// louder says whether a new problem list names something the old one didn't (comma lists).
+func louder(old, new string) bool {
+	had := map[string]bool{}
+	for _, k := range strings.Split(old, ",") {
+		had[k] = true
+	}
+	for _, k := range strings.Split(new, ",") {
+		if k != "" && !had[k] {
+			return true
+		}
+	}
+	return false
 }

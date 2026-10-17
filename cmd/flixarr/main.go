@@ -121,6 +121,10 @@ func main() {
 		Run:   pm.SyncAll})
 	// The daily update check also says which profiles version is current; a new one syncs right away.
 	checker.OnResult = func(r *update.Result) {
+		if r.UpdateAvailable && r.Latest != nil { // once per version, for admins
+			v := r.Latest.Version + "." + r.Latest.Build
+			st.AddNews(store.Alert{Key: "update:" + v, Audience: "admins", Title: "Flixarr " + v + " is out", Detail: "See what's new in Settings, About", Link: "/settings#about"})
+		}
 		if r.Profiles != nil && (pm.Doc() == nil || pm.Doc().Version != r.Profiles.Version) {
 			runner.RunNow(runCtx, "profiles-sync")
 		}
@@ -173,19 +177,8 @@ func main() {
 	maint.Changed = func(keys []string) { hub.Publish(live.Event{Type: "leaving", Data: keys}) }
 	maint.Leaving = func(r store.Request, at time.Time) {
 		notifier.Send(notifier.FromLeaving(r, at))
-		st.RaiseAlert(store.Alert{Key: fmt.Sprintf("leaving:user:%d", r.UserID), Audience: fmt.Sprintf("user:%d", r.UserID), Severity: "info",
-			Title: "Leaving soon", Detail: r.Title + " leaves Plex on " + at.Local().Format("Jan 2"), Link: fmt.Sprintf("/%s/%d", r.Type, r.TmdbID), Sig: fmt.Sprintf("r%d", r.ID)})
-	}
-	maint.AsksChanged = func(n int) {
-		if n == 0 {
-			st.ResolveAlert("keep:asks")
-			return
-		}
-		title := "1 title someone wants kept"
-		if n > 1 {
-			title = fmt.Sprintf("%d titles people want kept", n)
-		}
-		st.RaiseAlert(store.Alert{Key: "keep:asks", Audience: "can:manageRequests", Severity: "info", Title: title, Detail: "Leaving Plex soon (Maintainerr)", Link: "/leaving", Sig: fmt.Sprint(n)})
+		st.AddNews(store.Alert{Audience: fmt.Sprintf("user:%d", r.UserID), Title: "Leaving Plex " + at.Local().Format("Jan 2"), Detail: r.Title + " · ask to keep it",
+			Link: fmt.Sprintf("/%s/%d", r.Type, r.TmdbID), Poster: r.Poster})
 	}
 	runner.Add(&jobs.Job{ID: "maintainerr", Name: "Maintainerr: read collections", Default: "*/15 * * * *",
 		About: "Reads which titles Maintainerr is about to remove and when, keeps new requests out of its rules for a while, and tells people a week before their request leaves Plex. Maintainerr's webhook runs it right away too.",

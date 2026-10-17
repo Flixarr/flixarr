@@ -127,11 +127,14 @@ func (s *Server) titleDelete(w http.ResponseWriter, r *http.Request, u *store.Us
 		s.Store.AddTitleEvent(typ, id, "deleted", requests.ArrName(typ), u.ID, "")
 	}
 	if in.Data {
+		open, _ := s.Store.OpenIssuesForTitle(typ, id)
 		if err := s.Requests.ClearTitle(typ, id); err != nil {
 			writeErr(w, http.StatusInternalServerError, "Database error.")
 			return
 		}
-		s.syncIssueAlerts(nil, u, "")
+		for _, is := range open {
+			s.Store.ResolveTodo(fmt.Sprintf("issue:%d", is.ID)) // the issue is gone
+		}
 		done = append(done, "Cleared its requests and issues.")
 		s.Store.AddTitleEvent(typ, id, "cleared", "", u.ID, "") // after the clear: history keeps this step
 	}

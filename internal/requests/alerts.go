@@ -6,90 +6,76 @@ import (
 	"github.com/Flixarr/flixarr/internal/store"
 )
 
-// Bell alerts for requests, grouped (Rule 19): one per person about their own requests, updated in place
-// as they move along, and one for admins while requests wait for approval. Never one per download.
+// Alerts (the bell, #90) for requests: one alert per thing that happens. The person who asked hears
+// Ready to watch, Couldn't get it, Removed and Left Plex (and Approved / Declined from Decided); people who
+// manage requests get a to-do for each request waiting for approval and each one that failed, gone once
+// it's handled. The steps in between (sent, downloading…) never alert.
 
-func userAlertKey(userID int64) string { return fmt.Sprintf("requests:user:%d", userID) }
+func approveKey(id int64) string { return fmt.Sprintf("approve:req:%d", id) }
+func failedKey(id int64) string  { return fmt.Sprintf("failed:req:%d", id) }
+func readyKey(id int64) string   { return fmt.Sprintf("ready:req:%d", id) }
 
-var alertText = map[string]string{
-	"approved": "%s was approved", "sent": "%s was sent to be downloaded", "grabbed": "%s was found and is about to download",
-	"downloading": "%s is downloading", "importing": "%s is being added to Plex", "available": "%s is ready to watch",
-	"failed": "%s couldn't be added", "declined": "%s was declined", "expired": "%s left Plex", "removed": "%s was removed",
-}
-
-// Alert updates the requester's bell for a request that just changed status, and the admins' waiting count.
+// Alert updates the bell for a request whose status just changed.
 func (s *Service) Alert(r store.Request) {
-	if f, ok := alertText[r.Status]; ok {
-		detail := fmt.Sprintf(f, r.Title)
-		if r.Status == "declined" && r.Error != "" {
-			detail += ": " + r.Error
-		}
-		if n := s.activeCount(r.UserID); n > 0 && r.Status != "downloading" && r.Status != "grabbed" && r.Status != "importing" && r.Status != "sent" && r.Status != "approved" {
-			detail += fmt.Sprintf(" · %d more on the way", n)
-		}
-		sev := "info"
-		if r.Status == "failed" || r.Status == "declined" {
-			sev = "warning"
-		}
-		s.Store.RaiseAlert(store.Alert{Key: userAlertKey(r.UserID), Audience: fmt.Sprintf("user:%d", r.UserID), Severity: sev,
-			Title: "Your requests", Detail: detail, Link: "/requests", Sig: fmt.Sprintf("%d:%s", r.ID, alertStep(r.Status))})
+	if r.Status != "pending" {
+		s.Store.ResolveTodo(approveKey(r.ID))
 	}
-	s.alertWaiting()
+	if r.Status != "failed" {
+		s.Store.ResolveTodo(failedKey(r.ID))
+	}
+	mine := fmt.Sprintf("user:%d", r.UserID)
+	link := fmt.Sprintf("/%s/%d", r.Type, r.TmdbID)
+	switch r.Status {
+	case "pending":
+		s.Store.RaiseTodo(store.Alert{Key: approveKey(r.ID), Audience: "can:manageRequests", Title: who(r) + " requested", Detail: r.Title + " · waiting for approval",
+			Link: fmt.Sprintf("/requests?open=%d", r.ID), Poster: r.Poster})
+		s.Store.TapAlertKey(r.UserID, approveKey(r.ID)) // they asked; they know
+	case "failed":
+		s.Store.AddNews(store.Alert{Audience: mine, Title: "Couldn't get it", Detail: r.Title, Link: fmt.Sprintf("/requests?open=%d", r.ID), Poster: r.Poster})
+		s.Store.RaiseTodo(store.Alert{Key: failedKey(r.ID), Audience: "can:manageRequests", Title: "Request failed", Detail: r.Title + " · " + r.Error,
+			Link: fmt.Sprintf("/requests?open=%d", r.ID), Poster: r.Poster})
+	case "available":
+		title := "Ready to watch"
+		if prev, ok := s.Store.LastAlertAt(readyKey(r.ID)); ok {
+			// Ready before: fixed or redownloaded since, or (a whole show) new episodes came in.
+			if r.Type == "series" && !s.Store.TitleEventSince(r.Type, r.TmdbID, "redownload", prev) {
+				title = "New episodes are ready to watch"
+			} else {
+				title = "Ready to watch again"
+			}
+		}
+		s.Store.AddNews(store.Alert{Key: readyKey(r.ID), Audience: mine, Title: title, Detail: r.Title, Link: link, Poster: r.Poster, Repeat: true})
+	case "removed":
+		s.Store.AddNews(store.Alert{Audience: mine, Title: "Removed", Detail: r.Title + " · request it again to get it back", Link: link, Poster: r.Poster})
+	case "expired":
+		s.Store.AddNews(store.Alert{Audience: mine, Title: "Left Plex", Detail: r.Title + " · request it again to get it back", Link: link, Poster: r.Poster})
+	}
 }
 
-// alertStep groups the in-between statuses: moving along (grabbed, downloading, importing) updates the
-// bell's text without turning it red; approved, ready, failed and declined do.
-func alertStep(status string) string {
-	switch status {
-	case "sent", "grabbed", "downloading", "importing":
-		return "moving"
-	}
-	return status
-}
-
-func (s *Service) activeCount(userID int64) int {
-	list, _ := s.Store.Requests(userID, 200)
-	n := 0
-	for _, q := range list {
-		switch q.Status {
-		case "approved", "sent", "grabbed", "downloading", "importing":
-			n++
-		}
-	}
-	return n
-}
-
-// alertWaiting keeps the admins' "N requests waiting for approval" alert current.
-func (s *Service) alertWaiting() {
-	list, _ := s.Store.Requests(0, 1000)
-	n := 0
-	for _, q := range list {
-		if q.Status == "pending" {
-			n++
-		}
-	}
-	if n == 0 {
-		s.Store.ResolveAlert("requests:pending")
+// Decided tells the person who asked that someone else approved or declined their request.
+func (s *Service) Decided(r store.Request, by *store.User) {
+	if by == nil || by.ID == r.UserID {
 		return
 	}
-	title := "1 request waiting"
-	if n > 1 {
-		title = fmt.Sprintf("%d requests waiting", n)
-	}
-	s.Store.RaiseAlert(store.Alert{Key: "requests:pending", Audience: "can:manageRequests", Severity: "info", Title: title,
-		Detail: "Approve or decline on the Requests page", Link: "/requests", Sig: fmt.Sprint(n)})
-}
-
-// SeenAlerts clears a person's request alert when they open the bell again after already seeing it,
-// and nothing of theirs is still on its way.
-func (s *Service) SeenAlerts(userID int64) {
-	list, _ := s.Store.ActiveAlerts(userID, store.CanNone)
-	for _, a := range list {
-		if a.Key == userAlertKey(userID) && !a.Unread && s.activeCount(userID) == 0 {
-			s.Store.ResolveAlert(a.Key)
+	title, detail := "Approved", r.Title+" · by "+by.Username
+	if r.Status == "declined" {
+		title, detail = "Declined", r.Title
+		if r.Error != "" {
+			detail += " · " + r.Error
 		}
 	}
+	s.Store.AddNews(store.Alert{Audience: fmt.Sprintf("user:%d", r.UserID), Title: title, Detail: detail, Link: fmt.Sprintf("/requests?open=%d", r.ID), Poster: r.Poster})
 }
 
-// Forgotten updates the waiting count after a request is removed.
-func (s *Service) Forgotten() { s.alertWaiting() }
+// Forget clears a removed request's to-dos.
+func (s *Service) Forget(r store.Request) {
+	s.Store.ResolveTodo(approveKey(r.ID))
+	s.Store.ResolveTodo(failedKey(r.ID))
+}
+
+func who(r store.Request) string {
+	if r.UserName != "" {
+		return r.UserName
+	}
+	return "Someone"
+}

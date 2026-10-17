@@ -5,8 +5,8 @@
 	import Icon from './Icon.svelte';
 	import Avatar from './Avatar.svelte';
 	import { session, signOut, can } from '#lib/session.svelte.ts';
-	import { alerts, markAlertsSeen, servicesUnread, unreadCount, watchAlerts } from '#lib/alerts.svelte.ts';
-	import { ago } from '#lib/api.ts';
+	import { alerts, anyNew, openedBell, readAllAlerts, servicesUnread, show as showCount, tapAlert, untapped, watchAlerts } from '#lib/alerts.svelte.ts';
+	import { ago, img } from '#lib/api.ts';
 
 	let { transparent = false }: { transparent?: boolean } = $props();
 	let scrolled = $state(false);
@@ -34,14 +34,17 @@
 		return () => removeEventListener('click', close);
 	});
 
-	afterNavigate(() => (menu = ''));
+	afterNavigate(() => {
+		menu = '';
+		setTimeout(showCount); // the new page has set its title: put the count back in front
+	});
 
 	$effect(() => {
 		if (session.me) return watchAlerts();
 	});
 	// Opening the bell marks what's in it as seen.
 	$effect(() => {
-		if (menu === 'notif') markAlertsSeen();
+		if (menu === 'notif') openedBell();
 	});
 
 	// Already on the search page: just put the cursor back in its box.
@@ -74,31 +77,40 @@
 		<div class="ml-auto flex items-center gap-1.5 laptop:ml-0">
 			<a href="/search" onclick={focusIfHere} class="hidden rounded-full p-2 hover:bg-white/10 tablet:inline-flex laptop:hidden" aria-label="Search"><Icon name="search" /></a>
 			<div class="relative" data-menu>
-				<button class="relative rounded-full p-2 hover:bg-white/10" aria-label="Alerts{alerts.list.length ? ` (${alerts.list.length})` : ''}" onclick={() => (menu = menu === 'notif' ? '' : 'notif')}>
+				<button class="relative rounded-full p-2 hover:bg-white/10" aria-label="Alerts{untapped() ? ` (${untapped()} not read)` : ''}" onclick={() => (menu = menu === 'notif' ? '' : 'notif')}>
 					<Icon name="bell" />
-					{#if alerts.list.length}
-						<span class="absolute -right-0.5 -top-0.5 grid min-w-4 place-items-center rounded-full px-1 text-[10px] font-bold leading-4 text-white {unreadCount() ? 'alert-pulse bg-red-500' : 'bg-gray-600'}">{alerts.list.length}</span>
+					{#if untapped()}
+						<span class="absolute -right-0.5 -top-0.5 grid min-w-4 place-items-center rounded-full px-1 text-[10px] font-bold leading-4 text-white {anyNew() ? 'alert-pulse bg-red-500' : 'bg-gray-600'}">{untapped() > 99 ? '99+' : untapped()}</span>
 					{/if}
 				</button>
 				{#if menu === 'notif'}
-					<div class="fixed inset-x-3 top-[calc(4rem+max(0px,calc(env(safe-area-inset-top)-0.75rem)))] tablet:absolute tablet:inset-x-auto tablet:right-0 tablet:top-11 tablet:w-96">
-						<div class="overflow-hidden rounded-xl border border-gray-700/60 bg-gray-900 shadow-2xl">
-							<div class="border-b border-gray-700/40 px-4 py-3 font-semibold">Alerts</div>
+					<div class="fixed inset-0 z-50 flex flex-col bg-gray-950 pt-[env(safe-area-inset-top)] tablet:absolute tablet:inset-auto tablet:right-0 tablet:top-11 tablet:block tablet:w-96 tablet:bg-transparent tablet:pt-0">
+						<div class="flex min-h-0 flex-1 flex-col overflow-hidden bg-gray-900 tablet:rounded-xl tablet:border tablet:border-gray-700/60 tablet:shadow-2xl">
+							<div class="flex items-center justify-between gap-3 border-b border-gray-700/40 px-4 py-3">
+								<span class="font-semibold">Alerts</span>
+								<span class="flex items-center gap-3">
+									{#if untapped()}<button class="text-xs text-gray-400 hover:text-white" onclick={readAllAlerts}>Mark all as read</button>{/if}
+									<button class="text-gray-400 hover:text-white tablet:hidden" aria-label="Close" onclick={() => (menu = '')}><Icon name="close" class="size-5" /></button>
+								</span>
+							</div>
 							{#if alerts.list.length}
-								<div class="max-h-[60vh] divide-y divide-gray-700/40 overflow-y-auto">
+								<div class="min-h-0 flex-1 divide-y divide-gray-700/40 overflow-y-auto tablet:max-h-[60vh] tablet:flex-none">
 									{#each alerts.list as a (a.id)}
-										<a href={a.link} class="flex items-start gap-3 px-4 py-3 hover:bg-white/5">
-											{#if a.key.startsWith('arr:')}<img src="/logos/{a.key.split(':')[1]}.svg" alt="" class="mt-0.5 size-6 shrink-0" />{/if}
+										<button class="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-white/5 {a.kind === 'todo' ? 'border-l-2 border-l-primary' : ''}" onclick={() => { menu = ''; if (!a.tapped) tapAlert(a.id); goto(a.link); }}>
+											{#if a.poster}<img src={img(a.poster, 'w92')} alt="" class="h-12 w-8 shrink-0 rounded object-cover {a.tapped ? 'opacity-50' : ''}" />
+											{:else if a.key.startsWith('arr:')}<img src="/logos/{a.key.split(':')[1]}.svg" alt="" class="mt-0.5 size-8 shrink-0 {a.tapped ? 'opacity-50' : ''}" />
+											{:else}<span class="grid h-12 w-8 shrink-0 place-items-center rounded bg-gray-800 text-gray-400"><Icon name="bell" class="size-4" /></span>{/if}
 											<span class="min-w-0 flex-1">
-												<span class="flex items-center gap-2 text-sm font-medium">{a.title}<span class="size-1.5 rounded-full {a.severity === 'error' ? 'bg-red-500' : a.severity === 'info' ? 'bg-green-400' : 'bg-yellow-400'}"></span></span>
-												<span class="block text-xs {a.severity === 'error' ? 'text-red-300' : a.severity === 'info' ? 'text-gray-300' : 'text-yellow-300'}">{a.detail}</span>
-												<span class="mt-0.5 block text-[11px] text-gray-500">{a.changedAt && a.changedAt !== a.startedAt ? `Updated ${ago(a.changedAt)}` : `Since ${ago(a.startedAt)}`}</span>
+												<span class="block truncate text-sm {a.tapped ? 'text-gray-400' : 'font-semibold text-white'}">{a.title}</span>
+												<span class="block truncate text-xs {a.tapped ? 'text-gray-500' : 'text-gray-300'}">{a.detail}</span>
+												<span class="mt-0.5 block text-[11px] text-gray-500">{ago(a.at)}</span>
 											</span>
-										</a>
+											{#if a.new}<span class="mt-1.5 size-2 shrink-0 rounded-full bg-red-500"></span>{/if}
+										</button>
 									{/each}
 								</div>
 							{:else}
-								<div class="px-4 py-8 text-center text-sm text-gray-400">Nothing needs your attention.</div>
+								<div class="px-4 py-10 text-center text-sm text-gray-400">You're all caught up.</div>
 							{/if}
 						</div>
 					</div>

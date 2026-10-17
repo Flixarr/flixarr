@@ -14,6 +14,7 @@
 	import { statusOf } from '#lib/availability.svelte.ts';
 	import { simple, askedFor } from '#lib/requeststatus.ts';
 	import { on } from '#lib/live.svelte.ts';
+	import { page } from '$app/state';
 
 	let list = $state<Request[] | null>(null);
 	let approval = $state(false);
@@ -95,6 +96,11 @@
 			busy = 0;
 		}
 	}
+	// ?open=12 (from an alert): open that request's window.
+	$effect(() => {
+		const id = Number(page.url.searchParams.get('open'));
+		if (id) (detail = id), (detailOpen = true);
+	});
 	function openDetail(r: Request) {
 		detail = r.id;
 		detailOpen = true;

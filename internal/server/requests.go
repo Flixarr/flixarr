@@ -157,7 +157,7 @@ func (s *Server) requestApprove(w http.ResponseWriter, r *http.Request, u *store
 	if req.Status != "failed" {
 		s.Notify.Send(s.Notify.FromRequest("request_approved", req))
 	}
-	s.Requests.Alert(req)
+	s.Requests.Decided(req, u) // Send already updated the bell for where it went
 	writeJSON(w, http.StatusOK, req)
 }
 
@@ -186,6 +186,7 @@ func (s *Server) requestDecline(w http.ResponseWriter, r *http.Request, u *store
 	s.Notify.Send(s.Notify.FromRequest("request_declined", req))
 	s.Requests.Publish(req)
 	s.Requests.Alert(req)
+	s.Requests.Decided(req, u)
 	writeJSON(w, http.StatusOK, req)
 }
 
@@ -257,7 +258,7 @@ func (s *Server) requestDelete(w http.ResponseWriter, r *http.Request, u *store.
 	}
 	req.Status = "deleted"
 	s.Requests.Publish(req)
-	s.Requests.Forgotten()
+	s.Requests.Forget(req)
 	w.WriteHeader(http.StatusNoContent)
 }
 

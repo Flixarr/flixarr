@@ -61,9 +61,6 @@ func (s *Server) issueList(w http.ResponseWriter, r *http.Request, u *store.User
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return
 	}
-	if u.Can("manageIssues") {
-		s.syncIssueAlerts(nil, nil, "") // keeps the count right for issues reported before the bell counted them
-	}
 	writeJSON(w, http.StatusOK, map[string]any{"issues": list, "kinds": issueKinds})
 }
 
@@ -120,7 +117,7 @@ func (s *Server) issueCreate(w http.ResponseWriter, r *http.Request, u *store.Us
 		return
 	}
 	s.Notify.Send(s.Notify.FromIssue("issue_reported", is))
-	s.syncIssueAlerts(&is, u, "reported")
+	s.issueAlerts(is, u, "reported")
 	writeJSON(w, http.StatusCreated, is)
 }
 
@@ -173,7 +170,7 @@ func (s *Server) issueComment(w http.ResponseWriter, r *http.Request, u *store.U
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return
 	}
-	s.syncIssueAlerts(&is, u, fmt.Sprintf("reply c%d", cid))
+	s.issueAlerts(is, u, fmt.Sprintf("reply c%d", cid))
 	s.issueGet(w, r, u)
 }
 
@@ -191,7 +188,7 @@ func (s *Server) issueStatus(status string) func(http.ResponseWriter, *http.Requ
 		if status == "resolved" {
 			s.Notify.Send(s.Notify.FromIssue("issue_resolved", is))
 		}
-		s.syncIssueAlerts(&is, u, status)
+		s.issueAlerts(is, u, status)
 		writeJSON(w, http.StatusOK, is)
 	}
 }
@@ -205,46 +202,42 @@ func (s *Server) issueDelete(w http.ResponseWriter, r *http.Request, u *store.Us
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return
 	}
-	s.syncIssueAlerts(nil, u, "")
+	s.issueAlerts(is, u, "deleted")
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// syncIssueAlerts keeps the bell current (grouped, Rule 19): one "N open issues" for people who manage
-// issues (unread again on a new issue or a new reply), and one "Your issues" for a reporter when someone
-// else replies or the issue is resolved. by is who made the change: it's already seen for them.
-func (s *Server) syncIssueAlerts(changed *store.Issue, by *store.User, what string) {
-	if n, sig := s.Store.OpenIssueSig(); n == 0 {
-		s.Store.ResolveAlert("issues:open")
-	} else {
-		title := "1 open issue"
-		if n > 1 {
-			title = fmt.Sprintf("%d open issues", n)
-		}
-		detail := "Reported problems on titles in your library"
-		if changed != nil && what == "reported" {
-			detail = "New: " + changed.Kind + " on " + changed.Title
-		} else if changed != nil && strings.HasPrefix(what, "reply") {
-			detail = "New reply on " + changed.Title
-		}
-		s.Store.RaiseAlert(store.Alert{Key: "issues:open", Audience: "can:manageIssues", Severity: "warning", Title: title, Detail: detail, Link: "/issues", Sig: sig})
-		if by != nil {
-			s.Store.MarkAlertSeen(by.ID, "issues:open")
-		}
+// issueAlerts updates the bell for an issue (#93): a to-do per open issue for people who manage issues,
+// and news for the person who reported it when someone else replies or resolves it; a reply from the
+// reporter is news for people who manage issues. by is who did it: it's never news to them.
+func (s *Server) issueAlerts(is store.Issue, by *store.User, what string) {
+	todo := fmt.Sprintf("issue:%d", is.ID)
+	thread := fmt.Sprintf("/issues?open=%d", is.ID)
+	kind := is.Kind
+	if is.Sub != "" {
+		kind += ": " + is.Sub
 	}
-	if changed == nil || (by != nil && by.ID == changed.UserID) {
-		return
+	name := "Someone"
+	if by != nil {
+		name = by.Username
 	}
-	key := fmt.Sprintf("issues:user:%d", changed.UserID)
 	switch {
-	case what == "resolved":
-		s.Store.RaiseAlert(store.Alert{Key: key, Audience: fmt.Sprintf("user:%d", changed.UserID), Severity: "info",
-			Title: "Your issues", Detail: changed.Title + " was fixed", Link: fmt.Sprintf("/issues?open=%d", changed.ID), Sig: fmt.Sprintf("f%d", changed.ID)})
-	case strings.HasPrefix(what, "reply"):
-		name := "Someone"
+	case what == "reported" || what == "open":
+		s.Store.RaiseTodo(store.Alert{Key: todo, Audience: "can:manageIssues", Title: "New issue", Detail: is.Title + " · " + kind + ", by " + is.UserName, Link: thread, Poster: is.Poster})
 		if by != nil {
-			name = by.Username
+			s.Store.TapAlertKey(by.ID, todo)
 		}
-		s.Store.RaiseAlert(store.Alert{Key: key, Audience: fmt.Sprintf("user:%d", changed.UserID), Severity: "info",
-			Title: "Your issues", Detail: name + " replied on " + changed.Title, Link: fmt.Sprintf("/issues?open=%d", changed.ID), Sig: what})
+	case what == "resolved" || what == "deleted":
+		s.Store.ResolveTodo(todo)
+		if what == "resolved" && (by == nil || by.ID != is.UserID) {
+			s.Store.AddNews(store.Alert{Audience: fmt.Sprintf("user:%d", is.UserID), Title: "Fixed", Detail: is.Title + " · " + kind, Link: thread, Poster: is.Poster})
+		}
+	case strings.HasPrefix(what, "reply"):
+		if by != nil && by.ID == is.UserID {
+			// The reporter replied: news for the people handling it.
+			s.Store.AddNews(store.Alert{Audience: "can:manageIssues", Title: name + " replied", Detail: is.Title + " · " + kind, Link: thread, Poster: is.Poster, Key: "reply:" + what, Repeat: true})
+			s.Store.TapAlertKey(by.ID, "reply:"+what)
+		} else {
+			s.Store.AddNews(store.Alert{Audience: fmt.Sprintf("user:%d", is.UserID), Title: name + " replied", Detail: is.Title + " · " + kind, Link: thread, Poster: is.Poster})
+		}
 	}
 }
