@@ -146,3 +146,9 @@ html.modal-open body { overflow: hidden; overscroll-behavior: none; }
 @media (display-mode: standalone) and (max-width: 1023px) {
 	.pt-20 { padding-top: calc(5rem + max(0px, env(safe-area-inset-top) - 0.75rem)); } /* the header's own top padding overlaps the inset */
 }
+
+/* iPhone home-screen app: while a window locks the page, iOS sizes fixed full-screen layers short of the
+   screen's bottom, leaving a dark strip under side panels (#102). There, they take the full screen height. */
+@media (display-mode: standalone) {
+	.full-screen { bottom: auto; height: 100lvh; }
+}
