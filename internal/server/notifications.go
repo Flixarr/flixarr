@@ -12,7 +12,7 @@ import (
 
 // channelView is a channel as Settings shows it: secrets replaced by a hint of their last characters.
 type channelView struct {
-	notify.Config
+	notify.Channel
 	WebhookURLHint string `json:"webhookUrlHint,omitempty"`
 	URLHint        string `json:"urlHint,omitempty"`
 	AuthSet        bool   `json:"authSet"`
@@ -27,8 +27,8 @@ func hint(s string) string {
 	return "…" + s[len(s)-6:]
 }
 
-func viewOf(c notify.Config) channelView {
-	v := channelView{Config: c, WebhookURLHint: hint(c.WebhookURL), AuthSet: c.Auth != ""}
+func viewOf(c notify.Channel) channelView {
+	v := channelView{Channel: c, WebhookURLHint: hint(c.WebhookURL), AuthSet: c.Auth != ""}
 	if u, err := url.Parse(c.URL); err == nil && u.Host != "" {
 		v.URLHint = u.Scheme + "://" + u.Host + "/…" // the path can hold a token, so only the host is shown
 	}
@@ -38,11 +38,15 @@ func viewOf(c notify.Config) channelView {
 }
 
 func (s *Server) notifyList(w http.ResponseWriter, r *http.Request, _ *store.User) {
-	out := map[string]channelView{}
-	for _, ch := range notify.Channels {
-		out[ch] = viewOf(s.Notify.Load(ch))
+	out := []channelView{}
+	for _, c := range s.Notify.Channels() {
+		out = append(out, viewOf(c))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"channels": out, "events": s.withoutMaintainerr(notify.Events), "appUrl": s.Store.Setting("app_url", "")})
+	defs := map[string]channelView{}
+	for _, svc := range notify.Services {
+		defs[svc] = viewOf(notify.Channel{Service: svc, Name: notify.Labels[svc], Config: notify.Defaults(svc)})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"channels": out, "defaults": defs, "events": s.withoutMaintainerr(notify.Events), "appUrl": s.Store.Setting("app_url", "")})
 }
 
 // withoutMaintainerr drops the Leaving soon event until Maintainerr is connected (it can't happen).
@@ -53,27 +57,39 @@ func (s *Server) withoutMaintainerr(events []string) []string {
 	return slices.DeleteFunc(slices.Clone(events), func(e string) bool { return e == "request_leaving" })
 }
 
-// merged reads a channel form; secrets left empty keep the saved value.
-func (s *Server) merged(w http.ResponseWriter, r *http.Request) (string, notify.Config, bool) {
-	ch := r.PathValue("channel")
-	if !slices.Contains(notify.Channels, ch) {
-		writeErr(w, http.StatusNotFound, "Unknown channel.")
-		return "", notify.Config{}, false
-	}
+// merged reads a channel form: a saved channel's ID (empty for a new one), its service, name and
+// settings. Secrets left empty keep the saved value.
+func (s *Server) merged(w http.ResponseWriter, r *http.Request, id string) (notify.Channel, bool) {
 	var in struct {
-		notify.Config
+		notify.Channel
 		ClearAuth bool `json:"clearAuth"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16384)).Decode(&in); err != nil {
 		writeErr(w, http.StatusBadRequest, "Bad request.")
-		return "", notify.Config{}, false
+		return notify.Channel{}, false
 	}
-	old := s.Notify.Load(ch)
-	c := in.Config
+	c := in.Channel
+	if id == "" {
+		id = c.ID
+	}
+	old := notify.Channel{Service: c.Service, Config: notify.Defaults(c.Service)}
+	if id != "" {
+		saved, ok := s.Notify.Get(id)
+		if !ok {
+			writeErr(w, http.StatusNotFound, "That channel is gone.")
+			return notify.Channel{}, false
+		}
+		old = saved
+	}
+	c.ID, c.Service = id, old.Service
+	if !slices.Contains(notify.Services, c.Service) {
+		writeErr(w, http.StatusNotFound, "Unknown service.")
+		return notify.Channel{}, false
+	}
 	if c.WebhookURL == "" {
 		c.WebhookURL = old.WebhookURL
 	}
-	if c.URL == "" && ch == "webhook" {
+	if c.URL == "" && c.Service == "webhook" {
 		c.URL = old.URL
 	}
 	if c.Auth == "" && !in.ClearAuth {
@@ -88,29 +104,52 @@ func (s *Server) merged(w http.ResponseWriter, r *http.Request) (string, notify.
 	if c.Events == nil {
 		c.Events = []string{}
 	}
-	return ch, c, true
+	return c, true
 }
 
-func (s *Server) notifySave(w http.ResponseWriter, r *http.Request, _ *store.User) {
-	ch, c, ok := s.merged(w, r)
+func (s *Server) notifyAdd(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	c, ok := s.merged(w, r, "")
 	if !ok {
 		return
 	}
-	c.TestTo = ""
-	if err := s.Notify.Save(ch, c); err != nil {
+	c.ID = ""
+	c, err := s.Notify.Add(c)
+	if err != nil {
 		writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
 		return
 	}
-	writeJSON(w, http.StatusOK, viewOf(s.Notify.Load(ch)))
+	writeJSON(w, http.StatusOK, viewOf(c))
 }
 
+func (s *Server) notifySave(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	c, ok := s.merged(w, r, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	if err := s.Notify.Update(c); err != nil {
+		writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
+		return
+	}
+	saved, _ := s.Notify.Get(c.ID)
+	writeJSON(w, http.StatusOK, viewOf(saved))
+}
+
+func (s *Server) notifyDelete(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	if err := s.Notify.Delete(r.PathValue("id")); err != nil {
+		writeErr(w, http.StatusNotFound, capitalize(err.Error())+".")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// notifyTest sends a test through a channel's settings as they are in the form (saved or not).
 func (s *Server) notifyTest(w http.ResponseWriter, r *http.Request, u *store.User) {
-	ch, c, ok := s.merged(w, r)
+	c, ok := s.merged(w, r, "")
 	if !ok {
 		return
 	}
 	c.TestTo, c.TestUser = u.Email, u.ID // the test goes to whoever pressed it
-	if err := s.Notify.Test(r.Context(), ch, c); err != nil {
+	if err := s.Notify.Test(r.Context(), c.Service, c.Config); err != nil {
 		writeErr(w, http.StatusBadGateway, "Test not sent: "+err.Error()+".")
 		return
 	}

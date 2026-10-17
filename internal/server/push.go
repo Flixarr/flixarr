@@ -15,7 +15,8 @@ func (s *Server) pushKey(w http.ResponseWriter, r *http.Request, u *store.User) 
 		return
 	}
 	subs, _ := s.Store.PushSubs(u.ID)
-	writeJSON(w, http.StatusOK, map[string]any{"key": k.Public, "devices": len(subs), "on": s.Notify.Load("push").On})
+	pushOn, _ := s.Notify.Service("push")
+	writeJSON(w, http.StatusOK, map[string]any{"key": k.Public, "devices": len(subs), "on": pushOn})
 }
 
 func (s *Server) pushSubscribe(w http.ResponseWriter, r *http.Request, u *store.User) {

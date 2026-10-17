@@ -48,16 +48,16 @@ func TestDiscordAndWebhook(t *testing.T) {
 	n := &Notifier{Store: st, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	st.SetSetting("app_url", "https://flixarr.example.com")
 
-	if err := n.Save("discord", Config{On: true, WebhookURL: "https://example.com/not-discord"}); err == nil {
+	if err := add(n, "discord", Config{On: true, WebhookURL: "https://example.com/not-discord"}); err == nil {
 		t.Fatal("non-Discord URL accepted")
 	}
-	if err := n.Save("discord", Config{On: true, WebhookURL: srv.URL + "/api/webhooks/1/abc", BotName: "Flixarr", Poster: true, Events: []string{"request_available"}}); err != nil {
+	if err := add(n, "discord", Config{On: true, WebhookURL: srv.URL + "/api/webhooks/1/abc", BotName: "Flixarr", Poster: true, Events: []string{"request_available"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := n.Save("webhook", Config{On: true, URL: srv.URL + "/hook", Method: "POST", Auth: "Bearer x", Events: []string{"request_available", "request_failed"}}); err != nil {
+	if err := add(n, "webhook", Config{On: true, URL: srv.URL + "/hook", Method: "POST", Auth: "Bearer x", Events: []string{"request_available", "request_failed"}}); err != nil {
 		t.Fatal(err)
 	}
-	if raw := st.Setting("notify_discord", ""); strings.Contains(raw, "api/webhooks") {
+	if raw := st.Setting("notify_channels", ""); raw == "" || strings.Contains(raw, "api/webhooks") {
 		t.Fatal("Discord webhook stored in plain text")
 	}
 	r := store.Request{ID: 5, Type: "movie", TmdbID: 603, Title: "The Matrix", Year: "1999", Poster: "/p.jpg", UserName: "eryn", Status: "available"}
@@ -154,7 +154,7 @@ func TestEmailRecipients(t *testing.T) {
 	host, port, _ := net.SplitHostPort(addr)
 	p, _ := strconv.Atoi(port)
 	n := &Notifier{Store: st, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
-	if err := n.Save("email", Config{On: true, Host: host, Port: p, Security: "none", From: "flixarr@x.test", Events: []string{"request_submitted", "request_available"}}); err != nil {
+	if err := add(n, "email", Config{On: true, Host: host, Port: p, Security: "none", From: "flixarr@x.test", Events: []string{"request_submitted", "request_available"}}); err != nil {
 		t.Fatal(err)
 	}
 	r := store.Request{ID: 1, Type: "movie", TmdbID: 603, Title: "The Matrix", UserID: eryn.ID, UserName: "eryn", Status: "pending"}
@@ -200,7 +200,7 @@ func TestPushRoutingAndGone(t *testing.T) {
 	st.SavePushSub(store.PushSub{Endpoint: srv.URL + "/eryn", UserID: eryn.ID, P256dh: key, Auth: "BTBZMqHH6r4Tts7J_aSIgg"})
 	st.SavePushSub(store.PushSub{Endpoint: srv.URL + "/gone", UserID: eryn.ID, P256dh: key, Auth: "BTBZMqHH6r4Tts7J_aSIgg"})
 	n := &Notifier{Store: st, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
-	n.Save("push", Config{On: true, Events: []string{"request_available"}})
+	add(n, "push", Config{On: true, Events: []string{"request_available"}})
 	n.Send(n.FromRequest("request_available", store.Request{ID: 1, Type: "movie", TmdbID: 603, Title: "The Matrix", UserID: eryn.ID}))
 	time.Sleep(500 * time.Millisecond)
 	mu.Lock()
@@ -231,5 +231,99 @@ func TestPersonalOff(t *testing.T) {
 	}
 	if ev := EventsFor(admin); !slices.Contains(ev, "server_problem") {
 		t.Fatalf("admin events: %v", ev)
+	}
+}
+
+// add saves a new channel of a service (the tests' shorthand).
+func add(n *Notifier, service string, c Config) error {
+	_, err := n.Add(Channel{Service: service, Config: c})
+	return err
+}
+
+// Settings saved before channels became a list turn into each service's first channel.
+func TestMigrateOldSettings(t *testing.T) {
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	st, _ := store.Open(dir, box)
+	defer st.Close()
+	st.SetSecretSetting("notify_discord", `{"on":true,"events":["request_available"],"webhookUrl":"https://discord.com/api/webhooks/1/a","botName":"Bot"}`)
+	st.SetSecretSetting("notify_email", `{"on":false,"events":[],"host":"smtp.x.test","port":25,"security":"none","from":"a@x.test"}`)
+	n := &Notifier{Store: st}
+	list := n.Channels()
+	if len(list) != 2 || list[0].Service != "discord" || list[0].Name != "Discord" || !list[0].On || list[0].BotName != "Bot" ||
+		list[0].WebhookURL != "https://discord.com/api/webhooks/1/a" || list[1].Service != "email" || list[1].Host != "smtp.x.test" {
+		t.Fatalf("migrated: %+v", list)
+	}
+	if st.SecretSetting("notify_discord", "") == "" {
+		t.Fatal("old setting removed")
+	}
+	if again := n.Channels(); again[0].ID != list[0].ID {
+		t.Fatal("migrated twice")
+	}
+	if on, ev := n.Service("discord"); !on || len(ev) != 1 {
+		t.Fatalf("service: %v %v", on, ev)
+	}
+	if on, _ := n.Service("email"); on {
+		t.Fatal("email off but reported on")
+	}
+}
+
+// Two channels of one service each send only their own events; update, delete and the one Web Push.
+func TestSeveralChannelsPerService(t *testing.T) {
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	st, _ := store.Open(dir, box)
+	defer st.Close()
+	var mu sync.Mutex
+	got := map[string][]string{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var m map[string]any
+		json.NewDecoder(r.Body).Decode(&m)
+		mu.Lock()
+		got[r.URL.Path] = append(got[r.URL.Path], fmt.Sprint(m["event"]))
+		mu.Unlock()
+	}))
+	defer srv.Close()
+	n := &Notifier{Store: st, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	issues, err := n.Add(Channel{Service: "webhook", Name: "  Issues  ", Config: Config{On: true, URL: srv.URL + "/issues", Method: "POST", Events: []string{"issue_reported"}}})
+	if err != nil || issues.Name != "Issues" || issues.ID == "" {
+		t.Fatalf("add: %+v %v", issues, err)
+	}
+	reqs, _ := n.Add(Channel{Service: "webhook", Config: Config{On: true, URL: srv.URL + "/requests", Method: "POST", Events: []string{"request_available"}}})
+	if reqs.Name != "Webhook" {
+		t.Fatalf("default name %q", reqs.Name)
+	}
+	r := store.Request{ID: 1, Type: "movie", TmdbID: 603, Title: "The Matrix"}
+	n.Send(n.FromRequest("request_available", r))
+	n.Send(n.FromIssue("issue_reported", store.Issue{ID: 2, Type: "movie", TmdbID: 603, Title: "The Matrix", Kind: "Video"}))
+	time.Sleep(300 * time.Millisecond)
+	mu.Lock()
+	if fmt.Sprint(got["/issues"]) != "[issue_reported]" || fmt.Sprint(got["/requests"]) != "[request_available]" {
+		t.Fatalf("sent: %v", got)
+	}
+	mu.Unlock()
+
+	reqs.On = false
+	reqs.Service = "discord" // ignored: a channel's service can't change
+	if err := n.Update(reqs); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := n.Get(reqs.ID); c.On || c.Service != "webhook" {
+		t.Fatalf("updated: %+v", c)
+	}
+	if err := n.Delete(issues.ID); err != nil || len(n.Channels()) != 1 {
+		t.Fatalf("delete: %v, %d left", err, len(n.Channels()))
+	}
+	if err := n.Delete(issues.ID); err == nil {
+		t.Fatal("deleted twice")
+	}
+	if _, err := n.Add(Channel{Service: "push", Config: Config{On: true}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.Add(Channel{Service: "push"}); err == nil {
+		t.Fatal("second Web Push accepted")
+	}
+	if _, err := n.Add(Channel{Service: "carrier-pigeon"}); err == nil {
+		t.Fatal("unknown service accepted")
 	}
 }

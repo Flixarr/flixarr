@@ -1,10 +1,13 @@
 // Package notify sends Flixarr events (requests submitted, approved, declined, available, failed) out
-// through the channels set up in Settings → Notifications: Discord and webhooks for now.
+// through the channels set up in Settings → Notifications. Each service (Discord, email, webhooks…) can
+// have any number of channels, each with its own settings and events.
 package notify
 
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +17,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Flixarr/flixarr/internal/requests"
@@ -23,8 +27,20 @@ import (
 // Events, in the order Settings shows them.
 var Events = []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved", "server_problem", "request_leaving"}
 
-// Channels Flixarr can send through.
-var Channels = []string{"discord", "webhook", "email", "push", "telegram", "slack", "pushover", "gotify", "ntfy", "pushbullet"}
+// Services Flixarr can send through.
+var Services = []string{"discord", "webhook", "email", "push", "telegram", "slack", "pushover", "gotify", "ntfy", "pushbullet"}
+
+// Labels are the services' names, used to name channels made from older settings.
+var Labels = map[string]string{"discord": "Discord", "webhook": "Webhook", "email": "Email", "push": "Web Push", "telegram": "Telegram",
+	"slack": "Slack", "pushover": "Pushover", "gotify": "Gotify", "ntfy": "ntfy", "pushbullet": "Pushbullet"}
+
+// Channel is one set-up destination: a service, a name and its settings.
+type Channel struct {
+	ID      string `json:"id"`
+	Service string `json:"service"`
+	Name    string `json:"name"`
+	Config
+}
 
 // Config is one channel's settings. Secret fields (the Discord webhook URL, the webhook's address and
 // Authorization header) are stored encrypted and never sent back to the browser.
@@ -75,37 +91,174 @@ func init() {
 	}
 }
 
-// Notifier loads the channel settings and sends.
+// Notifier loads the channels and sends.
 type Notifier struct {
 	Store *store.Store
 	Log   *slog.Logger
 	HTTP  *http.Client
+	mu    sync.Mutex // channel list changes
 }
 
-func key(ch string) string { return "notify_" + ch }
+// keyChannels holds every channel (encrypted as a whole: they hold webhook addresses and tokens).
+const keyChannels = "notify_channels"
 
-// Load returns a channel's settings with secrets decrypted.
-func (n *Notifier) Load(ch string) Config {
-	c := defaults[ch]
-	if raw := n.Store.SecretSetting(key(ch), ""); raw != "" {
-		json.Unmarshal([]byte(raw), &c)
-	}
+// oldKey is where a service's single channel was kept before channels became a list.
+func oldKey(service string) string { return "notify_" + service }
+
+// Defaults are a new channel's starting settings for a service.
+func Defaults(service string) Config {
+	c := defaults[service]
+	c.Events = slices.Clone(c.Events)
 	if c.Events == nil {
 		c.Events = []string{}
 	}
 	return c
 }
 
-// Save stores a channel's settings (encrypted as a whole: they hold webhook addresses and tokens).
-func (n *Notifier) Save(ch string, c Config) error {
-	if !slices.Contains(Channels, ch) {
-		return errors.New("unknown channel")
+// Channels returns every channel, oldest first, with secrets decrypted.
+func (n *Notifier) Channels() []Channel {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.channels()
+}
+
+func (n *Notifier) channels() []Channel {
+	raw := n.Store.SecretSetting(keyChannels, "")
+	if raw == "" {
+		return n.migrate()
 	}
-	if err := c.validate(ch); err != nil {
+	out := []Channel{}
+	json.Unmarshal([]byte(raw), &out)
+	for i := range out {
+		if out[i].Events == nil {
+			out[i].Events = []string{}
+		}
+	}
+	return out
+}
+
+// migrate turns the settings saved before channels became a list into each service's first channel,
+// so nothing has to be set up again. The old settings are left where they were.
+func (n *Notifier) migrate() []Channel {
+	out := []Channel{}
+	for _, svc := range Services {
+		raw := n.Store.SecretSetting(oldKey(svc), "")
+		if raw == "" {
+			continue
+		}
+		c := Defaults(svc)
+		json.Unmarshal([]byte(raw), &c)
+		if c.Events == nil {
+			c.Events = []string{}
+		}
+		out = append(out, Channel{ID: newID(), Service: svc, Name: Labels[svc], Config: c})
+	}
+	if err := n.save(out); err != nil && n.Log != nil {
+		n.Log.Warn("notification channels not saved", "err", err)
+	}
+	return out
+}
+
+func (n *Notifier) save(list []Channel) error {
+	b, _ := json.Marshal(list)
+	return n.Store.SetSecretSetting(keyChannels, string(b))
+}
+
+func newID() string {
+	b := make([]byte, 6)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+// Get returns one channel.
+func (n *Notifier) Get(id string) (Channel, bool) {
+	for _, c := range n.Channels() {
+		if c.ID == id {
+			return c, true
+		}
+	}
+	return Channel{}, false
+}
+
+// Add saves a new channel and returns it with its ID.
+func (n *Notifier) Add(c Channel) (Channel, error) {
+	if !slices.Contains(Services, c.Service) {
+		return c, errors.New("unknown service")
+	}
+	if err := c.check(); err != nil {
+		return c, err
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	list := n.channels()
+	if c.Service == "push" && slices.ContainsFunc(list, func(x Channel) bool { return x.Service == "push" }) {
+		// Web Push has no settings of its own, so a second one would only send everything twice.
+		return c, errors.New("Web Push is already set up; change its events there")
+	}
+	c.ID = newID()
+	return c, n.save(append(list, c))
+}
+
+// Update saves a channel's new settings (its service can't change).
+func (n *Notifier) Update(c Channel) error {
+	if err := c.check(); err != nil {
 		return err
 	}
-	b, _ := json.Marshal(c)
-	return n.Store.SetSecretSetting(key(ch), string(b))
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	list := n.channels()
+	for i := range list {
+		if list[i].ID == c.ID {
+			c.Service = list[i].Service
+			list[i] = c
+			return n.save(list)
+		}
+	}
+	return errors.New("that channel is gone")
+}
+
+// Delete removes a channel.
+func (n *Notifier) Delete(id string) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	list := n.channels()
+	out := slices.DeleteFunc(slices.Clone(list), func(c Channel) bool { return c.ID == id })
+	if len(out) == len(list) {
+		return errors.New("that channel is gone")
+	}
+	return n.save(out)
+}
+
+func (c *Channel) check() error {
+	c.Name = strings.TrimSpace(c.Name)
+	if c.Name == "" {
+		c.Name = Labels[c.Service]
+	}
+	if len(c.Name) > 60 {
+		return errors.New("keep the name under 60 characters")
+	}
+	if c.Events == nil {
+		c.Events = []string{}
+	}
+	c.TestTo, c.TestUser = "", 0
+	return c.validate(c.Service)
+}
+
+// Service reports whether any channel of a service is on, and every event those channels send.
+func (n *Notifier) Service(service string) (on bool, events []string) {
+	events = []string{}
+	for _, c := range n.Channels() {
+		if c.Service != service || !c.On {
+			continue
+		}
+		on = true
+		for _, e := range c.Events {
+			if !slices.Contains(events, e) {
+				events = append(events, e)
+			}
+		}
+	}
+	return on, events
 }
 
 // recipients: news about a request or issue goes to the person who made it; new requests go to people
@@ -377,16 +530,15 @@ func (n *Notifier) FromServer(name, detail string) Message {
 
 // Send delivers a message to every channel that's on and has the event, in the background.
 func (n *Notifier) Send(m Message) {
-	for _, ch := range Channels {
-		c := n.Load(ch)
+	for _, c := range n.Channels() {
 		if !c.On || !slices.Contains(c.Events, m.Event) {
 			continue
 		}
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
-			if err := n.deliver(ctx, ch, c, m); err != nil {
-				n.Log.Warn("notification not sent", "channel", ch, "event", m.Event, "err", err)
+			if err := n.deliver(ctx, c.Service, c.Config, m); err != nil {
+				n.Log.Warn("notification not sent", "channel", c.Name, "service", c.Service, "event", m.Event, "err", err)
 			}
 		}()
 	}

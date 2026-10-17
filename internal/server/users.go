@@ -205,10 +205,12 @@ func (s *Server) myNotifications(w http.ResponseWriter, r *http.Request, u *stor
 			return
 		}
 	}
+	emailOn, emailSent := s.Notify.Service("email")
+	pushOn, pushSent := s.Notify.Service("push")
 	writeJSON(w, http.StatusOK, map[string]any{
-		"channels": map[string]bool{"email": s.Notify.Load("email").On && u.Email != "", "push": s.Notify.Load("push").On},
+		"channels": map[string]bool{"email": emailOn && u.Email != "", "push": pushOn},
 		"events":   s.withoutMaintainerr(notify.EventsFor(u)),
-		"sent":     map[string][]string{"email": s.Notify.Load("email").Events, "push": s.Notify.Load("push").Events}, // what Settings sends at all
+		"sent":     map[string][]string{"email": emailSent, "push": pushSent}, // what Settings sends at all
 		"off":      s.Notify.Off(u.ID),
 	})
 }
