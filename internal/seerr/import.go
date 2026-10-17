@@ -406,8 +406,8 @@ func toServer(kind string, s Server) store.Server {
 }
 
 // Plan reads Seerr and works out what importing would do. Nothing is saved.
-func (im *Importer) Plan(ctx context.Context, c *Client) (*Preview, *Data, *library, error) {
-	d, err := c.Fetch(ctx)
+func (im *Importer) Plan(ctx context.Context, src Source) (*Preview, *Data, *library, error) {
+	d, err := src.Fetch(ctx)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -534,8 +534,9 @@ func (im *Importer) existingUser(u User) *store.User {
 	return nil
 }
 
-// Start reads Seerr again and imports in the background. It refuses while an import is running.
-func (im *Importer) Start(c *Client) error {
+// Start reads Seerr again and imports in the background; done (if set) runs when it ends. It refuses
+// while an import is running.
+func (im *Importer) Start(src Source, done func()) error {
 	im.mu.Lock()
 	if im.state.Running {
 		im.mu.Unlock()
@@ -546,7 +547,10 @@ func (im *Importer) Start(c *Client) error {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
 		defer cancel()
-		res, err := im.Run(ctx, c)
+		res, err := im.Run(ctx, src)
+		if done != nil {
+			done()
+		}
 		im.set(func(s *State) {
 			s.Running, s.Finished = false, time.Now().UTC().Format(time.RFC3339)
 			if err != nil {
@@ -567,8 +571,8 @@ func capitalize(s string) string {
 }
 
 // Run imports everything (the caller shows progress through OnProgress).
-func (im *Importer) Run(ctx context.Context, c *Client) (*Result, error) {
-	p, d, lib, err := im.Plan(ctx, c)
+func (im *Importer) Run(ctx context.Context, src Source) (*Result, error) {
+	p, d, lib, err := im.Plan(ctx, src)
 	if err != nil {
 		return nil, err
 	}

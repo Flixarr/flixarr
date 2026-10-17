@@ -1,7 +1,8 @@
 <script lang="ts">
 	// Settings → Import, also the "Switching from Seerr?" step in first-time setup: paste Seerr's (or
 	// Overseerr's / Jellyseerr's) address and API key, see what would come over, then import. The import
-	// runs on the server; its progress arrives over the live connection.
+	// runs on the server; its progress arrives over the live connection. Seerr already gone? Its database
+	// file (and settings.json for Radarr/Sonarr) can be uploaded instead.
 	import { api, fmtNum, fmtDate } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import { on } from '#lib/live.svelte.ts';
@@ -34,6 +35,9 @@
 	let preview = $state<Preview | null>(null);
 	let st = $state<State | null>(null);
 	let busy = $state('');
+	let mode = $state<'api' | 'file'>('api');
+	let dbFile = $state<File | null>(null);
+	let settingsFile = $state<File | null>(null);
 
 	$effect(() => {
 		api<State>('/import/seerr').then((s) => (st = s));
@@ -52,7 +56,12 @@
 	async function look() {
 		busy = 'preview';
 		try {
-			preview = await api<Preview>('/import/seerr/preview', { method: 'POST', body: body() });
+			if (mode === 'file') {
+				const fd = new FormData();
+				fd.append('db', dbFile!);
+				if (settingsFile) fd.append('settings', settingsFile);
+				preview = await api<Preview>('/import/seerr/file/preview', { method: 'POST', body: fd });
+			} else preview = await api<Preview>('/import/seerr/preview', { method: 'POST', body: body() });
 		} catch (e) {
 			notify(e instanceof Error ? e.message : "Couldn't read Seerr.", 'orange');
 		} finally {
@@ -62,7 +71,7 @@
 	async function start() {
 		busy = 'import';
 		try {
-			st = await api<State>('/import/seerr', { method: 'POST', body: body() });
+			st = mode === 'file' ? await api<State>('/import/seerr/file', { method: 'POST' }) : await api<State>('/import/seerr', { method: 'POST', body: body() });
 		} catch (e) {
 			notify(e instanceof Error ? e.message : "Couldn't start the import.", 'orange');
 		} finally {
@@ -135,14 +144,30 @@
 			{#if !setup}{@render heading('Seerr, Overseerr or Jellyseerr')}{/if}
 			<div class="card divide-y divide-gray-700/40 px-4">
 				{#if !setup}<p class="py-3 text-xs text-gray-500">Brings over users, requests, issues and the Radarr and Sonarr connections. Seerr is only read, never changed.</p>{/if}
-				<div class="py-3"><label for="seerr-url" class="block text-sm">Address</label><input id="seerr-url" class={input} bind:value={url} placeholder="http://192.168.1.10:5055" autocomplete="off" spellcheck="false" /></div>
-				<div class="py-3">
-					<label for="seerr-key" class="block text-sm">API key</label>
-					<input id="seerr-key" class={input} type="password" bind:value={key} autocomplete="off" spellcheck="false" />
-					<p class="mt-1 text-xs text-gray-500">In Seerr: Settings, General, API Key.</p>
-				</div>
-				<div class="flex justify-end py-3"><button class="btn px-6" disabled={!!busy || !url.trim() || !key.trim()} onclick={look}>{busy === 'preview' ? 'Reading Seerr…' : 'Preview'}</button></div>
+				{#if mode === 'api'}
+					<div class="py-3"><label for="seerr-url" class="block text-sm">Address</label><input id="seerr-url" class={input} bind:value={url} placeholder="http://192.168.1.10:5055" autocomplete="off" spellcheck="false" /></div>
+					<div class="py-3">
+						<label for="seerr-key" class="block text-sm">API key</label>
+						<input id="seerr-key" class={input} type="password" bind:value={key} autocomplete="off" spellcheck="false" />
+						<p class="mt-1 text-xs text-gray-500">In Seerr: Settings, General, API Key.</p>
+					</div>
+				{:else}
+					<div class="py-3">
+						<label for="seerr-db" class="block text-sm">Seerr's database</label>
+						<input id="seerr-db" class="{input} file:mr-3 file:rounded-md file:border-0 file:bg-gray-700 file:px-3 file:py-1 file:text-xs file:text-gray-200" type="file" accept=".sqlite3,.sqlite,.db" onchange={(e) => (dbFile = (e.currentTarget as HTMLInputElement).files?.[0] ?? null)} />
+						<p class="mt-1 text-xs text-gray-500">db.sqlite3, in the db folder of Seerr's config folder. Seerr on PostgreSQL has no such file: start Seerr once and use its address instead.</p>
+					</div>
+					<div class="py-3">
+						<label for="seerr-settings" class="block text-sm">Seerr's settings.json <span class="text-gray-500">(optional)</span></label>
+						<input id="seerr-settings" class="{input} file:mr-3 file:rounded-md file:border-0 file:bg-gray-700 file:px-3 file:py-1 file:text-xs file:text-gray-200" type="file" accept=".json" onchange={(e) => (settingsFile = (e.currentTarget as HTMLInputElement).files?.[0] ?? null)} />
+						<p class="mt-1 text-xs text-gray-500">Next to the db folder. It holds the Radarr and Sonarr connections; without it, add them in Services.</p>
+					</div>
+				{/if}
+				<div class="flex justify-end py-3"><button class="btn px-6" disabled={!!busy || (mode === 'api' ? !url.trim() || !key.trim() : !dbFile)} onclick={look}>{busy === 'preview' ? (mode === 'file' ? 'Uploading…' : 'Reading Seerr…') : 'Preview'}</button></div>
 			</div>
+			<p class="mt-2 text-xs text-gray-500">
+				{#if mode === 'api'}Seerr already gone? <button class="text-primary-light hover:underline" onclick={() => (mode = 'file')}>Import from a backup file</button>{:else}Seerr still running? <button class="text-primary-light hover:underline" onclick={() => (mode = 'api')}>Use its address instead</button> (the better way: works with any database and version).{/if}
+			</p>
 		</div>
 	</div>
 {/if}
