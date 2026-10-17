@@ -25,7 +25,7 @@
 	}
 </script>
 
-<div class="mx-auto min-h-dvh max-w-[900px] px-4 pb-16 pt-[max(2rem,env(safe-area-inset-top))]">
+<div class="mx-auto min-h-dvh max-w-[900px] px-4 pb-[calc(4rem+env(safe-area-inset-bottom))] pt-[max(2rem,env(safe-area-inset-top))]">
 	<div class="flex items-center justify-between gap-4 py-4">
 		<span class="text-logo text-3xl">Flixarr</span>
 		<div class="flex items-center gap-2" aria-label="Step {i + 1} of {STEPS.length}">

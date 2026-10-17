@@ -42,7 +42,9 @@
 			{/if}
 			{@render children()}
 			{#if footer}
-				<div class="sticky bottom-0 flex justify-end gap-2 border-t border-gray-700/40 bg-gray-900/95 px-5 py-4 backdrop-blur">{@render footer()}</div>
+				<div class="sticky bottom-0 flex justify-end gap-2 border-t border-gray-700/40 bg-gray-900/95 px-5 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] backdrop-blur tablet:pb-4">{@render footer()}</div>
+			{:else if !center}
+				<div class="h-[calc(1.5rem+env(safe-area-inset-bottom))] tablet:hidden"></div>
 			{/if}
 		</div>
 	</div>

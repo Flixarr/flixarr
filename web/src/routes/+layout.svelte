@@ -59,7 +59,7 @@
 		{@render children()}
 	{:else if session.me}
 		<TopNav {transparent} />
-		<div class="pb-24 tablet:pb-12">{@render children()}</div>
+		<div class="pb-[calc(8rem+env(safe-area-inset-bottom))] tablet:pb-16">{@render children()}</div>
 		<TabBar />
 		<PullRefresh />
 	{/if}

@@ -29,6 +29,6 @@
 			<div class="min-w-0"><div class="font-semibold">{title}</div>{#if sub}<div class="truncate text-xs text-gray-400">{sub}</div>{/if}</div>
 			<button class="rounded-lg p-1 text-gray-400 hover:bg-white/10 hover:text-white" onclick={() => (open = false)} aria-label="Close"><Icon name="close" /></button>
 		</div>
-		<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain">{@render children()}</div>
+		<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[calc(2.5rem+env(safe-area-inset-bottom))]">{@render children()}</div>
 	</div>
 {/if}
