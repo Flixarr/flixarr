@@ -369,6 +369,7 @@
 
 							{@const fp = v.profiles.filter((p) => p.installed)}
 							{@const edited = fp.filter((p) => p.state === 'customized').length}
+							{@const ready = fp.filter((p) => p.updateAvailable).length}
 							{#if v.profiles.length}
 								<span class="mt-3 flex items-center gap-2 text-[11px]">
 									<span class="text-primary-light">◆</span>
@@ -377,6 +378,8 @@
 										<button class="text-primary-light hover:underline" onclick={() => edit(s.kind)}>Add them</button>
 									{:else if edited}
 										<span class="text-gray-300">{fp.length} Flixarr profile{fp.length === 1 ? '' : 's'}</span><span class="text-yellow-300">· {edited} edited in {s.name}</span>
+									{:else if ready}
+										<span class="text-gray-300">{fp.length} Flixarr profile{fp.length === 1 ? '' : 's'}</span><a href="#profiles" class="text-primary-light hover:underline">· {ready === 1 ? 'an update is' : `${ready} updates are`} ready</a>
 									{:else}
 										<span class="text-gray-300">{fp.length} Flixarr profile{fp.length === 1 ? '' : 's'}</span><span class="text-gray-500">· up to date</span>
 									{/if}
