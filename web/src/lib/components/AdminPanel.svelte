@@ -10,7 +10,7 @@
 	import { text, TONE, NEUTRAL, EVENT_TEXT, askedFor, eventDot } from '#lib/requeststatus.ts';
 	import Timeline, { type Step } from './Timeline.svelte';
 	import FolderCard from './FolderCard.svelte';
-	import Modal from './Modal.svelte';
+	import SidePanel from './SidePanel.svelte';
 	import Icon from './Icon.svelte';
 	import Avatar from './Avatar.svelte';
 	import PlexMark from './PlexMark.svelte';
@@ -172,7 +172,7 @@
 {/snippet}
 {#snippet head(t: string, n?: number)}<h3 class="mb-2.5 text-base font-bold">{t}{#if n}<span class="ml-1.5 text-sm font-normal text-gray-500">{n}</span>{/if}</h3>{/snippet}
 
-<Modal bind:open title={series ? 'Manage series' : 'Manage movie'} sub={item.title} side>
+<SidePanel bind:open title={series ? 'Manage series' : 'Manage movie'} sub={item.title}>
 	{#if !info}
 		<p class="p-5 text-sm text-gray-400">Loading…</p>
 	{:else}
@@ -377,7 +377,7 @@
 			{/if}
 		</div>
 	{/if}
-</Modal>
+</SidePanel>
 {#if detail}<RequestDetail bind:open={detailOpen} id={detail} onchanged={() => load()} />{/if}
 {#if series}<FixEpisodesModal bind:open={redownloadOpen} item={item as Series} ondone={load} />{:else}<RedownloadModal bind:open={redownloadOpen} {item} />{/if}
 {#if forDelete}<DeleteModal bind:open={deleteOpen} {item} t={forDelete} ondone={load} />{/if}
