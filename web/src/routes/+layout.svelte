@@ -33,6 +33,12 @@
 		};
 	});
 
+	// The service worker from the first visit (not only when push is turned on): some phone browsers, such as
+	// Samsung Internet, only offer to install Flixarr as an app once one is running.
+	$effect(() => {
+		navigator.serviceWorker?.register('/sw.js', { scope: '/' }).catch(() => {});
+	});
+
 	// The live connection while signed in.
 	$effect(() => {
 		if (session.me) return startLive();
