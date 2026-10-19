@@ -260,7 +260,7 @@ func (m *Manager) ensureFormats(ctx context.Context, s *server, d *Doc, b Body) 
 // push adds or replaces one Flixarr profile on the server and records it.
 func (m *Manager) push(ctx context.Context, s *server, d *Doc, p Profile, arrID int) error {
 	if testinstall.On {
-		return errors.New("quality profiles aren't " + testinstall.ErrBlocked.Error())
+		return errors.New("quality profiles aren't pushed from a test install: it shares Radarr and Sonarr with the real one")
 	}
 	ap := p.For(s.v.Kind)
 	if ap == nil {

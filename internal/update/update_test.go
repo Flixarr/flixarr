@@ -113,3 +113,19 @@ func TestCheckErrors(t *testing.T) {
 		t.Error("a failed check was stored")
 	}
 }
+
+// A release sends its version without a build number: with one, the API would read 0.2.0 as a build on
+// its way to 0.2.0 and offer 0.2.0 as an update to itself.
+func TestReleasePayload(t *testing.T) {
+	v, pre, b := version.Version, version.Pre, version.Build
+	t.Cleanup(func() { version.Version, version.Pre, version.Build = v, pre, b })
+	c := newChecker(t, "http://unused")
+	version.Version, version.Pre, version.Build = "0.2.0", "", "245"
+	if p := c.Payload(); p["version"] != "0.2.0" || p["build"] != "" {
+		t.Errorf("release payload %v", p)
+	}
+	version.Pre = "dev"
+	if p := c.Payload(); p["version"] != "0.2.0-dev.245" || p["build"] != "245" {
+		t.Errorf("build payload %v", p)
+	}
+}

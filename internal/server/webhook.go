@@ -90,9 +90,6 @@ func (s *Server) webhook(w http.ResponseWriter, r *http.Request) {
 
 // arrWebhook finds Flixarr's Webhook connection in a Radarr/Sonarr (Settings → Connect), if added.
 func arrWebhook(ctx context.Context, c *arr.Client, token string) (map[string]any, error) {
-	if testinstall.On {
-		return nil, testinstall.ErrBlocked
-	}
 	var list []map[string]any
 	if err := c.Get(ctx, "notification", &list); err != nil {
 		return nil, err
@@ -138,6 +135,10 @@ func (s *Server) webhookStatus(w http.ResponseWriter, r *http.Request, _ *store.
 // webhookAdd adds (or points again) a "Flixarr" Webhook connection in Radarr/Sonarr with the events that
 // matter for requests and health, then has Radarr/Sonarr test it.
 func (s *Server) webhookAdd(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	if testinstall.On {
+		writeErr(w, http.StatusConflict, "Instant updates aren't added from a test install: it shares Radarr and Sonarr with the real one.")
+		return
+	}
 	v, ok, err := s.Store.FirstServer(r.PathValue("kind"))
 	if err != nil || !ok {
 		writeErr(w, http.StatusNotFound, "Not connected.")
