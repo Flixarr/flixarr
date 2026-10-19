@@ -27,6 +27,7 @@ import (
 	"github.com/Flixarr/flixarr/internal/requests"
 	"github.com/Flixarr/flixarr/internal/seerr"
 	"github.com/Flixarr/flixarr/internal/store"
+	"github.com/Flixarr/flixarr/internal/testinstall"
 	"github.com/Flixarr/flixarr/internal/update"
 	"github.com/Flixarr/flixarr/internal/version"
 )
@@ -77,6 +78,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/leaving/{type}/{id}/{act}", s.auth(s.leavingAct))
 	mux.HandleFunc("GET /api/webhook", s.auth(s.admin(s.webhookInfo)))
 	mux.HandleFunc("GET /api/me", s.auth(s.me))
+	mux.HandleFunc("POST /api/test/view-as", s.auth(s.viewAsSet))
 	mux.HandleFunc("GET /api/me/locale", s.auth(s.myLocale))
 	mux.HandleFunc("PUT /api/me/locale", s.auth(s.myLocale))
 	mux.HandleFunc("POST /api/setup/done", s.auth(s.admin(func(w http.ResponseWriter, r *http.Request, _ *store.User) {
@@ -242,6 +244,10 @@ func (s *Server) auth(h func(http.ResponseWriter, *http.Request, *store.User)) h
 			writeErr(w, http.StatusUnauthorized, "Your session has ended. Sign in again.")
 			return
 		}
+		if u, err = viewAs(r, u); err != nil {
+			writeErr(w, http.StatusForbidden, capitalize(err.Error())+".")
+			return
+		}
 		h(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, u)), u)
 	}
 }
@@ -282,6 +288,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		"update":      s.Update.Last(),
 		"imageCache":  s.Images.Enabled(),
 		"signIn":      s.signIn(),
+		"testInstall": testinstall.On,
 	})
 }
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/Flixarr/flixarr/internal/jobs"
 	"github.com/Flixarr/flixarr/internal/store"
+	"github.com/Flixarr/flixarr/internal/testinstall"
 )
 
 // Settings keys.
@@ -175,8 +176,11 @@ func (w *Watcher) Sync(ctx context.Context) (string, error) {
 		}
 		w.asksChanged()
 	}
-	kept := w.protectFresh(ctx, c, items)
-	w.endFreshKeeps(ctx, c)
+	kept := 0
+	if !testinstall.On { // keeps are written to Maintainerr: only the real install does that
+		kept = w.protectFresh(ctx, c, items)
+		w.endFreshKeeps(ctx, c)
+	}
 	w.headsUp(items)
 	return fmt.Sprintf("%d titles leaving, %d kept for new requests", len(items), kept), nil
 }

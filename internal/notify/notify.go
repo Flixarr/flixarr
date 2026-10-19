@@ -22,6 +22,7 @@ import (
 
 	"github.com/Flixarr/flixarr/internal/requests"
 	"github.com/Flixarr/flixarr/internal/store"
+	"github.com/Flixarr/flixarr/internal/testinstall"
 )
 
 // Events, in the order Settings shows them.
@@ -528,8 +529,12 @@ func (n *Notifier) FromServer(name, detail string) Message {
 	return m
 }
 
-// Send delivers a message to every channel that's on and has the event, in the background.
+// Send delivers a message to every channel that's on and has the event, in the background. A test install
+// sends none (Test still works).
 func (n *Notifier) Send(m Message) {
+	if testinstall.On {
+		return
+	}
 	for _, c := range n.Channels() {
 		if !c.On || !slices.Contains(c.Events, m.Event) {
 			continue

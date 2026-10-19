@@ -13,6 +13,7 @@ import (
 
 	"github.com/Flixarr/flixarr/internal/arr"
 	"github.com/Flixarr/flixarr/internal/store"
+	"github.com/Flixarr/flixarr/internal/testinstall"
 )
 
 const keyWebhookToken = "webhook_token"
@@ -89,6 +90,9 @@ func (s *Server) webhook(w http.ResponseWriter, r *http.Request) {
 
 // arrWebhook finds Flixarr's Webhook connection in a Radarr/Sonarr (Settings → Connect), if added.
 func arrWebhook(ctx context.Context, c *arr.Client, token string) (map[string]any, error) {
+	if testinstall.On {
+		return nil, testinstall.ErrBlocked
+	}
 	var list []map[string]any
 	if err := c.Get(ctx, "notification", &list); err != nil {
 		return nil, err

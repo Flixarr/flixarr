@@ -32,6 +32,7 @@ import (
 	"github.com/Flixarr/flixarr/internal/seerr"
 	"github.com/Flixarr/flixarr/internal/server"
 	"github.com/Flixarr/flixarr/internal/store"
+	"github.com/Flixarr/flixarr/internal/testinstall"
 	"github.com/Flixarr/flixarr/internal/update"
 	"github.com/Flixarr/flixarr/internal/version"
 	"github.com/Flixarr/flixarr/internal/watchlist"
@@ -83,7 +84,7 @@ func main() {
 	}
 
 	// Daily "is there a newer build?" check (also how installs are counted). Off with FLIXARR_UPDATE_CHECK=false.
-	checker := &update.Checker{Store: st, API: api, ForceOff: os.Getenv("FLIXARR_UPDATE_CHECK") == "false", Log: log,
+	checker := &update.Checker{Store: st, API: api, ForceOff: os.Getenv("FLIXARR_UPDATE_CHECK") == "false" || testinstall.On, Log: log,
 		HTTP: &http.Client{Timeout: 10 * time.Second}}
 	runCtx, stopChecks := context.WithCancel(context.Background())
 	defer stopChecks()
@@ -227,6 +228,9 @@ func main() {
 	hs := &http.Server{Addr: addr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 
 	go func() {
+		if testinstall.On {
+			log.Info("test install: no automatic notifications, Maintainerr writes, watchlist requests, quality profile or webhook pushes, or update checks")
+		}
 		log.Info("Flixarr starting", "version", version.Full(), "commit", version.Commit, "channel", version.Channel, "addr", addr, "data", dataDir)
 		if err := hs.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("server", "err", err)

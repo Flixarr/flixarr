@@ -13,6 +13,7 @@ import (
 
 	"github.com/Flixarr/flixarr/internal/arr"
 	"github.com/Flixarr/flixarr/internal/store"
+	"github.com/Flixarr/flixarr/internal/testinstall"
 )
 
 const keyDoc = "profiles_doc" // the last profiles document downloaded (JSON)
@@ -258,6 +259,9 @@ func (m *Manager) ensureFormats(ctx context.Context, s *server, d *Doc, b Body) 
 
 // push adds or replaces one Flixarr profile on the server and records it.
 func (m *Manager) push(ctx context.Context, s *server, d *Doc, p Profile, arrID int) error {
+	if testinstall.On {
+		return errors.New("quality profiles aren't " + testinstall.ErrBlocked.Error())
+	}
 	ap := p.For(s.v.Kind)
 	if ap == nil {
 		return fmt.Errorf("%s has no %s version", p.Label, arr.Kinds[s.v.Kind])

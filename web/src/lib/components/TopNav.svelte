@@ -6,11 +6,20 @@
 	import Avatar from './Avatar.svelte';
 	import { session, signOut, can } from '#lib/session.svelte.ts';
 	import { alerts, anyNew, openedBell, readAllAlerts, servicesUnread, show as showCount, tapAlert, untapped, watchAlerts } from '#lib/alerts.svelte.ts';
-	import { ago, img } from '#lib/api.ts';
+	import { ago, api, img } from '#lib/api.ts';
 
 	let { transparent = false }: { transparent?: boolean } = $props();
 	let scrolled = $state(false);
-	let menu = $state<'' | 'user' | 'notif'>('');
+	let menu = $state<'' | 'user' | 'notif' | 'test'>('');
+	// Test install: the TEST badge, and View as for admins (the server applies it).
+	const testInstall = $derived(!!session.status?.testInstall);
+	const viewing = $derived(session.me?.viewAs ?? '');
+	const canViewAs = $derived(testInstall && (can('admin') || !!viewing));
+	async function viewAs(role: string) {
+		menu = '';
+		await api('/test/view-as', { method: 'POST', body: JSON.stringify({ role }) });
+		location.reload();
+	}
 	// The bar's height, for windows that open below it on phones (--top-bar).
 	let barHeight = $state(0);
 	$effect(() => {
@@ -99,7 +108,22 @@
 
 <header bind:offsetHeight={barHeight} class="fixed inset-x-0 top-0 z-30 border-b pt-[max(0px,calc(env(safe-area-inset-top)-0.75rem))] transition-[background-color,border-color,backdrop-filter] duration-500 ease-out {solid ? 'border-gray-700/40 bg-gray-950/85 backdrop-blur-xl' : 'border-transparent bg-transparent backdrop-blur-[0px]'}">
 	<div class="mx-auto flex max-w-[1600px] items-center gap-6 px-4 py-3 laptop:px-10">
-		<a href="/" class="text-logo text-3xl laptop:text-4xl">Flixarr</a>
+		<div class="flex items-center gap-2">
+			<a href="/" class="text-logo text-3xl laptop:text-4xl">Flixarr</a>
+			{#if testInstall}
+				<div class="relative" data-menu>
+					<button class="rounded-md bg-yellow-400/15 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-yellow-300 ring-1 ring-yellow-400/40 {canViewAs ? 'hover:bg-yellow-400/25' : 'cursor-default'}" aria-label="Test install{viewing ? `, viewing as ${viewing}` : ''}" onclick={() => canViewAs && (menu = menu === 'test' ? '' : 'test')}>TEST{#if viewing}<span class="ml-1 font-semibold">· {viewing}</span>{/if}</button>
+					{#if menu === 'test'}
+						<div class="absolute left-0 top-8 z-50 w-56 overflow-hidden rounded-xl border border-gray-700/60 bg-gray-900 py-1.5 shadow-[0_24px_64px_-8px_rgba(0,0,0,0.95),0_8px_24px_rgba(0,0,0,0.7)]">
+							<div class="px-4 pb-1.5 pt-1 text-[11px] text-gray-500">Test install. View the app as:</div>
+							{#each [['', 'Yourself'], ['Admin', 'An admin'], ['Trusted', 'A trusted user'], ['User', 'A user']] as [role, label] (role)}
+								<button class="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-white/5 {viewing === role ? 'text-white' : 'text-gray-300'}" onclick={() => viewAs(role)}>{label}{#if viewing === role}<Icon name="check" class="size-4 text-primary-light" />{/if}</button>
+							{/each}
+						</div>
+					{/if}
+				</div>
+			{/if}
+		</div>
 		<nav class="hidden items-center gap-1 text-[15px] tablet:flex">
 			{#each NAV as [label, h] (h)}
 				<a href={h} class="rounded-lg px-3 py-1.5 {active(h) ? 'bg-white/10 font-semibold text-white' : 'text-gray-300 hover:text-white'}">{label}</a>

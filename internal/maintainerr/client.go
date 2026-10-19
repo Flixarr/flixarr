@@ -14,6 +14,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/Flixarr/flixarr/internal/testinstall"
 )
 
 // DefaultPort is Maintainerr's port.
@@ -27,6 +29,9 @@ type Client struct {
 }
 
 func (c *Client) do(ctx context.Context, method, path string, in, out any) error {
+	if method != http.MethodGet && testinstall.On {
+		return testinstall.ErrBlocked
+	}
 	var body io.Reader
 	if in != nil {
 		b, _ := json.Marshal(in)

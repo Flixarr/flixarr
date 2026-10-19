@@ -58,7 +58,7 @@ export interface Collection { id: number; name: string; overview: string; poster
 
 export interface SearchHit extends Omit<Partial<Card>, 'type'> { id: number; type: MediaType | 'person'; title: string; poster: string | null; dept?: string | null }
 
-export interface User { id: number; plexId: number; username: string; email: string; avatar: string; role: string; perms: string[]; owner: boolean; local?: boolean; movieLimit: number; seasonLimit: number; createdAt: string }
+export interface User { id: number; plexId: number; username: string; email: string; avatar: string; role: string; perms: string[]; owner: boolean; local?: boolean; viewAs?: string; movieLimit: number; seasonLimit: number; createdAt: string }
 
 export interface UpdateStatus {
 	enabled: boolean;
@@ -70,10 +70,11 @@ export interface UpdateStatus {
 
 export interface Status {
 	setupRequired: boolean; setupWizard?: boolean;
-	version: { version: string; build: string; full: string; commit: string; channel: string };
+	version: { version: string; pre: string; build: string; full: string; commit: string; channel: string };
 	update: UpdateStatus;
 	imageCache: boolean;
 	signIn?: 'both' | 'plex' | 'local';
+	testInstall?: boolean; // a second install for trying changes (TEST badge, View as)
 }
 
 export interface CacheKind { kind: 'titles' | 'people' | 'lists' | 'searches'; count: number; bytes: number }

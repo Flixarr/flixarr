@@ -139,6 +139,10 @@ type User struct {
 	Perms    []string `json:"perms"` // see perms.go
 	Owner    bool     `json:"owner"` // the first admin; can't be removed or lose admin
 	Local    bool     `json:"local"` // a username-and-password account (no Plex)
+	// ViewAs is the role a test install's admin is viewing the app as ("" = as themselves); RealAdmin says
+	// the person behind it is an admin, whatever they're viewing as.
+	ViewAs    string `json:"viewAs,omitempty"`
+	RealAdmin bool   `json:"-"`
 	// Their own region and language for titles, dates and "upcoming" ("" = the server's).
 	Region   string `json:"region"`
 	Language string `json:"language"`

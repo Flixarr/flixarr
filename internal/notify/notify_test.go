@@ -22,6 +22,7 @@ import (
 
 	"github.com/Flixarr/flixarr/internal/secret"
 	"github.com/Flixarr/flixarr/internal/store"
+	"github.com/Flixarr/flixarr/internal/testinstall"
 )
 
 func TestDiscordAndWebhook(t *testing.T) {
@@ -325,5 +326,32 @@ func TestSeveralChannelsPerService(t *testing.T) {
 	}
 	if _, err := n.Add(Channel{Service: "carrier-pigeon"}); err == nil {
 		t.Fatal("unknown service accepted")
+	}
+}
+
+// A test install sends no automatic notifications, but Send test still works.
+func TestTestInstallQuiet(t *testing.T) {
+	on := testinstall.On
+	t.Cleanup(func() { testinstall.On = on })
+	testinstall.On = true
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	st, _ := store.Open(dir, box)
+	defer st.Close()
+	var mu sync.Mutex
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { mu.Lock(); hits++; mu.Unlock() }))
+	defer srv.Close()
+	n := &Notifier{Store: st, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	add(n, "webhook", Config{On: true, URL: srv.URL, Method: "POST", Events: []string{"request_available"}})
+	n.Send(n.FromRequest("request_available", store.Request{ID: 1, Type: "movie", TmdbID: 603, Title: "The Matrix"}))
+	time.Sleep(200 * time.Millisecond)
+	mu.Lock()
+	if hits != 0 {
+		t.Fatalf("sent %d automatic notifications", hits)
+	}
+	mu.Unlock()
+	if err := n.Test(context.Background(), "webhook", Config{URL: srv.URL, Method: "POST"}); err != nil || hits != 1 {
+		t.Fatalf("send test: %v, %d sent", err, hits)
 	}
 }
