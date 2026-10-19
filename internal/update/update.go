@@ -91,7 +91,7 @@ func (c *Checker) installID() string {
 func (c *Checker) Payload() map[string]string {
 	return map[string]string{
 		"install": c.installID(),
-		"version": version.Version,
+		"version": version.Full(),
 		"build":   version.Build,
 		"channel": version.Channel,
 		"os":      runtime.GOOS,

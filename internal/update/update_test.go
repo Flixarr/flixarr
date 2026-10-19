@@ -60,7 +60,7 @@ func TestCheck(t *testing.T) {
 			t.Errorf("missing %s", k)
 		}
 	}
-	if !uuidV4.MatchString(got.Get("install")) || got.Get("db") != "sqlite" || got.Get("version") != version.Version {
+	if !uuidV4.MatchString(got.Get("install")) || got.Get("db") != "sqlite" || got.Get("version") != version.Full() {
 		t.Errorf("payload %v", got)
 	}
 	if ua != "Flixarr/"+version.Full() {

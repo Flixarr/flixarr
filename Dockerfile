@@ -14,13 +14,13 @@ RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 COPY --from=web /web/build ./internal/webui/dist
-ARG VERSION=0.1.0
+ARG VERSION=0.0.0
 ARG BUILD=0
 ARG COMMIT=dev
 ARG CHANNEL=nightly
-ARG DEV=
+ARG PRE=dev
 RUN CGO_ENABLED=0 go build -trimpath \
-    -ldflags "-s -w -X github.com/Flixarr/flixarr/internal/version.Version=${VERSION} -X github.com/Flixarr/flixarr/internal/version.Build=${BUILD} -X github.com/Flixarr/flixarr/internal/version.Commit=${COMMIT} -X github.com/Flixarr/flixarr/internal/version.Channel=${CHANNEL} -X github.com/Flixarr/flixarr/internal/version.Dev=${DEV}" \
+    -ldflags "-s -w -X github.com/Flixarr/flixarr/internal/version.Version=${VERSION} -X github.com/Flixarr/flixarr/internal/version.Build=${BUILD} -X github.com/Flixarr/flixarr/internal/version.Commit=${COMMIT} -X github.com/Flixarr/flixarr/internal/version.Channel=${CHANNEL} -X github.com/Flixarr/flixarr/internal/version.Pre=${PRE}" \
     -o /flixarr ./cmd/flixarr
 
 FROM alpine:3

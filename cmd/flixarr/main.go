@@ -123,7 +123,7 @@ func main() {
 	// The daily update check also says which profiles version is current; a new one syncs right away.
 	checker.OnResult = func(r *update.Result) {
 		if r.UpdateAvailable && r.Latest != nil { // once per version, for admins
-			v := r.Latest.Version + "." + r.Latest.Build
+			v := r.Latest.Version // the full version, e.g. 0.2.0 or 0.3.0-nightly.400
 			st.AddNews(store.Alert{Key: "update:" + v, Audience: "admins", Title: "Flixarr " + v + " is out", Detail: "See what's new in Settings, About", Link: "/settings#about"})
 		}
 		if r.Profiles != nil && (pm.Doc() == nil || pm.Doc().Version != r.Profiles.Version) {

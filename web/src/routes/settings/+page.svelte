@@ -157,7 +157,7 @@
 								<span class="text-gray-400">Updates</span>
 								<span class="text-right">
 									{#if !upd?.enabled}<span class="text-gray-400">Not checking</span>
-									{:else if upd.available && upd.latest}<span class="font-medium text-primary-light">Update available: {upd.latest.version}.{upd.latest.build}</span>
+									{:else if upd.available && upd.latest}<span class="font-medium text-primary-light">Update available: {upd.latest.version}</span>
 									{:else if upd.checkedAt}<span class="text-green-400">Up to date</span>
 									{:else}<span class="text-gray-400">First check in a few minutes</span>{/if}
 									{#if upd?.checkedAt}<span class="block text-xs text-gray-500">Checked {fmtDate(upd.checkedAt, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>{/if}

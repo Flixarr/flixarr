@@ -278,7 +278,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		"setupRequired": n == 0,
 		// After the first sign-in: the rest of setup (Plex server, libraries, Radarr/Sonarr) until finished or skipped.
 		"setupWizard": n > 0 && s.Store.Setting("setup_done", "") != "true",
-		"version":     map[string]string{"version": version.Version, "build": version.Build, "full": version.Full(), "commit": version.Commit, "channel": version.Channel},
+		"version":     map[string]string{"version": version.Version, "pre": version.Pre, "build": version.Build, "full": version.Full(), "commit": version.Commit, "channel": version.Channel},
 		"update":      s.Update.Last(),
 		"imageCache":  s.Images.Enabled(),
 		"signIn":      s.signIn(),
