@@ -1,9 +1,10 @@
 <script lang="ts">
-	// Bottom sheet on phone, centered dialog on tablet+. Freezes the page behind it (design rule 2):
-	// iOS ignores overflow:hidden on body, so the body is pinned at its scroll offset and restored on close.
+	// Bottom sheet on phone, centered dialog on tablet+. Keeps the page behind it still (design rule 2,
+	// lib/scrolllock.ts). Drawn at the app's root (use:portal), so it's never boxed in by a window it opens from.
 	import type { Snippet } from 'svelte';
 	import Icon from './Icon.svelte';
-	import { lock } from '#lib/scrolllock.ts';
+	import { lock, locked } from '#lib/scrolllock.ts';
+	import { portal } from '#lib/portal.ts';
 
 	// `top` replaces the standard title bar (the close button stays, top right). `center` keeps it a
 	// centered dialog on phones too (the trailer: a video doesn't belong in a bottom sheet). Panels that slide in
@@ -12,8 +13,12 @@
 		open?: boolean; title: string; sub?: string; wide?: boolean; center?: boolean; children: Snippet; footer?: Snippet; top?: Snippet;
 	} = $props();
 
+	// Opened on top of another window or the side panel: a darker backdrop and a lighter edge, so the two
+	// are easy to tell apart.
+	let stacked = $state(false);
 	$effect(() => {
 		if (!open) return;
+		stacked = locked();
 		const unlock = lock();
 		const onKey = (e: KeyboardEvent) => e.key === 'Escape' && (open = false);
 		addEventListener('keydown', onKey);
@@ -26,9 +31,9 @@
 
 {#if open}
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-	<div class="fixed inset-x-0 bottom-0 top-(--top-bar,0px) z-50 flex overscroll-none justify-center bg-gray-950/80 backdrop-blur-sm tablet:top-0 tablet:items-center tablet:p-4 {center ? 'items-center p-3' : 'items-end'}"
+	<div use:portal class="fixed inset-x-0 bottom-0 top-(--top-bar,0px) z-50 flex overscroll-none justify-center {stacked ? 'bg-black/75' : 'bg-gray-950/80'} backdrop-blur-sm tablet:top-0 tablet:items-center tablet:p-4 {center ? 'items-center p-3' : 'items-end'}"
 		onclick={(e) => e.target === e.currentTarget && (open = false)}>
-		<div class="card w-full overflow-y-auto overscroll-contain bg-gray-900 max-h-[calc(100dvh-var(--top-bar,0px)-1.5rem)] tablet:max-h-[90dvh] tablet:rounded-b-xl {center ? '' : 'rounded-b-none'} {wide ? 'tablet:max-w-3xl' : 'tablet:max-w-lg'}" role="dialog" aria-modal="true" aria-label={title}>
+		<div class="card w-full overflow-y-auto overscroll-contain bg-gray-900 {stacked ? 'shadow-[0_24px_80px_rgba(0,0,0,0.9)] ring-1 ring-gray-500/60' : ''} max-h-[calc(100dvh-var(--top-bar,0px)-1.5rem)] tablet:max-h-[90dvh] tablet:rounded-b-xl {center ? '' : 'rounded-b-none'} {wide ? 'tablet:max-w-3xl' : 'tablet:max-w-lg'}" role="dialog" aria-modal="true" aria-label={title}>
 			{#if top}
 				<div class="relative">
 					{@render top()}
