@@ -12,7 +12,7 @@
 	let { transparent = false }: { transparent?: boolean } = $props();
 	let scrolled = $state(false);
 	let menu = $state<'' | 'user' | 'notif' | 'test'>('');
-	// Test install: the TEST badge, and View as for admins (the server applies it).
+	// Dev install: the DEV badge, and View as for admins (the server applies it).
 	const testInstall = $derived(!!session.status?.testInstall);
 	const viewing = $derived(session.me?.viewAs ?? '');
 	const canViewAs = $derived(testInstall && (can('admin') || !!viewing));
@@ -116,10 +116,10 @@
 			<a href="/" class="text-logo text-3xl laptop:text-4xl">Flixarr</a>
 			{#if testInstall}
 				<div class="relative" data-menu>
-					<button class="rounded-md bg-yellow-400/15 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-yellow-300 ring-1 ring-yellow-400/40 {canViewAs ? 'hover:bg-yellow-400/25' : 'cursor-default'}" aria-label="Test install{viewing ? `, viewing as ${viewing}` : ''}" onclick={() => canViewAs && (menu = menu === 'test' ? '' : 'test')}>TEST{#if viewing}<span class="ml-1 font-semibold">· {viewing}</span>{/if}</button>
+					<button class="rounded-md bg-yellow-400/15 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-yellow-300 ring-1 ring-yellow-400/40 {canViewAs ? 'hover:bg-yellow-400/25' : 'cursor-default'}" aria-label="Dev install{viewing ? `, viewing as ${viewing}` : ''}" onclick={() => canViewAs && (menu = menu === 'test' ? '' : 'test')}>DEV{#if viewing}<span class="ml-1 font-semibold">· {viewing}</span>{/if}</button>
 					{#if menu === 'test'}
 						<div class="absolute left-0 top-8 z-50 w-56 overflow-hidden rounded-xl border border-gray-700/60 bg-gray-900 py-1.5 shadow-[0_24px_64px_-8px_rgba(0,0,0,0.95),0_8px_24px_rgba(0,0,0,0.7)]">
-							<div class="px-4 pb-1.5 pt-1 text-[11px] text-gray-500">Test install. View the app as:</div>
+							<div class="px-4 pb-1.5 pt-1 text-[11px] text-gray-500">Dev install. View the app as:</div>
 							{#each [['', 'Yourself'], ['Admin', 'An admin'], ['Trusted', 'A trusted user'], ['User', 'A user']] as [role, label] (role)}
 								<button class="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-white/5 {viewing === role ? 'text-white' : 'text-gray-300'}" onclick={() => viewAs(role)}>{label}{#if viewing === role}<Icon name="check" class="size-4 text-primary-light" />{/if}</button>
 							{/each}

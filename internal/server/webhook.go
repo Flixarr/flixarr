@@ -136,7 +136,7 @@ func (s *Server) webhookStatus(w http.ResponseWriter, r *http.Request, _ *store.
 // matter for requests and health, then has Radarr/Sonarr test it.
 func (s *Server) webhookAdd(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	if testinstall.On {
-		writeErr(w, http.StatusConflict, "Instant updates aren't added from a test install: it shares Radarr and Sonarr with the real one.")
+		writeErr(w, http.StatusConflict, "Instant updates aren't added from a dev install: it shares Radarr and Sonarr with the real one.")
 		return
 	}
 	v, ok, err := s.Store.FirstServer(r.PathValue("kind"))

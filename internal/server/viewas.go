@@ -43,7 +43,7 @@ func viewAs(r *http.Request, u *store.User) (*store.User, error) {
 // viewAsSet switches View as: {"role": "User"}, or "" to be yourself again.
 func (s *Server) viewAsSet(w http.ResponseWriter, r *http.Request, u *store.User) {
 	if !testinstall.On || !u.RealAdmin {
-		writeErr(w, http.StatusForbidden, "View as is only on test installs, for admins.")
+		writeErr(w, http.StatusForbidden, "View as is only on dev installs, for admins.")
 		return
 	}
 	var in struct {

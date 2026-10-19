@@ -173,7 +173,7 @@
 											<span class="absolute left-0.5 top-0.5 size-5 rounded-full bg-white shadow transition peer-checked:translate-x-5"></span>
 										</span>
 									</label>
-									{#if upd.locked}<p class="text-xs text-yellow-400">{session.status?.testInstall ? "Off on a test install (it isn't counted as a second install)." : 'Turned off on the server with FLIXARR_UPDATE_CHECK=false.'}</p>{/if}
+									{#if upd.locked}<p class="text-xs text-yellow-400">{session.status?.testInstall ? "Off on a dev install (it isn't counted as a second install)." : 'Turned off on the server with FLIXARR_UPDATE_CHECK=false.'}</p>{/if}
 									<div class="flex flex-wrap gap-2">
 										<button class="btn-ghost px-3 py-1.5 text-xs" disabled={!upd.enabled || busy} onclick={checkNow}>{busy ? 'Checking…' : 'Check now'}</button>
 										<button class="btn-ghost px-3 py-1.5 text-xs" onclick={() => (showSent = !showSent)}>{showSent ? 'Hide' : 'Show'} exactly what's sent</button>

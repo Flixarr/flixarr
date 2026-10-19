@@ -229,7 +229,7 @@ func main() {
 
 	go func() {
 		if testinstall.On {
-			log.Info("test install: no automatic notifications, Maintainerr writes, watchlist requests, quality profile or webhook pushes, or update checks")
+			log.Info("dev install: no automatic notifications, Maintainerr writes, watchlist requests, quality profile or webhook pushes, or update checks")
 		}
 		log.Info("Flixarr starting", "version", version.Full(), "commit", version.Commit, "channel", version.Channel, "addr", addr, "data", dataDir)
 		if err := hs.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

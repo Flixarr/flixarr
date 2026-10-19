@@ -2,6 +2,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -478,6 +479,19 @@ func (s *Server) spa() http.Handler {
 	files := http.FileServer(http.FS(s.Web))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := strings.TrimPrefix(r.URL.Path, "/")
+		// The dev install has its own app name and icons with a DEV badge (#135), so it can't be mistaken
+		// for the real install next to it on a home screen.
+		if testinstall.On {
+			if p == "manifest.webmanifest" {
+				s.devManifest(w)
+				return
+			}
+			if devIcons[p] {
+				r = r.Clone(r.Context())
+				r.URL.Path = "/" + strings.TrimSuffix(p, ".png") + "-dev.png"
+				p = strings.TrimPrefix(r.URL.Path, "/")
+			}
+		}
 		if p != "" {
 			if f, err := s.Web.Open(p); err == nil {
 				st, _ := f.Stat()
@@ -502,9 +516,29 @@ func (s *Server) spa() http.Handler {
 			http.Error(w, "Web app not built.", http.StatusServiceUnavailable)
 			return
 		}
+		if testinstall.On {
+			shell = bytes.Replace(shell, []byte("<title>Flixarr</title>"), []byte(`<meta name="apple-mobile-web-app-title" content="Flixarr DEV" /><title>Flixarr DEV</title>`), 1)
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		// no-transform: proxies and CDNs must not inject scripts (analytics beacons and the like) into the app.
 		w.Header().Set("Cache-Control", "no-cache, no-transform")
 		w.Write(shell)
 	})
+}
+
+// devIcons are the app icons the dev install swaps for its DEV versions.
+var devIcons = map[string]bool{"apple-touch-icon.png": true, "icon-192.png": true, "icon-512.png": true, "icon-maskable-512.png": true}
+
+// devManifest is the app manifest with the dev install's name.
+func (s *Server) devManifest(w http.ResponseWriter) {
+	b, err := fs.ReadFile(s.Web, "manifest.webmanifest")
+	var m map[string]any
+	if err != nil || json.Unmarshal(b, &m) != nil {
+		http.Error(w, "Not found.", http.StatusNotFound)
+		return
+	}
+	m["name"], m["short_name"] = "Flixarr DEV", "Flixarr DEV"
+	w.Header().Set("Content-Type", "application/manifest+json")
+	w.Header().Set("Cache-Control", "no-cache")
+	json.NewEncoder(w).Encode(m)
 }
