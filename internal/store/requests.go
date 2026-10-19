@@ -328,6 +328,19 @@ func (s *Store) DeleteRequest(id int64) error {
 	return err
 }
 
+// RequestsIn lists the requests with any of these statuses.
+func (s *Store) RequestsIn(statuses ...string) ([]Request, error) {
+	if len(statuses) == 0 {
+		return []Request{}, nil
+	}
+	q := `SELECT ` + requestCols + ` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.status IN (?` + strings.Repeat(", ?", len(statuses)-1) + `)`
+	args := make([]any, len(statuses))
+	for i, st := range statuses {
+		args[i] = st
+	}
+	return s.queryRequests(q, args...)
+}
+
 // ActiveRequestsFor lists the active requests for one Radarr/Sonarr item (a webhook names it by its own ID).
 func (s *Store) ActiveRequestsFor(typ string, arrID int) ([]Request, error) {
 	return s.queryRequests(`SELECT `+requestCols+` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.type = ? AND r.arr_id = ? AND r.status IN ('sent', 'grabbed', 'downloading', 'importing')`, typ, arrID)

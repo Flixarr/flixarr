@@ -54,6 +54,36 @@ func (s *Server) queueFix(w http.ResponseWriter, r *http.Request, u *store.User)
 	writeJSON(w, http.StatusOK, map[string]string{"done": requests.QueueActions[in.Action]})
 }
 
+// requestAttention counts the requests in Needs attention for this person (the red number on Requests):
+// for people who manage requests, everyone's failed requests, requests waiting for approval and stuck
+// downloads; for everyone else, their own failed requests and stuck downloads.
+func (s *Server) requestAttention(w http.ResponseWriter, r *http.Request, u *store.User) {
+	manage := u.Can("manageRequests")
+	list, err := s.Store.RequestsIn("failed", "pending", "sent", "grabbed", "downloading", "importing")
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "Database error.")
+		return
+	}
+	stuck := s.stuckDownloads()
+	n := 0
+	for _, x := range list {
+		if !manage && x.UserID != u.ID {
+			continue
+		}
+		switch {
+		case x.Status == "failed":
+			n++
+		case x.Status == "pending":
+			if manage {
+				n++
+			}
+		case x.ArrID > 0 && stuck[fmt.Sprintf("%s:%d", x.Type, x.ArrID)]:
+			n++
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"count": n})
+}
+
 // stuckDownloads lists the titles ("movie:12", by their Radarr/Sonarr ID) with a download stuck right now.
 func (s *Server) stuckDownloads() map[string]bool {
 	out := map[string]bool{}

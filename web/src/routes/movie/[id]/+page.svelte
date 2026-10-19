@@ -13,6 +13,7 @@
 	import RequestButton from '#lib/components/RequestButton.svelte';
 	import IssueModal from '#lib/components/IssueModal.svelte';
 	import RedownloadModal from '#lib/components/RedownloadModal.svelte';
+	import FixMenu from '#lib/components/FixMenu.svelte';
 	import AdminPanel from '#lib/components/AdminPanel.svelte';
 	import LeavingActions from '#lib/components/LeavingActions.svelte';
 	import { can } from '#lib/session.svelte.ts';
@@ -57,7 +58,7 @@
 		{#snippet actions()}
 			{#if m}<RequestButton item={m} bind:req={brief} />{/if}
 			{#if m && (inLib || waiting) && can('reportIssues')}<button class="btn-ghost act" onclick={() => (issueOpen = true)}><Icon name="issues" class="size-4" />Report issue</button>{/if}
-			{#if m && inLib && can('redownload') && !can('manageRequests')}<button class="btn-ghost act" onclick={() => (fixOpen = true)}><Icon name="refresh" class="size-4" />Redownload</button>{/if}
+			{#if m && inLib && can('redownload') && !can('manageRequests')}<FixMenu title={m.title} series={false} redownload={() => (fixOpen = true)} class="btn-ghost act" />{/if}
 			{#if m && can('manageRequests')}<button class="btn-ghost act" onclick={() => (adminOpen = true)}><Icon name="settings" class="size-4" />Admin</button>{/if}
 			{#if m?.trailer}<button class="btn-ghost act" onclick={() => (trailer = true)}><Icon name="play" class="size-4" />Trailer</button>{/if}
 			{#if m && brief?.plex}<LeavingActions type="movie" id={m.id} title={m.title} />{/if}

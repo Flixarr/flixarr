@@ -7,6 +7,7 @@
 	import { session, signOut, can } from '#lib/session.svelte.ts';
 	import { alerts, anyNew, openedBell, readAllAlerts, servicesUnread, show as showCount, tapAlert, untapped, watchAlerts } from '#lib/alerts.svelte.ts';
 	import { ago, api, img } from '#lib/api.ts';
+	import { attention, watchAttention } from '#lib/attention.svelte.ts';
 
 	let { transparent = false }: { transparent?: boolean } = $props();
 	let scrolled = $state(false);
@@ -55,7 +56,10 @@
 	});
 
 	$effect(() => {
-		if (session.me) return watchAlerts();
+		if (session.me) {
+			const a = watchAlerts(), b = watchAttention();
+			return () => (a?.(), b());
+		}
 	});
 	// Opening the bell marks what's in it as seen.
 	$effect(() => {
@@ -126,7 +130,7 @@
 		</div>
 		<nav class="hidden items-center gap-1 text-[15px] tablet:flex">
 			{#each NAV as [label, h] (h)}
-				<a href={h} class="rounded-lg px-3 py-1.5 {active(h) ? 'bg-white/10 font-semibold text-white' : 'text-gray-300 hover:text-white'}">{label}</a>
+				<a href={h} class="relative rounded-lg px-3 py-1.5 {active(h) ? 'bg-white/10 font-semibold text-white' : 'text-gray-300 hover:text-white'}">{label}{#if h === '/requests' && attention()}<span class="absolute -right-1 -top-1 grid min-w-4 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-4 text-white">{attention() > 99 ? '99+' : attention()}</span>{/if}</a>
 			{/each}
 		</nav>
 		<!-- Search: a link to the search page (which focuses its box). Laptop+: looks like a search box. Tablet: an icon.

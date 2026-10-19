@@ -10,7 +10,7 @@
 	import { text, TONE, NEUTRAL, EVENT_TEXT, askedFor, eventDot } from '#lib/requeststatus.ts';
 	import Timeline, { type Step } from './Timeline.svelte';
 	import FolderCard from './FolderCard.svelte';
-	import QueueFix from './QueueFix.svelte';
+	import FixMenu from './FixMenu.svelte';
 	import SidePanel from './SidePanel.svelte';
 	import Icon from './Icon.svelte';
 	import Avatar from './Avatar.svelte';
@@ -233,7 +233,6 @@
 								<div class="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-700/60"><div class="h-full rounded-full {q.state === 'warning' || q.state === 'failed' ? 'bg-yellow-500' : 'bg-blue-500'}" style="width:{q.percent}%"></div></div>
 								{#if q.detail || q.problem}<p class="mt-1.5 text-xs text-yellow-200">{q.detail || q.problem}</p>{/if}
 								{#if q.release}<p class="mt-1 truncate font-mono text-[10px] text-gray-500">{q.release}</p>{/if}
-								{#if q.queueId}<QueueFix kind={series ? 'sonarr' : 'radarr'} queueId={q.queueId} title={q.season ? `${item.title} S${q.season}${q.episode ? 'E' + q.episode : ''}` : item.title} ondone={load} />{/if}
 							</div>
 						{/each}
 					</div>
@@ -319,24 +318,12 @@
 
 			<div class="flex flex-wrap empty:hidden"><LeavingActions type={item.type as 'movie' | 'series'} id={item.id} title={item.title} /></div>
 
-			<!-- Actions: repairs first, then what removes things (each asks first) -->
-			{#if info.live.inArr && ((!info.live.hasFile && !info.live.queue.length) || ((info.live.hasFile || series) && can('redownload')))}
-			<section>
+			<!-- Actions: one Fix with whatever fits right now (#139), then what removes things (each asks first) -->
+			{#if info.live.inArr || info.live.queue.some((q) => q.queueId)}
+			<section class="empty:hidden">
 				{@render head('Actions')}
-				<div class="space-y-3">
-					{#if info.live.inArr && !info.live.hasFile && !info.live.queue.length}
-						<div>
-							<button class="btn-ghost w-full justify-center py-2.5" disabled={!!busy} onclick={fix}><Icon name="search" class="size-4" />{busy === 'fix' ? 'Searching…' : 'Search again'}</button>
-							<p class="mt-1.5 text-[11px] text-gray-500">Asks {info.live.server} to look for a download now, and turns monitoring back on if it was off.</p>
-						</div>
-					{/if}
-					{#if (info.live.hasFile || series) && can('redownload')}
-						<div>
-							<button class="btn-ghost w-full justify-center py-2.5" onclick={() => (redownloadOpen = true)}><Icon name="refresh" class="size-4" />{series ? 'Fix episodes' : 'Redownload'}</button>
-							<p class="mt-1.5 text-[11px] text-gray-500">{series ? 'Pick seasons or single episodes. Missing ones are searched for again; ones with a file are deleted, their release blocked, and downloaded again.' : `Deletes the file from ${info.live.server}, blocks that release so it isn't downloaded again, and downloads a new one.`}</p>
-						</div>
-					{/if}
-				</div>
+				<FixMenu title={item.title} {series} live={info.live} search={fix} redownload={() => (redownloadOpen = true)} ondone={load} class="btn-ghost w-full justify-center py-2.5" />
+				<p class="mt-1.5 text-[11px] text-gray-500">{info.live.queue.some((q) => q.queueId) ? 'A download is stuck: Fix gets a different release, tries the import again, or removes it.' : info.live.hasFile || series ? (can('redownload') ? `Replace a bad file${series ? ' or episodes' : ''}.` : '') : 'Nothing is downloading: Fix searches again.'}</p>
 			</section>
 			{/if}
 

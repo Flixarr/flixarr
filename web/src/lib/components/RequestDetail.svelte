@@ -7,7 +7,7 @@
 	import { notify } from '#lib/toast.svelte.ts';
 	import { can, session } from '#lib/session.svelte.ts';
 	import { on } from '#lib/live.svelte.ts';
-	import type { Request, User } from '#lib/types.ts';
+	import type { Movie, Request, Series, User } from '#lib/types.ts';
 	import { simple, text, EVENT_TEXT, askedFor, eventDot } from '#lib/requeststatus.ts';
 	import Modal from './Modal.svelte';
 	import Img from './Img.svelte';
@@ -15,7 +15,9 @@
 	import StepBar from './StepBar.svelte';
 	import Timeline from './Timeline.svelte';
 	import FolderCard from './FolderCard.svelte';
-	import QueueFix from './QueueFix.svelte';
+	import FixMenu from './FixMenu.svelte';
+	import RedownloadModal from './RedownloadModal.svelte';
+	import FixEpisodesModal from './FixEpisodesModal.svelte';
 
 	type Download = { queueId?: number; season?: number; episode?: number; percent: number; timeLeft?: string; state: string; size: number; release?: string; problem?: string; detail?: string };
 	type Live = { inArr: boolean; monitored: boolean; hasFile: boolean; file?: { quality?: string; size: number; release?: string; path?: string }; queue: Download[]; seasons?: { number: number; have: number; total: number; inPlex: number }[]; link?: string; server: string; error?: string };
@@ -58,6 +60,10 @@
 	const st = $derived(r ? simple(r.status, r.progress) : null);
 	const series = $derived(r?.type === 'series');
 	const ended = $derived(!!r && ['available', 'declined', 'expired', 'removed'].includes(r.status));
+	// Fix (#139): only while the request is in play or available (a bad file can be replaced).
+	const fixable = $derived(!!r && !['declined', 'expired', 'removed', 'pending', 'failed'].includes(r.status));
+	let redoOpen = $state(false);
+	const asItem = $derived(r ? ({ id: r.tmdbId, type: r.type, title: r.title, year: r.year, poster: r.poster } as unknown as Movie & Series) : null);
 	// Who decided, and how long it took to arrive.
 	const decided = $derived(d?.events.findLast((e) => (e.status === 'approved' || e.status === 'declined') && e.note));
 	const took = $derived.by(() => {
@@ -176,7 +182,6 @@
 								{#if q.problem}<p class="mt-1.5 text-xs text-yellow-200">{q.problem}</p>{/if}
 								{#if q.detail}<p class="mt-1 text-[11px] text-gray-500">{q.detail}</p>{/if}
 								{#if admin && q.release}<p class="mt-1 truncate font-mono text-[10px] text-gray-500">{q.release}</p>{/if}
-								{#if q.queueId && (can('manageRequests') || can('redownload'))}<QueueFix kind={r.type === 'movie' ? 'radarr' : 'sonarr'} queueId={q.queueId} title={q.season ? `${r.title} S${q.season}${q.episode ? 'E' + q.episode : ''}` : r.title} ondone={load} />{/if}
 							</div>
 						{/each}
 					</div>
@@ -242,14 +247,19 @@
 				<button class="btn px-4 py-1.5 text-xs" disabled={!!busy} onclick={() => act('approve')}>{busy === 'approve' ? 'Approving…' : 'Approve'}</button>
 			{:else if r.status === 'failed'}
 				<button class="btn px-4 py-1.5 text-xs" disabled={!!busy} onclick={() => act('retry')}>{busy === 'retry' ? 'Trying…' : 'Try again'}</button>
-			{:else if !ended && !d?.live.hasFile && !d?.live.queue.length}
-				<button class="btn-ghost px-3 py-1.5 text-xs" disabled={!!busy} onclick={() => act('fix')}>{busy === 'fix' ? 'Searching…' : 'Search again'}</button>
+			{:else if fixable && d}
+				<FixMenu title={r.title} {series} live={d.live} search={() => act('fix')} redownload={() => (redoOpen = true)} ondone={load} />
 			{/if}
 		{:else if r && r.status === 'pending' && r.userId === session.me?.id}
 			<button class="mr-auto px-2 text-xs text-gray-500 hover:text-red-300" onclick={() => (removing = true)}>Cancel request</button>
 			<button class="btn-ghost" onclick={() => (open = false)}>Close</button>
 		{:else}
+			{#if r && d && fixable && can('redownload')}<span class="mr-auto"><FixMenu title={r.title} {series} live={d.live} redownload={() => (redoOpen = true)} ondone={load} /></span>{/if}
 			<button class="btn-ghost" onclick={() => (open = false)}>Close</button>
 		{/if}
 	{/snippet}
 </Modal>
+
+{#if asItem && can('redownload')}
+	{#if series}<FixEpisodesModal bind:open={redoOpen} item={asItem} ondone={load} />{:else}<RedownloadModal bind:open={redoOpen} item={asItem} />{/if}
+{/if}
