@@ -479,16 +479,16 @@ func (s *Server) spa() http.Handler {
 	files := http.FileServer(http.FS(s.Web))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := strings.TrimPrefix(r.URL.Path, "/")
-		// The dev install has its own app name and icons with a DEV badge (#135), so it can't be mistaken
-		// for the real install next to it on a home screen.
-		if testinstall.On {
+		// The dev install and nightly builds have their own app name and icons (#135, #144), so they can't
+		// be mistaken for a stable install next to them on a home screen.
+		if b := buildBadge(); b != "" {
 			if p == "manifest.webmanifest" {
-				s.devManifest(w)
+				s.badgeManifest(w, b)
 				return
 			}
-			if devIcons[p] {
+			if badgeIcons[p] {
 				r = r.Clone(r.Context())
-				r.URL.Path = "/" + strings.TrimSuffix(p, ".png") + "-dev.png"
+				r.URL.Path = "/" + strings.TrimSuffix(p, ".png") + "-" + strings.ToLower(b) + ".png"
 				p = strings.TrimPrefix(r.URL.Path, "/")
 			}
 		}
@@ -516,8 +516,9 @@ func (s *Server) spa() http.Handler {
 			http.Error(w, "Web app not built.", http.StatusServiceUnavailable)
 			return
 		}
-		if testinstall.On {
-			shell = bytes.Replace(shell, []byte("<title>Flixarr</title>"), []byte(`<meta name="apple-mobile-web-app-title" content="Flixarr DEV" /><title>Flixarr DEV</title>`), 1)
+		if b := buildBadge(); b != "" {
+			name := "Flixarr " + b
+			shell = bytes.Replace(shell, []byte("<title>Flixarr</title>"), []byte(`<meta name="apple-mobile-web-app-title" content="`+name+`" /><title>`+name+`</title>`), 1)
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		// no-transform: proxies and CDNs must not inject scripts (analytics beacons and the like) into the app.
@@ -526,18 +527,30 @@ func (s *Server) spa() http.Handler {
 	})
 }
 
-// devIcons are the app icons the dev install swaps for its DEV versions.
-var devIcons = map[string]bool{"apple-touch-icon.png": true, "icon-192.png": true, "icon-512.png": true, "icon-maskable-512.png": true}
+// buildBadge is the word on the app icons and after the app's name: DEV on the dev install, BETA on nightly
+// builds, nothing on a stable release.
+func buildBadge() string {
+	switch {
+	case testinstall.On:
+		return "DEV"
+	case version.Pre == "nightly":
+		return "BETA"
+	}
+	return ""
+}
 
-// devManifest is the app manifest with the dev install's name.
-func (s *Server) devManifest(w http.ResponseWriter) {
+// badgeIcons are the app icons swapped for their DEV or BETA versions (icon-192-dev.png, icon-192-beta.png).
+var badgeIcons = map[string]bool{"apple-touch-icon.png": true, "icon-192.png": true, "icon-512.png": true, "icon-maskable-512.png": true}
+
+// badgeManifest is the app manifest with the name for a dev install or nightly build.
+func (s *Server) badgeManifest(w http.ResponseWriter, badge string) {
 	b, err := fs.ReadFile(s.Web, "manifest.webmanifest")
 	var m map[string]any
 	if err != nil || json.Unmarshal(b, &m) != nil {
 		http.Error(w, "Not found.", http.StatusNotFound)
 		return
 	}
-	m["name"], m["short_name"] = "Flixarr DEV", "Flixarr DEV"
+	m["name"], m["short_name"] = "Flixarr "+badge, "Flixarr "+badge
 	w.Header().Set("Content-Type", "application/manifest+json")
 	w.Header().Set("Cache-Control", "no-cache")
 	json.NewEncoder(w).Encode(m)
