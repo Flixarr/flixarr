@@ -17,6 +17,7 @@ import (
 
 // Download is one item in the download queue.
 type Download struct {
+	QueueID  int    `json:"queueId,omitempty"` // set when it hit a problem (Fix)
 	Season   int    `json:"season,omitempty"`
 	Episode  int    `json:"episode,omitempty"`
 	Percent  int    `json:"percent"`
@@ -255,6 +256,7 @@ func queue(ctx context.Context, c *arr.Client, path string, seasons map[int]bool
 			d.State = "queued"
 		}
 		if d.State == "failed" || d.State == "warning" {
+			d.QueueID = num(it["id"])
 			d.Problem = "Hit a problem. Someone who manages requests can sort it out."
 			if admin {
 				d.Detail = statusMessages(it)

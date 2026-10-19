@@ -68,6 +68,10 @@
 	let issueOpen = $state(false);
 	let fixOpen = $state(false);
 	let adminOpen = $state(false);
+	// ?admin=1 (from a stuck download on Settings, Services) opens the admin panel.
+	$effect(() => {
+		if (page.url.searchParams.get('admin') === '1' && can('manageRequests')) adminOpen = true;
+	});
 </script>
 
 {#if error}

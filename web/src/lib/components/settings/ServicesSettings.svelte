@@ -267,6 +267,9 @@
 			style="width:{q.state === 'queued' ? 0 : Math.max(q.percent, 2)}%; background:{q.state === 'error' ? '#ef4444' : q.state === 'warning' ? '#facc15' : q.state === 'paused' ? '#6b7280' : color}"></span></span>
 		<span class="mt-1 block text-[11px] text-gray-500">{q.quality}{q.size ? ` · ${fmtBytes(q.size)}` : ''}</span>
 		{#if q.message}<span class="mt-1 block text-[11px] {STATE_TONE[q.state]}">⚠ {q.message}</span>{/if}
+		{#if (q.state === 'warning' || q.state === 'error') && (q.requestId || q.tmdbId)}
+			<a class="mt-1 inline-flex items-center gap-1 text-[11px] text-primary-light hover:underline" href={q.requestId ? `/requests?open=${q.requestId}` : `/${q.type}/${q.tmdbId}?admin=1`}>Fix it on {q.requestId ? 'its request' : 'the title'}<Icon name="chevron" class="size-3" /></a>
+		{/if}
 	</span>
 {/snippet}
 

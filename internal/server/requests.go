@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -22,8 +23,10 @@ func (s *Server) requestList(w http.ResponseWriter, r *http.Request, u *store.Us
 		return
 	}
 	admin := u.Can("manageRequests")
+	stuck := s.stuckDownloads()
 	for i := range list {
 		list[i] = requests.ForViewer(list[i], admin)
+		list[i].Trouble = stuck[fmt.Sprintf("%s:%d", list[i].Type, list[i].ArrID)] && list[i].ArrID > 0
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"requests": list, "approvalRequired": s.Requests.ApprovalRequired()})
 }

@@ -10,6 +10,7 @@
 	import { text, TONE, NEUTRAL, EVENT_TEXT, askedFor, eventDot } from '#lib/requeststatus.ts';
 	import Timeline, { type Step } from './Timeline.svelte';
 	import FolderCard from './FolderCard.svelte';
+	import QueueFix from './QueueFix.svelte';
 	import SidePanel from './SidePanel.svelte';
 	import Icon from './Icon.svelte';
 	import Avatar from './Avatar.svelte';
@@ -20,7 +21,7 @@
 	import DeleteModal from './DeleteModal.svelte';
 	import LeavingActions from './LeavingActions.svelte';
 
-	type Download = { season?: number; episode?: number; percent: number; timeLeft?: string; state: string; size: number; release?: string; problem?: string; detail?: string };
+	type Download = { queueId?: number; season?: number; episode?: number; percent: number; timeLeft?: string; state: string; size: number; release?: string; problem?: string; detail?: string };
 	type Live = { inArr: boolean; monitored: boolean; hasFile: boolean; file?: { quality?: string; size: number; release?: string; path?: string }; queue: Download[]; seasons?: { number: number; have: number; total: number; inPlex: number }[]; link?: string; server: string; error?: string };
 	type Comment = { userName: string; userAvatar: string; body: string; createdAt: string };
 	type Issue = { id: number; kind: string; sub: string; note: string; season: number; episode: number; parts?: [number, number][]; userName: string; userAvatar: string; createdAt: string; comments: number; last?: Comment };
@@ -138,7 +139,7 @@
 		}
 		const t: Record<string, string> = {
 			plex: series ? 'First episodes in Plex' : 'Added to Plex', issue: `Issue reported${by}: ${h.note}`, resolved: `Issue resolved${by}: ${h.note}`,
-			redownload: `Redownload${h.note ? ` (${h.note})` : ''}${by}`, deleted: `Deleted from ${h.note} with its files${by}`, cleared: `Requests and issues cleared${by}`
+			redownload: `Redownload${h.note ? ` (${h.note})` : ''}${by}`, deleted: `Deleted from ${h.note} with its files${by}`, cleared: `Requests and issues cleared${by}`, queuefix: `Stuck download: ${h.note}${by}`
 		};
 		const dot = h.kind === 'plex' ? 'bg-green-500' : h.kind === 'issue' ? 'bg-yellow-500' : h.kind === 'deleted' || h.kind === 'cleared' ? 'bg-gray-500' : 'bg-primary';
 		return { text: t[h.kind] ?? h.kind, dot, at: h.at };
@@ -232,6 +233,7 @@
 								<div class="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-700/60"><div class="h-full rounded-full {q.state === 'warning' || q.state === 'failed' ? 'bg-yellow-500' : 'bg-blue-500'}" style="width:{q.percent}%"></div></div>
 								{#if q.detail || q.problem}<p class="mt-1.5 text-xs text-yellow-200">{q.detail || q.problem}</p>{/if}
 								{#if q.release}<p class="mt-1 truncate font-mono text-[10px] text-gray-500">{q.release}</p>{/if}
+								{#if q.queueId}<QueueFix kind={series ? 'sonarr' : 'radarr'} queueId={q.queueId} title={q.season ? `${item.title} S${q.season}${q.episode ? 'E' + q.episode : ''}` : item.title} ondone={load} />{/if}
 							</div>
 						{/each}
 					</div>

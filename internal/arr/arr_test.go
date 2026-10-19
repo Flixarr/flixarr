@@ -100,14 +100,16 @@ func TestProbe(t *testing.T) {
 func TestRowAndHelpers(t *testing.T) {
 	var r queueRecord
 	r.Title, r.Size, r.SizeLeft, r.TimeLeft, r.Status = "Rugrats.S01E07.1080p", 1000, 400, "00:04:12", "downloading"
+	r.ID, r.SeriesID = 77, 9
 	r.Series = &struct {
-		Title string `json:"title"`
-	}{"Rugrats"}
+		Title  string `json:"title"`
+		TmdbID int    `json:"tmdbId"`
+	}{"Rugrats", 3022}
 	r.Episode = &struct {
 		SeasonNumber  int `json:"seasonNumber"`
 		EpisodeNumber int `json:"episodeNumber"`
 	}{1, 7}
-	if q := row(r); q.Title != "Rugrats S01E07" || q.Percent != 60 || q.State != "downloading" || q.TimeLeft != "4 min" {
+	if q := row(r); q.Title != "Rugrats S01E07" || q.ID != 77 || q.Type != "series" || q.ArrID != 9 || q.TmdbID != 3022 || q.Percent != 60 || q.State != "downloading" || q.TimeLeft != "4 min" {
 		t.Errorf("downloading row = %+v", q)
 	}
 	r.Status, r.TrackedDownloadStatus, r.TrackedDownloadState, r.SizeLeft = "completed", "warning", "importPending", 0

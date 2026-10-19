@@ -119,7 +119,7 @@ export interface ServiceView {
 	updatesPaused: boolean;
 }
 
-export interface QueueRow { title: string; quality: string; size: number; percent: number; timeLeft: string; state: 'downloading' | 'queued' | 'paused' | 'importing' | 'warning' | 'error'; message?: string }
+export interface QueueRow { id: number; type: 'movie' | 'series' | ''; tmdbId: number; arrId: number; requestId?: number; title: string; quality: string; size: number; percent: number; timeLeft: string; state: 'downloading' | 'queued' | 'paused' | 'importing' | 'warning' | 'error'; message?: string }
 
 export interface ArrStatus {
 	connected: boolean; error?: string; version?: string; health: string[]; queue: QueueRow[]; folder: string; freeSpace: number; totalSpace: number;
@@ -137,5 +137,6 @@ export interface Request {
 	userId: number; userName: string; status: 'pending' | 'approved' | 'declined' | 'sent' | 'grabbed' | 'downloading' | 'importing' | 'available' | 'failed' | 'expired' | 'removed';
 	serverId: number; arrId: number; profileId: number; profileName: string; mode: 'all' | 'seasons' | 'episodes'; seasons: number[]; episodes: [number, number][]; progress: number; error: string; anime: boolean; source?: string; detail?: string; userAvatar?: string;
 	createdAt: string; updatedAt: string;
+	trouble?: boolean; // its download is stuck in Radarr / Sonarr right now
 }
 export type RequestBrief = { id: number; status: Request['status'] | 'blocked'; progress: number; plex?: string; blocked?: boolean; asked?: { whole: boolean; seasons: number[] } };

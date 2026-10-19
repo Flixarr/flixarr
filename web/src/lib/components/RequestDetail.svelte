@@ -15,8 +15,9 @@
 	import StepBar from './StepBar.svelte';
 	import Timeline from './Timeline.svelte';
 	import FolderCard from './FolderCard.svelte';
+	import QueueFix from './QueueFix.svelte';
 
-	type Download = { season?: number; episode?: number; percent: number; timeLeft?: string; state: string; size: number; release?: string; problem?: string; detail?: string };
+	type Download = { queueId?: number; season?: number; episode?: number; percent: number; timeLeft?: string; state: string; size: number; release?: string; problem?: string; detail?: string };
 	type Live = { inArr: boolean; monitored: boolean; hasFile: boolean; file?: { quality?: string; size: number; release?: string; path?: string }; queue: Download[]; seasons?: { number: number; have: number; total: number; inPlex: number }[]; link?: string; server: string; error?: string };
 	type Detail = { request: Request; events: { status: string; note: string; at: string }[]; live: Live; hint?: string };
 	type Title = { genres?: string[]; runtime?: number; cert?: string };
@@ -175,6 +176,7 @@
 								{#if q.problem}<p class="mt-1.5 text-xs text-yellow-200">{q.problem}</p>{/if}
 								{#if q.detail}<p class="mt-1 text-[11px] text-gray-500">{q.detail}</p>{/if}
 								{#if admin && q.release}<p class="mt-1 truncate font-mono text-[10px] text-gray-500">{q.release}</p>{/if}
+								{#if q.queueId && (can('manageRequests') || can('redownload'))}<QueueFix kind={r.type === 'movie' ? 'radarr' : 'sonarr'} queueId={q.queueId} title={q.season ? `${r.title} S${q.season}${q.episode ? 'E' + q.episode : ''}` : r.title} ondone={load} />{/if}
 							</div>
 						{/each}
 					</div>
