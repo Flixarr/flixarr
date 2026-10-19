@@ -39,6 +39,7 @@ func (s *Server) queueFix(w http.ResponseWriter, r *http.Request, u *store.User)
 	}
 	if f.TmdbID > 0 {
 		s.Store.AddTitleEvent(f.Type, f.TmdbID, "queuefix", requests.QueueActions[in.Action], u.ID, "")
+		s.Store.AddFixSteps(f.Type, f.TmdbID, 0, requests.QueueActions[in.Action], u.ID)
 	}
 	// The cards and the request catch up now rather than on the next pass.
 	go func() {

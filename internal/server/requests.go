@@ -193,7 +193,7 @@ func (s *Server) requestDecline(w http.ResponseWriter, r *http.Request, u *store
 	writeJSON(w, http.StatusOK, req)
 }
 
-func (s *Server) requestRetry(w http.ResponseWriter, r *http.Request, _ *store.User) {
+func (s *Server) requestRetry(w http.ResponseWriter, r *http.Request, u *store.User) {
 	req, ok := s.requestByID(w, r)
 	if !ok {
 		return
@@ -202,21 +202,26 @@ func (s *Server) requestRetry(w http.ResponseWriter, r *http.Request, _ *store.U
 		writeErr(w, http.StatusConflict, "Only failed requests can be tried again.")
 		return
 	}
+	s.Store.AddFixSteps(req.Type, req.TmdbID, req.ID, "Tried again", u.ID)
+	s.Store.AddTitleEvent(req.Type, req.TmdbID, "fix", "Tried again", u.ID, "")
 	writeJSON(w, http.StatusOK, s.Requests.Send(r.Context(), req))
 }
 
 // requestFix repairs a stuck request (missing from Radarr/Sonarr, not monitored, never searched) and says
 // what it did.
-func (s *Server) requestFix(w http.ResponseWriter, r *http.Request, _ *store.User) {
+func (s *Server) requestFix(w http.ResponseWriter, r *http.Request, u *store.User) {
 	req, ok := s.requestByID(w, r)
 	if !ok {
 		return
 	}
+	steps := s.Store.AddFixSteps(req.Type, req.TmdbID, req.ID, "Searched again", u.ID) // before the fix: its own steps come after
 	fixed, done, err := s.Requests.Fix(r.Context(), req)
 	if err != nil {
+		s.Store.DropFixSteps(steps)
 		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
 		return
 	}
+	s.Store.AddTitleEvent(req.Type, req.TmdbID, "fix", "Searched again", u.ID, "")
 	writeJSON(w, http.StatusOK, map[string]any{"request": fixed, "done": done})
 }
 
@@ -234,8 +239,11 @@ func (s *Server) redownload(w http.ResponseWriter, r *http.Request, u *store.Use
 		writeErr(w, http.StatusBadRequest, "Bad request.")
 		return
 	}
+	// Before the redownload, so the request it makes doesn't get the step too.
+	steps := s.Store.AddFixSteps(in.Type, in.TmdbID, 0, withNote("Redownload asked for", store.SeasonsText(in.Seasons)), u.ID)
 	done, err := s.Requests.Redownload(r.Context(), in.Type, in.TmdbID, in.Seasons, requests.For{UserID: u.ID, Title: in.Title, Year: in.Year, Poster: in.Poster})
 	if err != nil {
+		s.Store.DropFixSteps(steps)
 		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
 		return
 	}

@@ -74,17 +74,20 @@ func (s *Server) titleAdmin(w http.ResponseWriter, r *http.Request, _ *store.Use
 }
 
 // titleFix is Fix on any title (requested through Flixarr or not).
-func (s *Server) titleFix(w http.ResponseWriter, r *http.Request, _ *store.User) {
+func (s *Server) titleFix(w http.ResponseWriter, r *http.Request, u *store.User) {
 	typ, id, ok := titleParams(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, "Bad request.")
 		return
 	}
+	steps := s.Store.AddFixSteps(typ, id, 0, "Searched again", u.ID)
 	done, err := s.Requests.FixTitle(r.Context(), typ, id)
 	if err != nil {
+		s.Store.DropFixSteps(steps)
 		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
 		return
 	}
+	s.Store.AddTitleEvent(typ, id, "fix", "Searched again", u.ID, "")
 	writeJSON(w, http.StatusOK, map[string]any{"done": done})
 }
 
@@ -171,8 +174,10 @@ func (s *Server) titleFixEpisodes(w http.ResponseWriter, r *http.Request, u *sto
 		writeErr(w, http.StatusBadRequest, "Bad request.")
 		return
 	}
+	steps := s.Store.AddFixSteps("series", id, 0, withNote("Redownload asked for", plexParts(in.Episodes)), u.ID)
 	done, err := s.Requests.FixEpisodes(r.Context(), id, in.Episodes, requests.For{UserID: u.ID, Title: in.Title, Year: in.Year, Poster: in.Poster})
 	if err != nil {
+		s.Store.DropFixSteps(steps)
 		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
 		return
 	}
@@ -191,4 +196,12 @@ func plexParts(eps [][2]int) string {
 		out = append(out, fmt.Sprintf("S%dE%d", e[0], e[1]))
 	}
 	return strings.Join(out, ", ")
+}
+
+// withNote is "Redownload asked for (Season 2)", or just the text when there's no note.
+func withNote(text, note string) string {
+	if note == "" {
+		return text
+	}
+	return text + " (" + note + ")"
 }

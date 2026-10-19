@@ -295,8 +295,8 @@ func (s *Store) DecideRequest(id, userID int64, status string) error {
 
 // Event is one step on a request's timeline.
 type Event struct {
-	Status string `json:"status"` // requested, redownload, approved, declined, sent, grabbed, downloading, importing, available, failed, expired
-	Note   string `json:"note"`   // the reason (failed, declined, expired) or who decided (approved, declined)
+	Status string `json:"status"` // requested, redownload, fix, approved, declined, sent, grabbed, downloading, importing, available, failed, expired
+	Note   string `json:"note"`   // the reason (failed, declined, expired), who decided (approved, declined), or what was fixed and by whom (fix)
 	At     string `json:"at"`
 }
 

@@ -139,9 +139,9 @@
 		}
 		const t: Record<string, string> = {
 			plex: series ? 'First episodes in Plex' : 'Added to Plex', issue: `Issue reported${by}: ${h.note}`, resolved: `Issue resolved${by}: ${h.note}`,
-			redownload: `Redownload${h.note ? ` (${h.note})` : ''}${by}`, deleted: `Deleted from ${h.note} with its files${by}`, cleared: `Requests and issues cleared${by}`, queuefix: `Stuck download: ${h.note}${by}`
+			redownload: `Redownload${h.note ? ` (${h.note})` : ''}${by}`, deleted: `Deleted from ${h.note} with its files${by}`, cleared: `Requests and issues cleared${by}`, queuefix: `Stuck download: ${h.note}${by}`, fix: `${h.note}${by}`
 		};
-		const dot = h.kind === 'plex' ? 'bg-green-500' : h.kind === 'issue' ? 'bg-yellow-500' : h.kind === 'deleted' || h.kind === 'cleared' ? 'bg-gray-500' : 'bg-primary';
+		const dot = h.kind === 'plex' ? 'bg-green-500' : h.kind === 'issue' || h.kind === 'fix' || h.kind === 'queuefix' || h.kind === 'redownload' ? 'bg-yellow-500' : h.kind === 'deleted' || h.kind === 'cleared' ? 'bg-gray-500' : 'bg-primary';
 		return { text: t[h.kind] ?? h.kind, dot, at: h.at };
 	}
 	// What the Delete window can offer.

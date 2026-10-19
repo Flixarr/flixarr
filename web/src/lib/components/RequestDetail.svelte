@@ -75,7 +75,8 @@
 	const episodes = $derived(d?.live.seasons?.reduce((n, s) => n + Math.max(s.have, s.inPlex), 0) ?? 0);
 	const steps = $derived(
 		(d?.events ?? []).map((e) => ({
-			text: (EVENT_TEXT[e.status] ?? e.status) + (e.note && (e.status === 'approved' || e.status === 'declined') ? ` by ${e.note}` : ''),
+			// A Fix step's note is the whole line: "Got a different release by Marc".
+			text: e.status === 'fix' ? e.note : (EVENT_TEXT[e.status] ?? e.status) + (e.note && (e.status === 'approved' || e.status === 'declined') ? ` by ${e.note}` : ''),
 			at: e.at,
 			dot: eventDot(e.status),
 			note: e.note && ['failed', 'expired', 'removed'].includes(e.status) ? e.note : undefined

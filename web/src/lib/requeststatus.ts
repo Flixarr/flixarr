@@ -60,5 +60,5 @@ export const EVENT_TEXT: Record<string, string> = {
 export const askedFor = (r: Pick<Request, 'type' | 'mode' | 'seasons' | 'episodes'>) =>
 	r.type !== 'series' ? '' : r.mode === 'all' ? 'Whole show' : r.mode === 'episodes' ? `${r.episodes.length} episodes` : r.seasons.length === 1 ? `Season ${r.seasons[0]}` : `Seasons ${r.seasons.join(', ')}`;
 
-// A timeline dot's colour for a request step.
-export const eventDot = (s: string) => (s === 'failed' ? 'bg-red-500' : s === 'available' ? 'bg-green-500' : ['declined', 'expired', 'removed'].includes(s) ? 'bg-gray-500' : 'bg-primary');
+// A timeline dot's colour for a request step (yellow: someone pressed Fix).
+export const eventDot = (s: string) => (s === 'failed' ? 'bg-red-500' : s === 'fix' ? 'bg-yellow-500' : s === 'available' ? 'bg-green-500' : ['declined', 'expired', 'removed'].includes(s) ? 'bg-gray-500' : 'bg-primary');

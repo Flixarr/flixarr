@@ -55,3 +55,53 @@ func TestTimelineAndEndedStatus(t *testing.T) {
 		t.Fatalf("expired shows: %+v", got)
 	}
 }
+
+func TestFixSteps(t *testing.T) {
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	s, err := Open(dir, box)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	u, _ := s.CreateUser(User{PlexID: 1, Username: "eryn", Role: "Admin"})
+	live, _ := s.CreateRequest(Request{Type: "series", TmdbID: 1400, Title: "Jackass", UserID: u.ID, Status: "downloading", Mode: "all"})
+	failed, _ := s.CreateRequest(Request{Type: "series", TmdbID: 1400, Title: "Jackass", UserID: u.ID, Status: "failed", Mode: "all"})
+	old, _ := s.CreateRequest(Request{Type: "series", TmdbID: 1400, Title: "Jackass", UserID: u.ID, Status: "expired", Mode: "all"})
+	last := func(id int64) Event {
+		ev, _ := s.RequestEvents(id)
+		return ev[len(ev)-1]
+	}
+
+	// The whole title: every request still in play gets the step, an ended one doesn't.
+	steps := s.AddFixSteps("series", 1400, 0, "Got a different release", u.ID)
+	if len(steps) != 2 {
+		t.Fatalf("steps: %v", steps)
+	}
+	if e := last(live.ID); e.Status != "fix" || e.Note != "Got a different release by eryn" {
+		t.Fatalf("live: %+v", e)
+	}
+	if e := last(failed.ID); e.Status != "fix" {
+		t.Fatalf("failed: %+v", e)
+	}
+	if e := last(old.ID); e.Status == "fix" {
+		t.Fatalf("ended request got a step: %+v", e)
+	}
+	// History shows Fix actions from the title events, not once per request.
+	h, _ := s.TitleHistory("series", 1400)
+	for _, x := range h {
+		if x.Kind == "request:fix" {
+			t.Fatalf("request fix step in History: %+v", h)
+		}
+	}
+
+	// One request only; taken back when the action fails.
+	steps = s.AddFixSteps("series", 1400, live.ID, "Searched again", u.ID)
+	if len(steps) != 1 || last(live.ID).Note != "Searched again by eryn" || last(failed.ID).Note != "Got a different release by eryn" {
+		t.Fatalf("one request: %v", steps)
+	}
+	s.DropFixSteps(steps)
+	if last(live.ID).Note != "Got a different release by eryn" {
+		t.Fatalf("not taken back: %+v", last(live.ID))
+	}
+}

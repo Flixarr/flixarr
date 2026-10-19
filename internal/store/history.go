@@ -11,7 +11,7 @@ import (
 // title event (added to Plex, Redownload, deleted, data cleared).
 type HistoryItem struct {
 	At     string `json:"at"`
-	Kind   string `json:"kind"`   // request:<status>, issue, resolved, plex, redownload, deleted, cleared
+	Kind   string `json:"kind"`   // request:<status>, issue, resolved, plex, redownload, queuefix, fix, deleted, cleared
 	Note   string `json:"note"`   // the reason, the issue's kind, what was deleted
 	Who    string `json:"who"`    // who did it, when known
 	Detail string `json:"detail"` // series: what the request asked for
@@ -47,9 +47,9 @@ func (s *Store) TitleHistory(typ string, tmdbID int) ([]HistoryItem, error) {
 		}
 		return rows.Err()
 	}
-	// Request steps; "requested" names the person who asked, approved/declined name who decided.
+	// Request steps (Fix steps come from the title events instead); "requested" names the person who asked, approved/declined name who decided.
 	err := add(`SELECT e.status, e.note, e.at, COALESCE(u.username, ''), r.mode, r.seasons FROM request_events e
-		JOIN requests r ON r.id = e.request_id LEFT JOIN users u ON u.id = r.user_id WHERE r.type = ? AND r.tmdb_id = ? AND e.status != 'redownload'`,
+		JOIN requests r ON r.id = e.request_id LEFT JOIN users u ON u.id = r.user_id WHERE r.type = ? AND r.tmdb_id = ? AND e.status NOT IN ('redownload', 'fix')`,
 		func(scan func(...any) error) (HistoryItem, error) {
 			var h HistoryItem
 			var asker, mode, seasons string
@@ -135,4 +135,47 @@ func (s *Store) TitleEventSince(typ string, tmdbID int, kind, after string) bool
 	var n int
 	s.db.QueryRow(`SELECT COUNT(*) FROM title_events WHERE type = ? AND tmdb_id = ? AND kind = ? AND at > ?`, typ, tmdbID, kind, after).Scan(&n)
 	return n > 0
+}
+
+// AddFixSteps puts a Fix action ("Searched again", "Got a different release") on the timeline of each of a
+// title's requests still in play, or only on request reqID when it's set, with who did it. It returns the
+// steps, so they can be taken back with DropFixSteps if the action fails.
+func (s *Store) AddFixSteps(typ string, tmdbID int, reqID int64, text string, userID int64) []int64 {
+	var who string
+	s.db.QueryRow(`SELECT username FROM users WHERE id = ?`, userID).Scan(&who)
+	if who != "" {
+		text += " by " + who
+	}
+	q, args := `SELECT id FROM requests WHERE type = ? AND tmdb_id = ? AND status IN (`+inList(append([]string{"failed"}, OpenStatuses...))+`)`, []any{typ, tmdbID}
+	if reqID > 0 {
+		q, args = `SELECT id FROM requests WHERE id = ?`, []any{reqID}
+	}
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil
+	}
+	var reqs []int64
+	for rows.Next() {
+		var id int64
+		if rows.Scan(&id) == nil {
+			reqs = append(reqs, id)
+		}
+	}
+	rows.Close()
+	t := now()
+	var out []int64
+	for _, id := range reqs {
+		if res, err := s.db.Exec(`INSERT INTO request_events (request_id, status, note, at) VALUES (?, 'fix', ?, ?)`, id, text, t); err == nil {
+			n, _ := res.LastInsertId()
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// DropFixSteps takes back steps from AddFixSteps (the action they describe didn't work).
+func (s *Store) DropFixSteps(ids []int64) {
+	for _, id := range ids {
+		s.db.Exec(`DELETE FROM request_events WHERE id = ? AND status = 'fix'`, id)
+	}
 }
