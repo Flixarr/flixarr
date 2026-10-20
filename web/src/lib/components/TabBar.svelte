@@ -10,7 +10,7 @@
 	const on = (h: string) => {
 		const p = page.url.pathname;
 		if (h === '/') return p === '/';
-		if (h === browse) return ['/movies', '/series', '/discover/'].some((x) => p.startsWith(x));
+		if (h === browse) return ['/movies', '/series', '/movie/', '/collection/', '/discover/'].some((x) => p.startsWith(x)); // title pages count as Browse (#105)
 		return p.startsWith(h);
 	};
 </script>
