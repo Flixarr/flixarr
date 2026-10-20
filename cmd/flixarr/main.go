@@ -132,7 +132,7 @@ func main() {
 		}
 	}
 	// Plex: what's in the server's libraries, so titles show as available whoever added them.
-	lib := &plexlib.Library{Store: st, ClientID: clientID, Version: version.Full(), Log: log}
+	lib := &plexlib.Library{Store: st, ClientID: clientID, Version: version.Full(), Log: log, Meta: mc}
 	reqs.Plex = lib
 	lib.OnAdded = func(keys []string) {
 		hub.Publish(live.Event{Type: "plex", Data: keys})
@@ -170,6 +170,9 @@ func main() {
 	runner.Add(&jobs.Job{ID: "plex-recent", Name: "Plex: recently added scan", Default: "*/30 * * * *",
 		About: "Reads the newest additions to the chosen Plex libraries. A backup: Plex itself tells Flixarr about new titles the moment they're added.",
 		Run:   lib.RecentScan})
+	runner.Add(&jobs.Job{ID: "plex-episodes", Name: "Plex: whole or part of each series", Default: "30 3 * * *",
+		About: "Counts how many of each series' aired episodes are in Plex, so posters can tell a whole series from part of one.",
+		Run:   lib.EpisodeCounts})
 	wl := &watchlist.Syncer{Store: st, Requests: reqs, Meta: mc, ClientID: clientID, Log: log}
 	runner.Add(&jobs.Job{ID: "watchlist", Name: "Plex Watchlist: sync", Default: "*/15 * * * *",
 		About: "Requests what people add to their Plex Watchlist, for those who switched it on in their Profile.",

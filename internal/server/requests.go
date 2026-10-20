@@ -91,6 +91,8 @@ type brief struct {
 	Progress int    `json:"progress"`
 	Plex     string `json:"plex,omitempty"` // opens it in Plex
 	Blocked  bool   `json:"blocked,omitempty"`
+	// Series in Plex: episodes it has of those aired so far (#137), when known.
+	Episodes *[2]int `json:"episodes,omitempty"`
 	// Series: what open requests already ask for, so the page can offer the rest.
 	Asked *store.Coverage `json:"asked,omitempty"`
 }
@@ -131,6 +133,9 @@ func (s *Server) briefs(keys []string) (map[string]brief, error) {
 				b.Status, b.Progress = "available", 100
 			}
 			b.Plex = it.URL
+			if strings.HasPrefix(k, "series:") && it.Total > 0 {
+				b.Episodes = &[2]int{min(it.Have, it.Total), it.Total}
+			}
 			out[k] = b
 		}
 	}

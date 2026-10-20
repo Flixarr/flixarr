@@ -3,6 +3,7 @@
 	import { tilt, tiltEnabled } from '#lib/tilt.ts';
 	import type { Card } from '#lib/types.ts';
 	import Img from './Img.svelte';
+	import Tooltip from './Tooltip.svelte';
 	import { statusOf } from '#lib/availability.svelte.ts';
 	let { item, class: cls = 'w-28 tablet:w-36', sub = '' }: { item: Card; class?: string; sub?: string } = $props();
 	// From a person's page into a series: carry the credit so the show marks their episodes.
@@ -13,6 +14,8 @@
 	const tilting = tiltEnabled();
 	// Status dot, top right: in Plex, requested, downloading.
 	const st = $derived(item.type === 'movie' || item.type === 'series' ? statusOf(`${item.type}:${item.id}`) : undefined);
+	// A series with only some of its aired episodes in Plex gets a half-filled check (#137).
+	const part = $derived(st?.plex && st.episodes && st.episodes[0] < st.episodes[1] ? st.episodes : null);
 	const dot = $derived(
 		!st ? null
 		: st.plex || st.status === 'available' ? (['bg-green-500', '<path d="m5 12 5 5L20 7"/>', 'Available'] as const)
@@ -30,7 +33,9 @@
 		{#if tilting}
 			<div data-glare class="pointer-events-none absolute inset-0 opacity-0 mix-blend-soft-light"></div>
 		{/if}
-		{#if dot}
+		{#if part}
+			<span class="absolute right-1.5 top-1.5 z-10"><Tooltip text="{part[0]} of {part[1]} episodes in Plex" align="right"><span aria-label="{part[0]} of {part[1]} episodes in Plex" class="grid size-6 place-items-center rounded-full bg-[linear-gradient(90deg,var(--color-green-500)_50%,var(--color-gray-700)_50%)] shadow-lg ring-2 ring-gray-950/60"><svg class="size-3.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg></span></Tooltip></span>
+		{:else if dot}
 			<span aria-label={dot[2]} class="absolute right-1.5 top-1.5 z-10 grid size-6 place-items-center rounded-full {dot[0]} shadow-lg ring-2 ring-gray-950/60"><svg class="size-3.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">{@html dot[1]}</svg></span>
 		{/if}
 		<div class="absolute left-1.5 top-1.5 z-10">

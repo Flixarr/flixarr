@@ -139,4 +139,4 @@ export interface Request {
 	createdAt: string; updatedAt: string;
 	trouble?: boolean; // its download is stuck in Radarr / Sonarr right now
 }
-export type RequestBrief = { id: number; status: Request['status'] | 'blocked'; progress: number; plex?: string; blocked?: boolean; asked?: { whole: boolean; seasons: number[] } };
+export type RequestBrief = { id: number; status: Request['status'] | 'blocked'; progress: number; plex?: string; blocked?: boolean; episodes?: [number, number]; asked?: { whole: boolean; seasons: number[] } };

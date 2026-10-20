@@ -51,9 +51,13 @@ type Library struct {
 	// OnRemoved is told about titles that left Plex; episodes says episodes or seasons of some show did
 	// (Plex doesn't say which show).
 	OnRemoved func(keys []string, episodes bool)
-	live      atomic.Bool
-	lastFull  atomic.Int64 // unix time of the last full scan
-	fullDue   atomic.Bool  // a full read is scheduled
+	// Meta reads series pages from the Flixarr API (for whole or part of a series, #137).
+	Meta interface {
+		Get(ctx context.Context, path string, q url.Values) ([]byte, int, error)
+	}
+	live     atomic.Bool
+	lastFull atomic.Int64 // unix time of the last full scan
+	fullDue  atomic.Bool  // a full read is scheduled
 	// relisten drops the live connection so it comes back on a new address.
 	relisten   context.CancelFunc
 	relistenMu sync.Mutex
@@ -580,6 +584,8 @@ func (l *Library) RecentScan(ctx context.Context) (string, error) {
 type Item struct {
 	RatingKey string `json:"ratingKey"`
 	URL       string `json:"url"` // opens it in Plex Web
+	// Series: episodes Plex has of those aired so far (#137); Total 0 = not checked yet.
+	Have, Total int
 }
 
 // Lookup says which of the given titles ("movie:603", "series:1396") are in Plex.
@@ -595,7 +601,8 @@ func (l *Library) Lookup(keys []string) (map[string]Item, error) {
 	}
 	out := map[string]Item{}
 	for k, it := range items {
-		out[k] = Item{RatingKey: it.RatingKey, URL: fmt.Sprintf("%s#!/server/%s/details?key=%s", web, machine, url.QueryEscape("/library/metadata/"+it.RatingKey))}
+		out[k] = Item{RatingKey: it.RatingKey, URL: fmt.Sprintf("%s#!/server/%s/details?key=%s", web, machine, url.QueryEscape("/library/metadata/"+it.RatingKey)),
+			Have: it.EpsHave, Total: it.EpsTotal}
 	}
 	return out, nil
 }
