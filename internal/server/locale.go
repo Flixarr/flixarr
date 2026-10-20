@@ -9,9 +9,12 @@ import (
 )
 
 // locale is the region and language for a request's lookups: the signed-in person's own, else the
-// server's (Settings → General).
+// server's (Settings → General). An admin can make everyone use the server's (#110).
 func (s *Server) locale(r *http.Request) (region, language string) {
 	region, language = s.Store.Setting("region", "US"), s.Store.Setting("language", "en-US")
+	if s.Store.Setting(store.KeyLocaleLocked, "") == "true" {
+		return region, language
+	}
 	if u, ok := r.Context().Value(ctxKey{}).(*store.User); ok && u != nil {
 		if u.Region != "" {
 			region = u.Region
@@ -34,6 +37,10 @@ func (s *Server) myLocale(w http.ResponseWriter, r *http.Request, u *store.User)
 		s.localeOut(w, u)
 		return
 	}
+	if s.Store.Setting(store.KeyLocaleLocked, "") == "true" {
+		writeErr(w, http.StatusForbidden, "An admin set the region and language for everyone.")
+		return
+	}
 	var in struct {
 		Region   string `json:"region"`
 		Language string `json:"language"`
@@ -52,6 +59,7 @@ func (s *Server) myLocale(w http.ResponseWriter, r *http.Request, u *store.User)
 }
 
 func (s *Server) localeOut(w http.ResponseWriter, u *store.User) {
-	writeJSON(w, http.StatusOK, map[string]string{"region": u.Region, "language": u.Language,
-		"serverRegion": s.Store.Setting("region", "US"), "serverLanguage": s.Store.Setting("language", "en-US")})
+	writeJSON(w, http.StatusOK, map[string]any{"region": u.Region, "language": u.Language,
+		"serverRegion": s.Store.Setting("region", "US"), "serverLanguage": s.Store.Setting("language", "en-US"),
+		"locked": s.Store.Setting(store.KeyLocaleLocked, "") == "true"})
 }

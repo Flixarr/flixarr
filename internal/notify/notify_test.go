@@ -397,3 +397,33 @@ func TestPersonalAccounts(t *testing.T) {
 		t.Fatalf("allowed mentions: %v", am)
 	}
 }
+
+// Everyone's starting choices (#110): they apply to people who haven't chosen, to everyone while locked
+// (and then nobody can change theirs), and to everyone again after a reset.
+func TestDefaultOff(t *testing.T) {
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	st, _ := store.Open(dir, box)
+	t.Cleanup(func() { st.Close() })
+	n := &Notifier{Store: st}
+	n.SetOff(1, map[string][]string{"push": {"request_declined"}})
+	n.SetDefaultOff(map[string][]string{"email": {"request_approved"}}, false)
+	if off := n.Off(2); len(off["email"]) != 1 || len(off["push"]) != 0 {
+		t.Fatalf("new person: %v", off)
+	}
+	if off := n.Off(1); len(off["email"]) != 0 || len(off["push"]) != 1 {
+		t.Fatalf("own choices: %v", off)
+	}
+	n.SetDefaultOff(map[string][]string{"email": {"request_approved"}}, true)
+	if off := n.Off(1); len(off["email"]) != 1 || len(off["push"]) != 0 {
+		t.Fatalf("locked: %v", off)
+	}
+	if err := n.SetOff(1, map[string][]string{}); err == nil {
+		t.Fatal("changed while locked")
+	}
+	n.SetDefaultOff(map[string][]string{}, false)
+	n.ResetEveryone()
+	if off := n.Off(1); len(off["push"]) != 0 {
+		t.Fatalf("after reset: %v", off)
+	}
+}

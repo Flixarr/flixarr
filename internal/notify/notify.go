@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -318,10 +319,58 @@ var accountWhat = map[string]string{"discord": "Discord user ID (numbers only)",
 func offKey(userID int64) string     { return fmt.Sprintf("notify_off_%d", userID) }
 func accountKey(userID int64) string { return fmt.Sprintf("notify_accounts_%d", userID) }
 
-// Off is what a person has switched off: channel → events. Everything is on until they change it.
-func (n *Notifier) Off(userID int64) map[string][]string {
+// Everyone's starting choices (#110): what's off for people who haven't changed theirs, and whether
+// nobody can change them.
+const (
+	keyDefaultOff = "notify_default_off"
+	keyOffLocked  = "notify_off_locked"
+)
+
+// Defaults are the starting choices (channel → events off) and whether they're locked.
+func (n *Notifier) DefaultOff() (map[string][]string, bool) {
 	out := map[string][]string{}
-	json.Unmarshal([]byte(n.Store.Setting(offKey(userID), "")), &out)
+	json.Unmarshal([]byte(n.Store.Setting(keyDefaultOff, "")), &out)
+	return cleanOff(out), n.Store.Setting(keyOffLocked, "") == "true"
+}
+
+// SetDefaultOff saves the starting choices and the lock.
+func (n *Notifier) SetDefaultOff(off map[string][]string, locked bool) error {
+	b, _ := json.Marshal(cleanOff(off))
+	if err := n.Store.SetSetting(keyDefaultOff, string(b)); err != nil {
+		return err
+	}
+	return n.Store.SetSetting(keyOffLocked, strconv.FormatBool(locked))
+}
+
+// ResetEveryone drops everyone's own choices, so the starting choices apply to all.
+func (n *Notifier) ResetEveryone() error { return n.Store.DeleteSettingsLike("notify_off_") }
+
+// OffLocked: people can't change what reaches them.
+func (n *Notifier) OffLocked() bool { return n.Store.Setting(keyOffLocked, "") == "true" }
+
+func cleanOff(off map[string][]string) map[string][]string {
+	clean := map[string][]string{}
+	for _, ch := range PersonalChannels {
+		clean[ch] = []string{}
+		for _, e := range off[ch] {
+			if slices.Contains(Events, e) && !slices.Contains(clean[ch], e) {
+				clean[ch] = append(clean[ch], e)
+			}
+		}
+	}
+	return clean
+}
+
+// Off is what a person has switched off: channel → events. Until they change it (or while an admin has
+// locked it, #110) that's the starting choices; with none set, everything is on.
+func (n *Notifier) Off(userID int64) map[string][]string {
+	def, locked := n.DefaultOff()
+	own := n.Store.Setting(offKey(userID), "")
+	if locked || own == "" {
+		return def
+	}
+	out := map[string][]string{}
+	json.Unmarshal([]byte(own), &out)
 	for _, ch := range PersonalChannels {
 		if out[ch] == nil {
 			out[ch] = []string{}
@@ -367,16 +416,10 @@ func (n *Notifier) accountsOn(m Message, ch string) []string {
 
 // SetOff saves what a person has switched off (unknown channels and events are dropped).
 func (n *Notifier) SetOff(userID int64, off map[string][]string) error {
-	clean := map[string][]string{}
-	for _, ch := range PersonalChannels {
-		clean[ch] = []string{}
-		for _, e := range off[ch] {
-			if slices.Contains(Events, e) && !slices.Contains(clean[ch], e) {
-				clean[ch] = append(clean[ch], e)
-			}
-		}
+	if n.OffLocked() {
+		return errors.New("an admin set which notifications everyone gets")
 	}
-	b, _ := json.Marshal(clean)
+	b, _ := json.Marshal(cleanOff(off))
 	return n.Store.SetSetting(offKey(userID), string(b))
 }
 

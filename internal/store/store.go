@@ -126,6 +126,18 @@ func (s *Store) SetSetting(key, value string) error {
 	return err
 }
 
+// Everyone's own settings, set by an admin in Settings → Users (#110).
+const (
+	KeyWatchlistOff = "users_watchlist_off" // "true": Plex Watchlist requests off for everyone
+	KeyLocaleLocked = "users_locale_locked" // "true": everyone uses the server's region and language
+)
+
+// DeleteSettingsLike removes every setting whose key starts with prefix (everyone's own choices).
+func (s *Store) DeleteSettingsLike(prefix string) error {
+	_, err := s.db.Exec(`DELETE FROM settings WHERE substr(key, 1, ?) = ?`, len(prefix), prefix)
+	return err
+}
+
 // ---------- users ----------
 
 // User is a person who can sign in.

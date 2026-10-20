@@ -306,7 +306,7 @@ func (s *Server) myNotifications(w http.ResponseWriter, r *http.Request, u *stor
 		}
 		if in.Off != nil {
 			if err := s.Notify.SetOff(u.ID, in.Off); err != nil {
-				writeErr(w, http.StatusInternalServerError, "Database error.")
+				writeErr(w, http.StatusForbidden, capitalize(err.Error())+".")
 				return
 			}
 		}
@@ -335,6 +335,7 @@ func (s *Server) myNotifications(w http.ResponseWriter, r *http.Request, u *stor
 		"events":   s.withoutMaintainerr(notify.EventsFor(u)),
 		"sent":     sent,
 		"off":      s.Notify.Off(u.ID),
+		"locked":   s.Notify.OffLocked(), // an admin set them for everyone (#110)
 	})
 }
 
@@ -347,6 +348,10 @@ func (s *Server) myWatchlist(w http.ResponseWriter, r *http.Request, u *store.Us
 			writeErr(w, http.StatusBadRequest, "Bad request.")
 			return
 		}
+		if in.On && s.Store.Setting(store.KeyWatchlistOff, "") == "true" {
+			writeErr(w, http.StatusForbidden, "An admin turned Plex Watchlist requests off for everyone.")
+			return
+		}
 		if in.On && !u.Can("watchlist") {
 			writeErr(w, http.StatusForbidden, "You don't have permission to request from your Plex Watchlist.")
 			return
@@ -357,7 +362,8 @@ func (s *Server) myWatchlist(w http.ResponseWriter, r *http.Request, u *store.Us
 		}
 	}
 	tokenOK := s.Store.PlexToken(u.ID) != "" || (u.Owner && s.Store.SecretSetting("plex_admin_token", "") != "")
-	writeJSON(w, http.StatusOK, map[string]bool{"on": s.Store.Watchlist(u.ID), "allowed": u.Can("watchlist"), "signedIn": tokenOK})
+	off := s.Store.Setting(store.KeyWatchlistOff, "") == "true"
+	writeJSON(w, http.StatusOK, map[string]bool{"on": s.Store.Watchlist(u.ID) && !off, "allowed": u.Can("watchlist"), "signedIn": tokenOK, "locked": off})
 }
 
 // myDevices lists the devices getting this person's push notifications (Profile; remove one with DELETE /api/push).
@@ -368,4 +374,53 @@ func (s *Server) myDevices(w http.ResponseWriter, r *http.Request, u *store.User
 		return
 	}
 	writeJSON(w, http.StatusOK, list)
+}
+
+// everyoneSettings is Settings → Users → Everyone's own settings (#110): Plex Watchlist requests off for
+// everyone, everyone on the server's region and language, and the notifications people start with (and
+// whether they can change them). PUT saves; POST .../apply resets everyone's own notification choices.
+func (s *Server) everyoneSettings(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	if r.Method == http.MethodPut {
+		var in struct {
+			WatchlistOff bool                `json:"watchlistOff"`
+			LocaleLocked bool                `json:"localeLocked"`
+			DefaultOff   map[string][]string `json:"defaultOff"`
+			OffLocked    bool                `json:"offLocked"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16384)).Decode(&in); err != nil {
+			writeErr(w, http.StatusBadRequest, "Bad request.")
+			return
+		}
+		s.Store.SetSetting(store.KeyWatchlistOff, strconv.FormatBool(in.WatchlistOff))
+		s.Store.SetSetting(store.KeyLocaleLocked, strconv.FormatBool(in.LocaleLocked))
+		if err := s.Notify.SetDefaultOff(in.DefaultOff, in.OffLocked); err != nil {
+			writeErr(w, http.StatusInternalServerError, "Database error.")
+			return
+		}
+	}
+	def, locked := s.Notify.DefaultOff()
+	channels := []string{}
+	for _, ch := range notify.PersonalChannels {
+		if on, _ := s.Notify.Service(ch); on {
+			channels = append(channels, ch)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"watchlistOff": s.Store.Setting(store.KeyWatchlistOff, "") == "true",
+		"localeLocked": s.Store.Setting(store.KeyLocaleLocked, "") == "true",
+		"defaultOff":   def,
+		"offLocked":    locked,
+		"channels":     channels, // personal channels this server sends through
+		"events":       s.withoutMaintainerr(notify.Events),
+	})
+}
+
+// everyoneApply puts everyone back on the starting notification choices.
+func (s *Server) everyoneApply(w http.ResponseWriter, r *http.Request, u *store.User) {
+	if err := s.Notify.ResetEveryone(); err != nil {
+		writeErr(w, http.StatusInternalServerError, "Database error.")
+		return
+	}
+	s.Log.Info("everyone's notification choices reset", "by", u.Username)
+	w.WriteHeader(http.StatusNoContent)
 }

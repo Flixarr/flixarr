@@ -132,6 +132,9 @@ func (w *Syncer) Run(ctx context.Context) (string, error) {
 	if testinstall.On {
 		return "Off on a dev install", nil
 	}
+	if w.Store.Setting(store.KeyWatchlistOff, "") == "true" {
+		return "Off for everyone (Settings, Users)", nil
+	}
 	users, err := w.Store.WatchlistUsers()
 	if err != nil {
 		return "", err

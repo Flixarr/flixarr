@@ -54,7 +54,7 @@
 	// your own requests then also reaches your account there.
 	type Ch = 'email' | 'push' | 'discord' | 'telegram' | 'pushover' | 'ntfy';
 	type Acct = 'discord' | 'telegram' | 'pushover' | 'ntfy';
-	type Prefs = { channels: Record<Ch, boolean>; services: Record<Acct, boolean>; accounts: Record<Acct, string>; events: string[]; sent: Record<Ch, string[]>; off: Record<Ch, string[]> };
+	type Prefs = { channels: Record<Ch, boolean>; services: Record<Acct, boolean>; accounts: Record<Acct, string>; events: string[]; sent: Record<Ch, string[]>; off: Record<Ch, string[]>; locked?: boolean };
 	let prefs = $state<Prefs | null>(null);
 	const EVENT_TEXT: Record<string, string> = {
 		request_submitted: 'Someone requests something', request_approved: 'My request is approved', request_declined: 'My request is declined',
@@ -130,7 +130,7 @@
 	}
 
 	// Your own region and language ("" = the server's).
-	type Locale = { region: string; language: string; serverRegion: string; serverLanguage: string };
+	type Locale = { region: string; language: string; serverRegion: string; serverLanguage: string; locked?: boolean };
 	let locale = $state<Locale | null>(null);
 	const nameOf = (list: [string, string][], code: string) => list.find(([c]) => c === code)?.[1] ?? code;
 	async function setLocale(change: Partial<Locale>) {
@@ -143,7 +143,7 @@
 		}
 	}
 
-	type Watch = { on: boolean; allowed: boolean; signedIn: boolean };
+	type Watch = { on: boolean; allowed: boolean; signedIn: boolean; locked?: boolean };
 	let watch = $state<Watch | null>(null);
 	async function setWatch(on: boolean) {
 		try {
@@ -218,11 +218,12 @@
 									<span class="flex-1 text-gray-300">{EVENT_TEXT[ev] ?? ev}</span>
 									{#each shownCh as [ch] (ch)}
 										{@const sent = prefs.sent[ch].includes(ev)}
-										<span class="w-14 text-center"><input type="checkbox" class="accent-[var(--color-primary)]" aria-label="{EVENT_TEXT[ev]} by {ch}" disabled={!sent} checked={sent && !prefs.off[ch].includes(ev)} onchange={(e) => setPref(ch, ev, (e.currentTarget as HTMLInputElement).checked)} /></span>
+										<span class="w-14 text-center"><input type="checkbox" class="accent-[var(--color-primary)]" aria-label="{EVENT_TEXT[ev]} by {ch}" disabled={!sent || prefs.locked} checked={sent && !prefs.off[ch].includes(ev)} onchange={(e) => setPref(ch, ev, (e.currentTarget as HTMLInputElement).checked)} /></span>
 									{/each}
 								</div>
 							{/each}
-							{#if prefs.events.some((ev) => shownCh.some(([ch]) => !prefs!.sent[ch].includes(ev)))}<p class="mt-2 text-xs text-gray-500">Greyed out: not sent by this server at all (an admin sets that in Settings, Notifications).</p>{/if}
+							{#if prefs.locked}<p class="mt-2 text-xs text-gray-500">An admin set which notifications everyone gets.</p>
+							{:else if prefs.events.some((ev) => shownCh.some(([ch]) => !prefs!.sent[ch].includes(ev)))}<p class="mt-2 text-xs text-gray-500">Greyed out: not sent by this server at all (an admin sets that in Settings, Notifications).</p>{/if}
 						</div>
 					{/if}
 				</div>
@@ -246,7 +247,12 @@
 			</section>
 		{/if}
 
-		{#if locale}
+		{#if locale?.locked}
+			<section>
+				<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Region and language</div>
+				<div class="card px-4 py-3 text-sm text-gray-400">{nameOf(REGIONS, locale.serverRegion)}, {nameOf(LANGUAGES, locale.serverLanguage)}. An admin set these for everyone.</div>
+			</section>
+		{:else if locale}
 			<section>
 				<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Region and language</div>
 				<div class="card grid gap-3 px-4 py-3 tablet:grid-cols-2">
@@ -262,7 +268,7 @@
 			</section>
 		{/if}
 
-		{#if watch?.allowed && !session.me.local}
+		{#if watch?.allowed && !watch.locked && !session.me.local}
 			<section>
 				<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Plex Watchlist</div>
 				<div class="card px-4 py-3">
