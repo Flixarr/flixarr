@@ -17,7 +17,9 @@ import (
 // ---------- requests ----------
 
 func (s *Server) requestList(w http.ResponseWriter, r *http.Request, u *store.User) {
-	list, err := s.Store.Requests(0, 200) // everyone's: anyone signed in can see all requests
+	// Everyone's, all of them (#127): anyone signed in can see all requests, and the page filters, searches
+	// and counts them itself. A Seerr import alone brings thousands.
+	list, err := s.Store.Requests(0, 1_000_000)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return

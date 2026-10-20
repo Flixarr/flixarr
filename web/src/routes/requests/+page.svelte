@@ -15,6 +15,7 @@
 	import { simple, askedFor } from '#lib/requeststatus.ts';
 	import { on } from '#lib/live.svelte.ts';
 	import { page } from '$app/state';
+	import { infinite } from '#lib/infinite.ts';
 
 	let list = $state<Request[] | null>(null);
 	let approval = $state(false);
@@ -80,6 +81,19 @@
 		return out.sort(by[sort]);
 	});
 	const count = (g: string) => scoped.filter((r) => groupOf(r) === g).length;
+	// Cards are drawn 60 at a time, more as you scroll (#127); a new filter, search or sort starts over.
+	const STEP = 60;
+	let drawn = $state(STEP);
+	$effect(() => {
+		void [scope, group, query, sort];
+		drawn = STEP;
+	});
+	const visible = $derived(shown.slice(0, drawn));
+	const more = async () => {
+		if (drawn >= shown.length) return false;
+		drawn += STEP;
+		return true;
+	};
 	const GROUPS: [typeof group, string][] = [['all', 'All'], ['onway', 'On its way'], ['attention', 'Needs attention'], ['ready', 'Ready'], ['ended', 'Ended']];
 
 	const status = (r: Request) => simple(r.status, r.progress);
@@ -136,7 +150,7 @@
 		<div class="card mt-6 p-8 text-center text-sm text-gray-400">{scoped.length ? (query ? 'Nothing matches that search.' : 'Nothing here.') : scope === 'mine' ? "You haven't requested anything yet. Find a movie or series and hit Request." : 'No requests yet.'}</div>
 	{:else}
 		<div class="mt-5 grid gap-3 laptop:grid-cols-2">
-			{#each shown as r (r.id)}
+			{#each visible as r (r.id)}
 				{@const st = status(r)}
 				<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 				<div class="relative cursor-pointer overflow-hidden rounded-xl border border-gray-700/40 shadow-xl transition hover:border-primary/50" onclick={() => openDetail(r)}>
@@ -175,6 +189,7 @@
 				</div>
 			{/each}
 		</div>
+		{#if drawn < shown.length}<div use:infinite={more} class="py-6 text-center text-xs text-gray-500">Loading more…</div>{/if}
 	{/if}
 </main>
 

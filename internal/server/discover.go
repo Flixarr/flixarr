@@ -137,7 +137,7 @@ func (s *Server) myStats(w http.ResponseWriter, r *http.Request, u *store.User) 
 
 // userStats counts someone's requests by where they are, and their open issues.
 func (s *Server) userStats(id int64) (map[string]int, error) {
-	list, err := s.Store.Requests(id, 1000)
+	list, err := s.Store.Requests(id, 1_000_000)
 	if err != nil {
 		return nil, err
 	}
