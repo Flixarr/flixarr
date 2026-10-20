@@ -164,8 +164,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/plex/libraries", s.auth(s.admin(s.plexLibraries)))
 	mux.HandleFunc("PUT /api/plex/web", s.auth(s.admin(s.plexWeb)))
 	mux.HandleFunc("POST /api/plex/scan", s.auth(s.admin(s.plexScan)))
-	mux.HandleFunc("GET /api/users", s.auth(s.admin(s.userList)))
-	mux.HandleFunc("PUT /api/users/{id}", s.auth(s.admin(s.userUpdate)))
+	mux.HandleFunc("GET /api/users", s.auth(s.people(s.userList)))
+	mux.HandleFunc("PUT /api/users/{id}", s.auth(s.people(s.userUpdate)))
 	mux.HandleFunc("DELETE /api/users/{id}", s.auth(s.admin(s.userDelete)))
 	mux.HandleFunc("POST /api/users/local", s.auth(s.admin(s.userAddLocal)))
 	mux.HandleFunc("PUT /api/users/{id}/password", s.auth(s.admin(s.userSetPassword)))
@@ -266,6 +266,17 @@ func (s *Server) admin(h func(http.ResponseWriter, *http.Request, *store.User)) 
 	}
 }
 
+// people wraps a handler for the Users page: admins and Managers (#148).
+func (s *Server) people(h func(http.ResponseWriter, *http.Request, *store.User)) func(http.ResponseWriter, *http.Request, *store.User) {
+	return func(w http.ResponseWriter, r *http.Request, u *store.User) {
+		if !u.CanManageUsers() {
+			writeErr(w, http.StatusForbidden, "Only admins and Managers can do that.")
+			return
+		}
+		h(w, r, u)
+	}
+}
+
 func secure(r *http.Request) bool {
 	return r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 }
@@ -296,6 +307,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request, u *store.User) {
+	u.ManagesUsers = u.CanManageUsers()
 	writeJSON(w, http.StatusOK, u)
 }
 

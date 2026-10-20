@@ -50,13 +50,13 @@ func (s *Server) allow(perm string, h func(http.ResponseWriter, *http.Request, *
 
 // ---------- Users page ----------
 
-func (s *Server) userList(w http.ResponseWriter, r *http.Request, _ *store.User) {
+func (s *Server) userList(w http.ResponseWriter, r *http.Request, me *store.User) {
 	list, err := s.Store.Users()
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"users": list, "perms": store.AllPerms, "roles": store.RolePerms, "plexSignIn": s.plexSignInOpen()})
+	writeJSON(w, http.StatusOK, map[string]any{"users": list, "perms": store.AllPerms, "roles": store.RolePerms, "plexSignIn": s.plexSignInOpen(), "admin": me.Can("admin")})
 }
 
 func (s *Server) userUpdate(w http.ResponseWriter, r *http.Request, me *store.User) {
@@ -70,7 +70,17 @@ func (s *Server) userUpdate(w http.ResponseWriter, r *http.Request, me *store.Us
 		writeErr(w, http.StatusBadRequest, "Bad request.")
 		return
 	}
-	if id == me.ID && !slices.Contains(in.Perms, "admin") {
+	if !me.Can("admin") {
+		// Managers: up to Manager, never the admin switch, admins or the owner (#148).
+		if slices.Contains(in.Perms, "admin") {
+			writeErr(w, http.StatusForbidden, "Only admins can give admin.")
+			return
+		}
+		if t, err := s.Store.UserByID(id); err == nil && (t.Owner || t.Can("admin")) {
+			writeErr(w, http.StatusForbidden, "Only admins can change an admin.")
+			return
+		}
+	} else if id == me.ID && !slices.Contains(in.Perms, "admin") {
 		writeErr(w, http.StatusConflict, "You can't take admin away from yourself.")
 		return
 	}

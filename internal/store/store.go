@@ -135,7 +135,7 @@ type User struct {
 	Username string   `json:"username"`
 	Email    string   `json:"email"`
 	Avatar   string   `json:"avatar"`
-	Role     string   `json:"role"`  // Admin, Trusted, User or Custom: a label worked out from Perms
+	Role     string   `json:"role"`  // User, Trusted, Manager or Custom: worked out from Perms (admin aside)
 	Perms    []string `json:"perms"` // see perms.go
 	Owner    bool     `json:"owner"` // the first admin; can't be removed or lose admin
 	Local    bool     `json:"local"` // a username-and-password account (no Plex)
@@ -143,6 +143,8 @@ type User struct {
 	// the person behind it is an admin, whatever they're viewing as.
 	ViewAs    string `json:"viewAs,omitempty"`
 	RealAdmin bool   `json:"-"`
+	// ManagesUsers is CanManageUsers, filled in for the signed-in person (/api/me).
+	ManagesUsers bool `json:"managesUsers,omitempty"`
 	// Their own region and language for titles, dates and "upcoming" ("" = the server's).
 	Region   string `json:"region"`
 	Language string `json:"language"`

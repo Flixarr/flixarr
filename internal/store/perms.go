@@ -29,6 +29,20 @@ func (u *User) Can(perm string) bool {
 	return slices.Contains(u.Perms, "admin") || slices.Contains(u.Perms, perm)
 }
 
+// CanManageUsers: admins, and Managers (everyone with all of the Manager preset's switches), see the Users
+// page; Managers change people up to Manager, never admins or the admin switch (#148).
+func (u *User) CanManageUsers() bool {
+	if u.Can("admin") {
+		return true
+	}
+	for _, p := range RolePerms["Manager"] {
+		if !slices.Contains(u.Perms, p) {
+			return false
+		}
+	}
+	return true
+}
+
 // RoleOf names a permission set: the preset its switches match (the manual ones aside), otherwise Custom.
 func RoleOf(perms []string) string {
 	rest := slices.DeleteFunc(slices.Clone(perms), func(p string) bool { return slices.Contains(ManualPerms, p) })

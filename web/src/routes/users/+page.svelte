@@ -1,10 +1,12 @@
 <script lang="ts">
-	// Users (admins): everyone who can sign in, their role and permission switches, and importing the
-	// people your Plex server is shared with. A role is a preset; change any of its switches and it becomes
+	// Users (admins and Managers, #148): everyone who can sign in, their role and permission switches, and
+	// importing the people your Plex server is shared with. A role is a preset; change any of its switches and it becomes
 	// Custom. Admin and Plex Watchlist requests are turned on by hand and never change the role (#146).
+	// Managers change people up to Manager; admins, the owner, admin itself, adding, importing, passwords
+	// and removing stay with admins (the server checks the same).
 	import { api, fmtDate } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
-	import { session, can } from '#lib/session.svelte.ts';
+	import { session } from '#lib/session.svelte.ts';
 	import { goto } from '$app/navigation';
 	import type { User } from '#lib/types.ts';
 	import Avatar from '#lib/components/Avatar.svelte';
@@ -36,6 +38,7 @@
 	let users = $state<Row[] | null>(null);
 	let userQuery = $state('');
 	let presets = $state<Record<string, string[]>>({});
+	let iAmAdmin = $state(false);
 	let editing = $state<Row | null>(null);
 	let perms = $state<string[]>([]);
 	let movieLimit = $state(0);
@@ -49,20 +52,21 @@
 	let importError = $state('');
 
 	$effect(() => {
-		if (session.me && !can('admin')) goto('/', { replaceState: true });
+		if (session.me && !session.me.managesUsers) goto('/', { replaceState: true });
 	});
 	async function load() {
 		try {
-			const d = await api<{ users: Row[]; roles: Record<string, string[]> }>('/users');
+			const d = await api<{ users: Row[]; roles: Record<string, string[]>; admin: boolean }>('/users');
 			users = d.users;
 			presets = d.roles;
+			iAmAdmin = d.admin;
 		} catch (e) {
 			notify(e instanceof Error ? e.message : 'Could not load users.', 'orange');
 		}
 	}
 	$effect(() => {
 		document.title = 'Flixarr · Users';
-		if (can('admin')) load();
+		if (session.me?.managesUsers) load();
 	});
 
 	// The role a set of switches matches, the manual ones aside (same rule as the server).
@@ -76,6 +80,8 @@
 	const role = $derived(roleOf(perms));
 	// Admin turns everything on; the rest of the switches show as on and locked.
 	const isAdmin = $derived(perms.includes('admin'));
+	// A Manager looking at an admin (or the owner): shown, not changeable.
+	const locked = $derived(!iAmAdmin && !!editing && (editing.owner || editing.perms.includes('admin')));
 
 	function edit(u: Row) {
 		editing = u;
@@ -184,7 +190,7 @@
 			<h1 class="text-2xl font-bold laptop:text-3xl">Users</h1>
 			<p class="text-sm text-gray-400">{users ? `${users.length} ${users.length === 1 ? 'person' : 'people'} can sign in to Flixarr.` : ''}</p>
 		</div>
-		<div class="flex gap-2">
+		<div class="flex gap-2 {iAmAdmin ? '' : 'hidden'}">
 			<button class="btn-ghost text-sm" onclick={openAdd}><Icon name="plus" class="size-4" />Add local user</button>
 			<button class="btn-ghost text-sm" onclick={openImport}><Icon name="refresh" class="size-4" />Import Plex users</button>
 		</div>
@@ -216,7 +222,8 @@
 
 <Modal bind:open={editOpen} title={editing?.username ?? ''} sub={editing?.email || (editing?.local ? 'Local account' : 'Plex account')}>
 	{#if editing}
-		<div class="space-y-5 p-5">
+		<div class="space-y-5 p-5 {locked ? 'pointer-events-none opacity-60' : ''}">
+			{#if locked}<p class="pointer-events-auto rounded-lg bg-gray-800/70 px-3 py-2 text-sm text-gray-300 ring-1 ring-gray-700/60">Only admins can change an admin.</p>{/if}
 			<div class="space-y-2">
 				<div class="text-sm font-medium">Role</div>
 				<div class="grid grid-cols-4 gap-1 rounded-xl border border-gray-700/60 p-1 text-sm {isAdmin ? 'opacity-50' : ''}" role="radiogroup" aria-label="Role">
@@ -243,7 +250,7 @@
 			<div class="space-y-2">
 				<div class="text-sm font-medium">Turned on by hand</div>
 				<div class="divide-y divide-gray-700/40 rounded-xl border border-gray-700/50 bg-gray-800/30 px-4">
-					{#each MANUAL as [k, label, about] (k)}
+					{#each MANUAL.filter(([k]) => iAmAdmin || k !== 'admin') as [k, label, about] (k)}
 						<div class="py-3">
 							<Toggle checked={(k === 'watchlist' && isAdmin) || perms.includes(k)} {label} {about} disabled={(k === 'admin' && editing.owner) || (k === 'watchlist' && isAdmin)} onchange={(on) => setPerm(k, on)} />
 						</div>
@@ -259,7 +266,7 @@
 				</div>
 				<p class="text-xs text-gray-500">{isAdmin ? 'Admins have no limits.' : 'Counted over the last 7 days. Declined and failed requests are not counted.'}</p>
 			</div>
-			{#if editing.local}
+			{#if editing.local && iAmAdmin}
 				<div class="space-y-2">
 					<div class="text-sm font-medium">Password</div>
 					<div class="flex gap-2">
@@ -273,11 +280,11 @@
 		</div>
 	{/if}
 	{#snippet footer()}
-		{#if editing && !editing.owner && editing.id !== session.me?.id}
+		{#if editing && iAmAdmin && !editing.owner && editing.id !== session.me?.id}
 			<button class="btn-ghost mr-auto text-red-300" onclick={() => (removeOpen = true)}>Remove</button>
 		{/if}
-		<button class="btn-ghost" onclick={() => (editOpen = false)}>Cancel</button>
-		<button class="btn px-6" disabled={saving} onclick={save}>{saving ? 'Saving…' : 'Save'}</button>
+		<button class="btn-ghost" onclick={() => (editOpen = false)}>{locked ? 'Close' : 'Cancel'}</button>
+		{#if !locked}<button class="btn px-6" disabled={saving} onclick={save}>{saving ? 'Saving…' : 'Save'}</button>{/if}
 	{/snippet}
 </Modal>
 
