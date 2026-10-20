@@ -31,8 +31,22 @@ export const MANUAL_TEXT: [string, string, string][] = [
 	['watchlist', 'Plex Watchlist requests', 'Can switch on requests from their Plex Watchlist (in their Profile).']
 ];
 
-// A password to hand someone for a new or reset local account.
-export function makePassword() {
-	const words = crypto.getRandomValues(new Uint32Array(4));
-	return Array.from(words, (n) => n.toString(36).slice(0, 5)).join('-');
+// A password to hand someone for a new or reset local account (#122): 16 characters with upper and lower
+// case letters, numbers and symbols, leaving out ones easy to misread (l, 1, I, O, 0).
+export function makePassword(length = 16) {
+	const sets = ['abcdefghijkmnopqrstuvwxyz', 'ABCDEFGHJKLMNPQRSTUVWXYZ', '23456789', '!@#$%&*?'];
+	const all = sets.join('');
+	const pick = (from: string) => {
+		const max = 256 - (256 % from.length); // no bias toward the first characters
+		for (;;) {
+			const [n] = crypto.getRandomValues(new Uint8Array(1));
+			if (n < max) return from[n % from.length];
+		}
+	};
+	const out = [...sets.map(pick), ...Array.from({ length: length - sets.length }, () => pick(all))];
+	for (let i = out.length - 1; i > 0; i--) {
+		const j = crypto.getRandomValues(new Uint32Array(1))[0] % (i + 1);
+		[out[i], out[j]] = [out[j], out[i]];
+	}
+	return out.join('');
 }
