@@ -17,6 +17,35 @@
 	let busy = $state('');
 	let error = $state('');
 	let forgetOpen = $state(false);
+	// Which address Flixarr uses (#114): Automatic (the fastest that answers) or one an admin picks or types.
+	type Address = { uri: string; kind: 'local' | 'remote' | 'relay' | 'yours'; ms: number; error?: string };
+	let addrOpen = $state(false);
+	let addrs = $state<{ addresses: Address[]; auto: boolean; current: string } | null>(null);
+	let typed = $state('');
+	const KIND: Record<Address['kind'], string> = { local: 'Local network', remote: 'Remote', relay: 'Plex relay (slow)', yours: 'Typed in' };
+	async function openAddresses() {
+		addrOpen = true;
+		addrs = null;
+		typed = '';
+		try {
+			addrs = await api('/plex/addresses');
+		} catch (e) {
+			addrOpen = false;
+			notify(e instanceof Error ? e.message : 'Could not reach Plex.', 'orange');
+		}
+	}
+	async function useAddress(uri: string) {
+		busy = 'addr';
+		try {
+			st = await api<Status>('/plex/address', { method: 'PUT', body: JSON.stringify({ uri }) });
+			addrOpen = false;
+			notify(uri ? `Flixarr reaches Plex at ${st.url} now.` : `Automatic: Flixarr uses the fastest address, ${st.url} right now.`);
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Could not use that address.', 'orange');
+		} finally {
+			busy = '';
+		}
+	}
 	// Where Play on Plex and Open in Plex go: app.plex.tv, or the address your own Plex web app is on.
 	let own = $state(false);
 	let web = $state('');
@@ -127,6 +156,7 @@
 			</div>
 			<div class="flex shrink-0 gap-2">
 				<button class="btn-ghost px-3 py-1.5 text-xs" disabled={busy === 'scan'} onclick={scan}>{busy === 'scan' ? 'Scanning…' : 'Scan now'}</button>
+				<button class="btn-ghost px-3 py-1.5 text-xs" onclick={openAddresses}>Address</button>
 				<button class="btn-ghost px-3 py-1.5 text-xs" onclick={findServers}>Change</button>
 			</div>
 		</div>
@@ -187,6 +217,41 @@
 		</div>
 	{/if}
 {/if}
+
+<Modal bind:open={addrOpen} title="Plex address" sub="How Flixarr reaches {st?.name ?? 'your Plex server'}">
+	<div class="space-y-4 p-5">
+		{#if !addrs}
+			<p class="text-sm text-gray-400">Trying each address…</p>
+		{:else}
+			<div class="divide-y divide-gray-700/40 overflow-hidden rounded-xl border border-gray-700/50 bg-gray-800/30">
+				<button class="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-white/5" disabled={!!busy} onclick={() => useAddress('')}>
+					<span class="grid size-4 shrink-0 place-items-center rounded-full ring-2 {addrs.auto ? 'ring-primary' : 'ring-gray-600'}">{#if addrs.auto}<span class="size-2 rounded-full bg-primary"></span>{/if}</span>
+					<span class="min-w-0 flex-1"><span class="block">Automatic</span><span class="block text-xs text-gray-500">The fastest address that answers. Plex's relay only when nothing else does.</span></span>
+				</button>
+				{#each addrs.addresses as a (a.uri)}
+					{@const on = !addrs.auto && a.uri === addrs.current}
+					<button class="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-white/5 disabled:opacity-60" disabled={!!busy || !a.ms} onclick={() => useAddress(a.uri)}>
+						<span class="grid size-4 shrink-0 place-items-center rounded-full ring-2 {on ? 'ring-primary' : 'ring-gray-600'}">{#if on}<span class="size-2 rounded-full bg-primary"></span>{/if}</span>
+						<span class="min-w-0 flex-1">
+							<span class="block truncate font-mono text-xs">{a.uri}</span>
+							<span class="block text-xs text-gray-500">{KIND[a.kind]}{a.uri === addrs.current ? ' · in use' : ''}</span>
+						</span>
+						<span class="shrink-0 text-xs tabular-nums {a.ms ? 'text-green-400' : 'text-red-300'}">{a.ms ? `${a.ms} ms` : "Didn't answer"}</span>
+					</button>
+				{/each}
+			</div>
+			<div>
+				<label for="plex-addr" class="block text-sm">Or type one</label>
+				<div class="mt-1 flex gap-2">
+					<input id="plex-addr" class="w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/60" placeholder="http://192.168.1.10:32400" autocomplete="off" spellcheck="false" bind:value={typed} onkeydown={(e) => e.key === 'Enter' && typed.trim() && useAddress(typed)} />
+					<button class="btn shrink-0 px-4 text-sm" disabled={!!busy || !typed.trim()} onclick={() => useAddress(typed)}>{busy === 'addr' ? 'Checking…' : 'Use'}</button>
+				</div>
+				<p class="mt-1 text-xs text-gray-500">Flixarr checks that your server answers there before using it.</p>
+			</div>
+		{/if}
+	</div>
+	{#snippet footer()}<button class="btn-ghost" onclick={() => (addrOpen = false)}>Close</button>{/snippet}
+</Modal>
 
 <Modal bind:open={forgetOpen} title="Disconnect {st?.name ?? 'Plex'}?">
 	<p class="p-5 text-sm text-gray-300">Flixarr stops reading this server and forgets what's in its libraries. Nothing changes on Plex. Requests stay.</p>

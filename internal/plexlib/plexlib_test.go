@@ -173,3 +173,29 @@ func TestFriendsAndAccess(t *testing.T) {
 		t.Fatal("stranger shouldn't have access")
 	}
 }
+
+// Addresses (#114): local plex.direct ones also get their plain http://IP:port, and the fastest one that
+// answers wins, the relay only when nothing else does.
+func TestAddressCandidatesAndFastest(t *testing.T) {
+	list := candidates([]Connection{
+		{URI: "https://10-0-0-5.abc.plex.direct:32400", Local: true, Address: "10.0.0.5", Port: 32400},
+		{URI: "https://99-1-2-3.abc.plex.direct:32400", Address: "99.1.2.3", Port: 32400},
+		{URI: "https://relay.plex.direct:8443", Relay: true, Local: true, Address: "1.1.1.1", Port: 8443},
+	})
+	got := []string{}
+	for _, a := range list {
+		got = append(got, a.Kind+" "+a.URI)
+	}
+	want := []string{"local https://10-0-0-5.abc.plex.direct:32400", "local http://10.0.0.5:32400", "remote https://99-1-2-3.abc.plex.direct:32400", "relay https://relay.plex.direct:8443"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("candidates: %v", got)
+	}
+	list[0].MS, list[1].MS, list[2].MS, list[3].MS = 40, 3, 0, 1
+	if f := fastest(list); f != "http://10.0.0.5:32400" {
+		t.Fatalf("fastest: %s", f)
+	}
+	list[0].MS, list[1].MS = 0, 0
+	if f := fastest(list); f != "https://relay.plex.direct:8443" {
+		t.Fatalf("only the relay answered: %s", f)
+	}
+}

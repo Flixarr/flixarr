@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -31,6 +32,7 @@ const (
 	keyLibraries  = "plex_libraries"    // JSON list of section keys to sync
 	keyLastFull   = "plex_last_full"    // RFC3339
 	keyWebURL     = "plex_web_url"      // Play on Plex / Open in Plex go here; blank = app.plex.tv
+	keyAddrPicked = "plex_address_set"  // "true" when an admin picked or typed the address (#114); else Automatic
 )
 
 var errNotFound = errors.New("Plex answered 404 Not Found")
@@ -52,6 +54,9 @@ type Library struct {
 	live      atomic.Bool
 	lastFull  atomic.Int64 // unix time of the last full scan
 	fullDue   atomic.Bool  // a full read is scheduled
+	// relisten drops the live connection so it comes back on a new address.
+	relisten   context.CancelFunc
+	relistenMu sync.Mutex
 }
 
 func (l *Library) client() *http.Client {
@@ -99,9 +104,11 @@ func (l *Library) do(ctx context.Context, method, base, path, token string, out 
 
 // Connection is one way to reach a server.
 type Connection struct {
-	URI   string `json:"uri"`
-	Local bool   `json:"local"`
-	Relay bool   `json:"relay"`
+	URI     string `json:"uri"`
+	Local   bool   `json:"local"`
+	Relay   bool   `json:"relay"`
+	Address string `json:"address,omitempty"` // the IP (plex.tv sends it with each connection)
+	Port    int    `json:"port,omitempty"`
 }
 
 // Server is a Plex Media Server the admin's account can use.
@@ -157,7 +164,8 @@ func rank(c Connection) int {
 	return 1
 }
 
-// Connect picks a server: it tries the server's connections (local first) and keeps the first that answers.
+// Connect picks a server and the fastest of its addresses that answers (Plex's relay only when nothing
+// else does).
 func (l *Library) Connect(ctx context.Context, id string) (Status, error) {
 	servers, err := l.Servers(ctx)
 	if err != nil {
@@ -167,27 +175,172 @@ func (l *Library) Connect(ctx context.Context, id string) (Status, error) {
 		if s.ID != id {
 			continue
 		}
-		for _, c := range s.Connections {
-			cctx, cancel := context.WithTimeout(ctx, 6*time.Second)
-			var ident struct {
-				MediaContainer struct {
-					MachineIdentifier string `json:"machineIdentifier"`
-				} `json:"MediaContainer"`
-			}
-			err := l.get(cctx, c.URI, "/identity", s.token, &ident)
-			cancel()
-			if err == nil && ident.MediaContainer.MachineIdentifier == s.ID {
-				l.Store.SetSetting(keyServerID, s.ID)
-				l.Store.SetSetting(keyServerName, s.Name)
-				l.Store.SetSetting(keyServerURL, c.URI)
-				l.Store.SetSecretSetting(keyToken, s.token)
-				l.Log.Info("plex server connected", "name", s.Name, "via", c.URI)
-				return l.Status(ctx)
-			}
+		best := fastest(l.probeAll(ctx, candidates(s.Connections), s.token, s.ID))
+		if best == "" {
+			return Status{}, fmt.Errorf("couldn't reach %s from Flixarr on any of its addresses", s.Name)
 		}
-		return Status{}, fmt.Errorf("couldn't reach %s from Flixarr on any of its addresses", s.Name)
+		l.Store.SetSetting(keyServerID, s.ID)
+		l.Store.SetSetting(keyServerName, s.Name)
+		l.Store.SetSetting(keyServerURL, best)
+		l.Store.SetSetting(keyAddrPicked, "")
+		l.Store.SetSecretSetting(keyToken, s.token)
+		l.Log.Info("plex server connected", "name", s.Name, "via", best)
+		return l.Status(ctx)
 	}
 	return Status{}, errors.New("that server isn't on your Plex account")
+}
+
+// ---------- which address (#114) ----------
+
+// Address is one way to reach the connected server, as Settings lists them, with how fast it answered.
+type Address struct {
+	URI   string `json:"uri"`
+	Kind  string `json:"kind"`            // local | remote | relay | yours (typed by an admin)
+	MS    int    `json:"ms"`              // how long /identity took; 0 when it didn't answer
+	Error string `json:"error,omitempty"` // why it didn't
+}
+
+// candidates are a server's addresses: plex.tv's, plus the plain http://IP:port of each local one (plex.tv
+// only lists the https plex.direct name, which some networks can't resolve).
+func candidates(conns []Connection) []Address {
+	out := []Address{}
+	seen := map[string]bool{}
+	add := func(uri, kind string) {
+		if uri != "" && !seen[uri] {
+			seen[uri] = true
+			out = append(out, Address{URI: uri, Kind: kind})
+		}
+	}
+	for _, c := range conns {
+		kind := "remote"
+		if c.Relay {
+			kind = "relay"
+		} else if c.Local {
+			kind = "local"
+		}
+		add(c.URI, kind)
+		if c.Local && !c.Relay && c.Address != "" && c.Port > 0 {
+			add(fmt.Sprintf("http://%s:%d", c.Address, c.Port), "local")
+		}
+	}
+	return out
+}
+
+// probe times /identity on an address, checking it's the right server.
+func (l *Library) probe(ctx context.Context, uri, token, id string) (time.Duration, error) {
+	cctx, cancel := context.WithTimeout(ctx, 6*time.Second)
+	defer cancel()
+	var ident struct {
+		MediaContainer struct {
+			MachineIdentifier string `json:"machineIdentifier"`
+		} `json:"MediaContainer"`
+	}
+	start := time.Now()
+	if err := l.get(cctx, uri, "/identity", token, &ident); err != nil {
+		return 0, err
+	}
+	if ident.MediaContainer.MachineIdentifier != id {
+		return 0, errors.New("a different Plex server answered there")
+	}
+	return max(time.Since(start), time.Millisecond), nil
+}
+
+// probeAll tries every address at once.
+func (l *Library) probeAll(ctx context.Context, list []Address, token, id string) []Address {
+	var wg sync.WaitGroup
+	for i := range list {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			d, err := l.probe(ctx, list[i].URI, token, id)
+			if err != nil {
+				list[i].Error = err.Error()
+				return
+			}
+			list[i].MS = int(d.Milliseconds())
+			if list[i].MS == 0 {
+				list[i].MS = 1
+			}
+		}()
+	}
+	wg.Wait()
+	return list
+}
+
+// fastest is the quickest address that answered; the relay only when nothing else did.
+func fastest(list []Address) string {
+	best, bestMS := "", 0
+	for _, relay := range []bool{false, true} {
+		for _, a := range list {
+			if a.MS > 0 && (a.Kind == "relay") == relay && (best == "" || a.MS < bestMS) {
+				best, bestMS = a.URI, a.MS
+			}
+		}
+		if best != "" {
+			return best
+		}
+	}
+	return ""
+}
+
+// Addresses lists the connected server's addresses, each tried now, and whether Flixarr picks on its own.
+func (l *Library) Addresses(ctx context.Context) (list []Address, auto bool, err error) {
+	id := l.Store.Setting(keyServerID, "")
+	_, token, ok := l.conn()
+	if !ok {
+		return nil, false, errors.New("connect a Plex server first")
+	}
+	servers, err := l.Servers(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	for _, s := range servers {
+		if s.ID == id {
+			list = candidates(s.Connections)
+		}
+	}
+	if cur := l.Store.Setting(keyServerURL, ""); !slices.ContainsFunc(list, func(a Address) bool { return a.URI == cur }) {
+		list = append(list, Address{URI: cur, Kind: "yours"})
+	}
+	return l.probeAll(ctx, list, token, id), l.Store.Setting(keyAddrPicked, "") != "true", nil
+}
+
+// SetAddress makes Flixarr use an address ("" = Automatic: the fastest now). It has to answer as the
+// connected server.
+func (l *Library) SetAddress(ctx context.Context, uri string) (Status, error) {
+	id := l.Store.Setting(keyServerID, "")
+	_, token, ok := l.conn()
+	if !ok {
+		return Status{}, errors.New("connect a Plex server first")
+	}
+	uri = strings.TrimRight(strings.TrimSpace(uri), "/")
+	if uri == "" {
+		list, _, err := l.Addresses(ctx)
+		if err != nil {
+			return Status{}, err
+		}
+		if uri = fastest(list); uri == "" {
+			return Status{}, errors.New("none of the server's addresses answered")
+		}
+		l.Store.SetSetting(keyAddrPicked, "")
+	} else {
+		u, err := url.Parse(uri)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return Status{}, errors.New("that address doesn't look right; it should be like http://192.168.1.10:32400")
+		}
+		if _, err := l.probe(ctx, uri, token, id); err != nil {
+			return Status{}, fmt.Errorf("the server didn't answer there: %w", err)
+		}
+		l.Store.SetSetting(keyAddrPicked, "true")
+	}
+	l.Store.SetSetting(keyServerURL, uri)
+	l.Log.Info("plex address set", "via", uri)
+	l.relistenMu.Lock()
+	if l.relisten != nil {
+		l.relisten()
+	}
+	l.relistenMu.Unlock()
+	return l.Status(ctx)
 }
 
 // Disconnect forgets the server and its items.

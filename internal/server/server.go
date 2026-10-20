@@ -161,6 +161,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/plex/episodes/{tmdbId}", s.auth(s.plexEpisodes))
 	mux.HandleFunc("GET /api/plex/servers", s.auth(s.admin(s.plexServers)))
 	mux.HandleFunc("POST /api/plex/connect", s.auth(s.admin(s.plexConnect)))
+	mux.HandleFunc("GET /api/plex/addresses", s.auth(s.admin(s.plexAddresses)))
+	mux.HandleFunc("PUT /api/plex/address", s.auth(s.admin(s.plexAddress)))
 	mux.HandleFunc("DELETE /api/plex", s.auth(s.admin(s.plexDisconnect)))
 	mux.HandleFunc("PUT /api/plex/libraries", s.auth(s.admin(s.plexLibraries)))
 	mux.HandleFunc("PUT /api/plex/web", s.auth(s.admin(s.plexWeb)))

@@ -61,6 +61,33 @@ func (s *Server) plexConnect(w http.ResponseWriter, r *http.Request, _ *store.Us
 	writeJSON(w, http.StatusOK, st)
 }
 
+// plexAddresses lists the connected server's addresses, each tried now (#114).
+func (s *Server) plexAddresses(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	list, auto, err := s.Library.Addresses(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"addresses": list, "auto": auto, "current": s.Store.Setting("plex_server_url", "")})
+}
+
+// plexAddress picks the address Flixarr uses: {"uri": ""} = Automatic (the fastest), or one to use.
+func (s *Server) plexAddress(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	var in struct {
+		URI string `json:"uri"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil {
+		writeErr(w, http.StatusBadRequest, "Bad request.")
+		return
+	}
+	st, err := s.Library.SetAddress(r.Context(), in.URI)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
+}
+
 func (s *Server) plexDisconnect(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	if err := s.Library.Disconnect(); err != nil {
 		writeErr(w, http.StatusInternalServerError, "Database error.")
