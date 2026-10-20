@@ -157,7 +157,7 @@
 					{#if r.backdrop}<div class="pointer-events-none absolute inset-0 opacity-30"><Img path={r.backdrop} kind="backdrop" sizes="(min-width: 1024px) 600px, 100vw" class="h-full w-full" /></div>{/if}
 					<div class="absolute inset-0 bg-linear-to-r from-gray-950/95 via-gray-950/85 to-gray-950/55"></div>
 					<div class="relative flex gap-3 p-3">
-						<div class="w-16 shrink-0 overflow-hidden rounded-lg shadow-lg ring-1 ring-gray-700/60 tablet:w-20">{#if r.poster}<Img path={r.poster} kind="poster" sizes="80px" class="aspect-[2/3] w-full" />{:else}<div class="aspect-[2/3] bg-gray-800"></div>{/if}</div>
+						<div class="w-16 shrink-0 self-start overflow-hidden rounded-lg shadow-lg ring-1 ring-gray-700/60 tablet:w-20">{#if r.poster}<Img path={r.poster} kind="poster" sizes="80px" class="block aspect-[2/3] w-full" />{:else}<div class="aspect-[2/3] bg-gray-800"></div>{/if}</div>
 						<div class="flex min-w-0 flex-1 flex-col gap-1">
 							<div class="flex items-start justify-between gap-2">
 								<div class="min-w-0">
