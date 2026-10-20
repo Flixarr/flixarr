@@ -99,7 +99,8 @@
 	}
 	// "Chrome on Windows" from a user agent.
 	function deviceName(ua: string) {
-		const b = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'A browser';
+		// The home-screen app on iPhone and iPad reports WebKit without naming Safari.
+		const b = /Edg\//.test(ua) ? 'Edge' : /Firefox\/|FxiOS/.test(ua) ? 'Firefox' : /Chrome\/|CriOS/.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : /AppleWebKit/.test(ua) && /iPhone|iPad/.test(ua) ? 'Home screen app' : 'A browser';
 		const o = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac OS X/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : '';
 		return o ? `${b} on ${o}` : b;
 	}
