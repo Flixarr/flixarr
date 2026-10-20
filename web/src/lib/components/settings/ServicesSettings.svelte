@@ -314,12 +314,14 @@
 
 
 {#if saved}
+	<!-- Radarr and Sonarr side by side on wide screens (#115), until there can be more than one of each (#34). -->
+	<div class="grid gap-6 laptop:grid-cols-2">
 	{#each KINDS as s (s.kind)}
 		{@const v = saved[s.kind]}
 		<div>
 			<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{s.name}</div>
 			<p class="-mt-1 mb-3 text-xs text-gray-500">{s.about}</p>
-			<div class="grid gap-3 tablet:grid-cols-2">
+			<div class="grid gap-3">
 				{#if v}
 					{@const st = v.status}
 					{@const issues = st?.health.length ?? 0}
@@ -427,6 +429,7 @@
 			</div>
 		</div>
 	{/each}
+	</div>
 	<WebhooksCard kinds={KINDS.filter((k) => saved?.[k.kind])} />
 	<MaintainerrSettings />
 
