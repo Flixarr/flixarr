@@ -19,6 +19,7 @@
 	type S3 = { endpoint: string; region: string; bucket: string; prefix: string; accessKey: string; secretKey?: string };
 	type Offsite = { folder: string; s3: S3; secretKeySet: boolean; last: { at: string; error?: string } };
 	let off = $state<Offsite | null>(null);
+	let offOpen = $state(false);
 	let secret = $state('');
 	const input = 'mt-1 w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/60';
 
@@ -152,6 +153,15 @@
 		<div>
 			{@render heading('Offsite copies')}
 			<div class="card divide-y divide-gray-700/40 px-4 text-sm">
+				<!-- Collapsed until opened (#108): the form is long and rarely changed. -->
+				<button class="flex w-full items-center gap-3 py-3 text-left" aria-expanded={offOpen} onclick={() => (offOpen = !offOpen)}>
+					<span class="min-w-0 flex-1">
+						<span class="block">{[off.folder && 'A folder', off.s3.endpoint && 'S3 storage'].filter(Boolean).join(' and ') || 'Off'}</span>
+						<span class="block text-xs {off.last.error ? 'text-red-300' : 'text-gray-500'}">{off.folder || off.s3.endpoint ? (off.last.at ? `Last copy ${when(off.last.at)}${off.last.error ? `: ${off.last.error}` : ', worked'}` : 'Nothing copied yet.') : 'Copy each backup to another drive or to S3-compatible storage.'}</span>
+					</span>
+					<Icon name="chevron" class="size-4 shrink-0 text-gray-500 transition {offOpen ? 'rotate-90' : ''}" />
+				</button>
+				{#if offOpen}
 				<p class="py-3 text-xs text-gray-400">A backup on the same disk doesn't help if the disk dies. Each backup can also be copied to another folder (a different drive, mounted into Flixarr's container) and to S3-compatible storage (Amazon S3, Backblaze B2, Cloudflare R2, MinIO…). Each place keeps the same number of copies as above.</p>
 				<div class="py-3"><label for="o-folder" class="block">Folder</label><input id="o-folder" class={input} bind:value={off.folder} placeholder="/offsite-backups" autocomplete="off" spellcheck="false" /><p class="mt-1 text-xs text-gray-500">A full path inside the container. Leave empty to not use one.</p></div>
 				<div class="grid gap-3 py-3 tablet:grid-cols-2">
@@ -166,6 +176,7 @@
 					<span class="text-xs {off.last.error ? 'text-red-300' : 'text-gray-500'}">{off.last.at ? `Last copy ${when(off.last.at)}${off.last.error ? `: ${off.last.error}` : ', worked'}` : 'Nothing copied yet.'}</span>
 					<button class="btn px-5 py-1.5 text-sm" disabled={!!busy} onclick={saveOffsite}>{busy === 'offsite' ? 'Saving and copying…' : 'Save'}</button>
 				</div>
+				{/if}
 			</div>
 			<p class="mt-2 text-xs text-gray-500">Keep a copy of <span class="font-mono">secret.key</span> with them too; it isn't in the backups.</p>
 		</div>
