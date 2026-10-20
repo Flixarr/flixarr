@@ -38,7 +38,8 @@ func (s *Server) viewOf(v store.Server) serviceView {
 	sv := serviceView{Server: v, APIKeySet: v.APIKey != "", APIKeyEnd: end}
 	if snap, ok := s.Arr.Get(v.ID); ok {
 		// Stuck downloads link to their request (or to the title when nobody requested it in Flixarr).
-		snap.Queue = append([]arr.QueueRow(nil), snap.Queue...)
+		// A copy (the snapshot is shared), never nil: an empty queue must reach the page as [], not null.
+		snap.Queue = append(make([]arr.QueueRow, 0, len(snap.Queue)), snap.Queue...)
 		for i, q := range snap.Queue {
 			if (q.State == "warning" || q.State == "error") && q.ArrID > 0 {
 				if list, _ := s.Store.ActiveRequestsFor(q.Type, q.ArrID); len(list) > 0 {
