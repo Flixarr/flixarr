@@ -98,6 +98,16 @@
 	.act { @apply h-9 gap-1.5 px-3.5 py-0 text-sm laptop:h-10 laptop:gap-2 laptop:px-4 laptop:text-[15px]; }
 	.plex-badge { @apply grid shrink-0 place-items-center rounded-xl bg-[#1f2326] ring-1 ring-white/10; }
 	.text-link { @apply text-white underline decoration-primary underline-offset-2 hover:text-primary-light; }
+	/* Scrollbars (#109): thin and dark everywhere (pages, windows, side panels, sideways rows), faint until
+	   the pointer is over what scrolls. Browsers without scrollbar-color (older Safari) get the same look. */
+	* { scrollbar-width: thin; scrollbar-color: rgb(255 255 255 / 0.12) transparent; }
+	*:hover { scrollbar-color: rgb(255 255 255 / 0.28) transparent; }
+	@supports not (scrollbar-color: auto) {
+		::-webkit-scrollbar { width: 8px; height: 8px; }
+		::-webkit-scrollbar-track { background: transparent; }
+		::-webkit-scrollbar-thumb { border-radius: 9999px; background: rgb(255 255 255 / 0.12); }
+		:hover::-webkit-scrollbar-thumb { background: rgb(255 255 255 / 0.28); }
+	}
 	.no-scrollbar { scrollbar-width: none; }
 	.no-scrollbar::-webkit-scrollbar { display: none; }
 }
