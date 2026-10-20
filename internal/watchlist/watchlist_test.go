@@ -38,7 +38,7 @@ func TestWatchlistSync(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	w := &Syncer{Store: st, Requests: &requests.Service{Store: st, Log: log}, Meta: noMeta{}, Log: log, Base: srv.URL}
 	st.CreateUser(store.User{PlexID: 1, Username: "owner", Role: "Admin"})
-	eryn, _ := st.CreateUser(store.User{PlexID: 2, Username: "eryn", Role: "User"})
+	eryn, _ := st.CreateUser(store.User{PlexID: 2, Username: "eryn", Perms: append(store.RolePerms["User"], "watchlist")}) // Watchlist is never in a preset
 	st.SetPlexToken(eryn.ID, "eryn-token")
 	st.SavePlexItem(store.PlexItem{Type: "movie", TmdbID: 603, RatingKey: "1", Section: "1", SeenAt: "x"})
 

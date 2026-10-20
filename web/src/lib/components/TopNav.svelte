@@ -8,6 +8,7 @@
 	import { alerts, anyNew, openedBell, readAllAlerts, servicesUnread, show as showCount, tapAlert, untapped, watchAlerts } from '#lib/alerts.svelte.ts';
 	import { ago, api, img } from '#lib/api.ts';
 	import { attention, watchAttention } from '#lib/attention.svelte.ts';
+	import { roleLabel } from '#lib/roles.ts';
 
 	let { transparent = false }: { transparent?: boolean } = $props();
 	let scrolled = $state(false);
@@ -120,7 +121,7 @@
 					{#if menu === 'test'}
 						<div class="absolute left-0 top-8 z-50 w-56 overflow-hidden rounded-xl border border-gray-700/60 bg-gray-900 py-1.5 shadow-[0_24px_64px_-8px_rgba(0,0,0,0.95),0_8px_24px_rgba(0,0,0,0.7)]">
 							<div class="px-4 pb-1.5 pt-1 text-[11px] text-gray-500">Dev install. View the app as:</div>
-							{#each [['', 'Yourself'], ['Admin', 'An admin'], ['Trusted', 'A trusted user'], ['User', 'A user']] as [role, label] (role)}
+							{#each [['', 'Yourself'], ['Admin', 'An admin'], ['Manager', 'A manager'], ['Trusted', 'A trusted user'], ['User', 'A user']] as [role, label] (role)}
 								<button class="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-white/5 {viewing === role ? 'text-white' : 'text-gray-300'}" onclick={() => viewAs(role)}>{label}{#if viewing === role}<Icon name="check" class="size-4 text-primary-light" />{/if}</button>
 							{/each}
 						</div>
@@ -159,7 +160,7 @@
 					{#if menu === 'user'}
 						<div class="fixed right-3 top-[calc(4rem+max(0px,calc(env(safe-area-inset-top)-0.75rem)))] w-60 tablet:absolute tablet:right-0 tablet:top-11">
 							<div class="overflow-hidden rounded-xl border border-gray-700/60 bg-gray-900 py-1.5 shadow-2xl">
-								<div class="flex items-center gap-3 px-4 py-2"><Avatar user={session.me} class="size-9 text-sm" /><div><div class="text-sm font-medium">{session.me.username}</div><div class="text-xs text-gray-400">{session.me.role}</div></div></div>
+								<div class="flex items-center gap-3 px-4 py-2"><Avatar user={session.me} class="size-9 text-sm" /><div><div class="text-sm font-medium">{session.me.username}</div><div class="text-xs text-gray-400">{roleLabel(session.me)}</div></div></div>
 								<div class="my-1 border-t border-gray-700/40"></div>
 								<a href="/profile" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 hover:text-white"><Icon name="profile" class="size-4" />Profile</a>
 								{#if can('manageIssues') || can('reportIssues')}

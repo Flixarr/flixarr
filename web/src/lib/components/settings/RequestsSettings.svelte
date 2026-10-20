@@ -46,7 +46,7 @@
 		{@render heading('Approval')}
 		<div class="card px-4">
 			<div class="py-3">
-				<Toggle checked={info.approvalRequired} label="Require approval" about="Off: requests go straight to Radarr and Sonarr. On: they wait until someone who manages requests approves them. People with Auto-approve (admins and Trusted users) never wait." onchange={(on) => save({ approvalRequired: on }, on ? 'Requests now wait for approval.' : 'Requests are sent straight away.')} />
+				<Toggle checked={info.approvalRequired} label="Require approval" about="Off: requests go straight to Radarr and Sonarr. On: they wait until someone who manages requests approves them. People with Auto-approve (admins, Managers and Trusted users) never wait." onchange={(on) => save({ approvalRequired: on }, on ? 'Requests now wait for approval.' : 'Requests are sent straight away.')} />
 			</div>
 		</div>
 	</div>

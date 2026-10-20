@@ -155,8 +155,8 @@ func (s *Server) userAddLocal(w http.ResponseWriter, r *http.Request, _ *store.U
 		writeErr(w, http.StatusBadRequest, "Enter a username (up to 64 characters).")
 		return
 	}
-	if _, ok := store.RolePerms[in.Role]; !ok || in.Role == "Admin" {
-		in.Role = "User" // admin rights are given afterwards, on purpose, in the edit window
+	if in.Role != "Trusted" {
+		in.Role = "User" // more is given afterwards, on purpose, like anyone else's switches
 	}
 	hash, err := password.Hash(in.Password)
 	if err != nil {

@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/Flixarr/flixarr/internal/secret"
@@ -62,5 +63,31 @@ func TestRetiredPermissionDropped(t *testing.T) {
 	old := "autoApprove,requestMovies,requestTv,advanced,viewRequests,reportIssues,watchlist" // a Trusted user from before viewRequests went away
 	if got := splitPerms(old); RoleOf(got) != "Trusted" {
 		t.Fatalf("still Trusted: %v %s", got, RoleOf(got))
+	}
+}
+
+func TestRoleOf(t *testing.T) {
+	for _, c := range []struct {
+		perms []string
+		want  string
+	}{
+		{RolePerms["User"], "User"},
+		{append(slices.Clone(RolePerms["User"]), "watchlist"), "User"}, // manual switches don't change the role
+		{RolePerms["Trusted"], "Trusted"},
+		{append(slices.Clone(RolePerms["Manager"]), "admin"), "Manager"},
+		{AllPerms, "Manager"},
+		{[]string{"requestMovies"}, "Custom"},
+		{[]string{"admin"}, "Custom"},
+	} {
+		if got := RoleOf(c.perms); got != c.want {
+			t.Errorf("%v: got %s, want %s", c.perms, got, c.want)
+		}
+	}
+	for _, r := range Roles {
+		for _, p := range ManualPerms {
+			if slices.Contains(RolePerms[r], p) {
+				t.Errorf("%s has %s: manual switches are never in a preset", r, p)
+			}
+		}
 	}
 }

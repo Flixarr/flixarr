@@ -28,7 +28,7 @@ func viewAs(r *http.Request, u *store.User) (*store.User, error) {
 	if err != nil {
 		return u, nil
 	}
-	perms, ok := store.RolePerms[c.Value]
+	perms, ok := viewAsPerms(c.Value)
 	if !ok {
 		return u, nil
 	}
@@ -53,8 +53,8 @@ func (s *Server) viewAsSet(w http.ResponseWriter, r *http.Request, u *store.User
 		writeErr(w, http.StatusBadRequest, "Bad request.")
 		return
 	}
-	if _, ok := store.RolePerms[in.Role]; in.Role != "" && !ok {
-		writeErr(w, http.StatusBadRequest, "Pick Admin, Trusted or User.")
+	if _, ok := viewAsPerms(in.Role); in.Role != "" && !ok {
+		writeErr(w, http.StatusBadRequest, "Pick Admin, Manager, Trusted or User.")
 		return
 	}
 	c := &http.Cookie{Name: viewAsCookie, Value: in.Role, Path: "/", HttpOnly: true, Secure: secure(r), SameSite: http.SameSiteLaxMode}
@@ -63,4 +63,13 @@ func (s *Server) viewAsSet(w http.ResponseWriter, r *http.Request, u *store.User
 	}
 	http.SetCookie(w, c)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// viewAsPerms are the switches View as uses: an admin (everything) or one of the presets.
+func viewAsPerms(role string) ([]string, bool) {
+	if role == "Admin" {
+		return store.AllPerms, true
+	}
+	p, ok := store.RolePerms[role]
+	return p, ok
 }

@@ -358,7 +358,7 @@ func (s *Server) plexCheck(w http.ResponseWriter, r *http.Request) {
 	var u *store.User
 	if n == 0 {
 		// First run: the first person to sign in owns this Flixarr and becomes the admin.
-		u, err = s.Store.CreateUser(store.User{PlexID: acct.ID, Username: name, Email: acct.Email, Avatar: acct.Thumb, Role: "Admin"})
+		u, err = s.Store.CreateUser(store.User{PlexID: acct.ID, Username: name, Email: acct.Email, Avatar: acct.Thumb, Perms: store.AllPerms})
 		if err == nil {
 			err = s.Store.SetSecretSetting("plex_admin_token", pin.AuthToken)
 		}

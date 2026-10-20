@@ -7,14 +7,21 @@ import (
 	"time"
 )
 
-// Permission switches. Roles are presets that set them; changing any switch makes the role Custom.
+// Permission switches. Roles are presets that set them; changing any of their switches makes the role Custom.
 var AllPerms = []string{"admin", "manageRequests", "autoApprove", "requestMovies", "requestTv", "advanced", "reportIssues", "manageIssues", "watchlist", "redownload"}
 
-// RolePerms are the presets, in the order Users shows them.
+// ManualPerms are never part of a preset: they're turned on by hand, person by person, and don't change
+// which role someone has (#146). Anyone with admin can do everything whatever their role.
+var ManualPerms = []string{"admin", "watchlist"}
+
+// Roles are the presets, in the order Users shows them.
+var Roles = []string{"User", "Trusted", "Manager"}
+
+// RolePerms are the presets' switches.
 var RolePerms = map[string][]string{
-	"Admin":   AllPerms,
-	"Trusted": {"autoApprove", "requestMovies", "requestTv", "advanced", "reportIssues", "watchlist"},
-	"User":    {"requestMovies", "requestTv", "reportIssues", "watchlist"},
+	"User":    {"requestMovies", "requestTv", "reportIssues"},
+	"Trusted": {"autoApprove", "requestMovies", "requestTv", "advanced", "reportIssues"},
+	"Manager": {"manageRequests", "autoApprove", "requestMovies", "requestTv", "advanced", "reportIssues", "manageIssues", "redownload"},
 }
 
 // Can reports whether the user has a permission. Admins can do everything.
@@ -22,13 +29,11 @@ func (u *User) Can(perm string) bool {
 	return slices.Contains(u.Perms, "admin") || slices.Contains(u.Perms, perm)
 }
 
-// RoleOf names a permission set: a preset when it matches one exactly, otherwise Custom.
+// RoleOf names a permission set: the preset its switches match (the manual ones aside), otherwise Custom.
 func RoleOf(perms []string) string {
-	if slices.Contains(perms, "admin") {
-		return "Admin"
-	}
-	for _, r := range []string{"Trusted", "User"} {
-		if sameSet(perms, RolePerms[r]) {
+	rest := slices.DeleteFunc(slices.Clone(perms), func(p string) bool { return slices.Contains(ManualPerms, p) })
+	for _, r := range Roles {
+		if sameSet(rest, RolePerms[r]) {
 			return r
 		}
 	}
@@ -84,6 +89,7 @@ func (s *Store) Users() ([]UserRow, error) {
 			return nil, err
 		}
 		u.Perms = splitPerms(perms)
+		u.Role = RoleOf(u.Perms)
 		u.Local = u.PlexID == 0
 		out = append(out, row)
 	}

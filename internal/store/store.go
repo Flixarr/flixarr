@@ -171,6 +171,7 @@ func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 		return nil, err
 	}
 	u.Perms = splitPerms(perms)
+	u.Role = RoleOf(u.Perms) // worked out from the switches: the stored label can be from older presets
 	u.Local = u.PlexID == 0
 	return u, nil
 }
@@ -191,6 +192,9 @@ func (s *Store) AvatarKnown(u string) bool {
 func (s *Store) CreateUser(u User) (*User, error) {
 	if u.Perms == nil {
 		u.Perms = RolePerms[u.Role]
+		if u.Role == "Admin" {
+			u.Perms = AllPerms // shorthand: an admin can do everything
+		}
 	}
 	u.Perms = cleanPerms(u.Perms)
 	res, err := s.db.Exec(`INSERT INTO users (plex_id, username, email, avatar, role, perms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,

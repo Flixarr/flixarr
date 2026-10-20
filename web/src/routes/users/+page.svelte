@@ -1,6 +1,7 @@
 <script lang="ts">
 	// Users (admins): everyone who can sign in, their role and permission switches, and importing the
-	// people your Plex server is shared with. A role is a preset; change any switch and it becomes Custom.
+	// people your Plex server is shared with. A role is a preset; change any of its switches and it becomes
+	// Custom. Admin and Plex Watchlist requests are turned on by hand and never change the role (#146).
 	import { api, fmtDate } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import { session, can } from '#lib/session.svelte.ts';
@@ -11,12 +12,12 @@
 	import Modal from '#lib/components/Modal.svelte';
 	import Toggle from '#lib/components/Toggle.svelte';
 	import Select from '#lib/components/Select.svelte';
+	import { ROLES, MANUAL_PERMS, ROLE_TONE, roleLabel } from '#lib/roles.ts';
 
 	type Row = User & { requests: number };
 	type Friend = { plexId: number; username: string; email: string; avatar: string; added: boolean };
 
 	const PERMS: [string, string, string][] = [
-		['admin', 'Admin', 'Full access to everything, including Settings and Users.'],
 		['manageRequests', 'Manage requests', "Approve, decline, retry and remove anyone's requests."],
 		['autoApprove', 'Auto-approve', 'Their requests skip approval.'],
 		['requestMovies', 'Request movies', ''],
@@ -24,14 +25,13 @@
 		['advanced', 'Choose quality', 'Pick a quality other than the default when requesting.'],
 		['reportIssues', 'Report issues', 'Report problems on titles in the library.'],
 		['manageIssues', 'Manage issues', "See, resolve and remove anyone's issues."],
-		['watchlist', 'Plex Watchlist requests', 'Can switch on requests from their Plex Watchlist (in their Profile).'],
 		['redownload', 'Fix and redownload', 'Fix missing or bad episodes and movies: search again, or delete the file, block its release and download a new copy. Also needed to delete files from the admin panel.']
 	];
-	const ROLES = ['Admin', 'Trusted', 'User', 'Custom'];
-	const ROLE_TONE: Record<string, string> = {
-		Admin: 'bg-primary/15 text-primary-light ring-primary/40', Trusted: 'bg-green-500/15 text-green-400 ring-green-500/40',
-		Custom: 'bg-purple-500/15 text-purple-300 ring-purple-500/40', User: 'bg-gray-800 text-gray-300 ring-gray-700/60'
-	};
+	// Turned on by hand, never by a role.
+	const MANUAL: [string, string, string][] = [
+		['admin', 'Admin', 'Full access to everything, including Settings and Users.'],
+		['watchlist', 'Plex Watchlist requests', 'Can switch on requests from their Plex Watchlist (in their Profile).']
+	];
 
 	let users = $state<Row[] | null>(null);
 	let userQuery = $state('');
@@ -65,12 +65,14 @@
 		if (can('admin')) load();
 	});
 
-	// The role a set of switches matches (same rule as the server).
+	// The role a set of switches matches, the manual ones aside (same rule as the server).
 	function roleOf(p: string[]) {
-		if (p.includes('admin')) return 'Admin';
-		for (const r of ['Trusted', 'User']) if (presets[r]?.length === p.length && presets[r].every((x) => p.includes(x))) return r;
+		const rest = p.filter((x) => !MANUAL_PERMS.includes(x));
+		for (const r of ROLES) if (presets[r]?.length === rest.length && presets[r].every((x) => rest.includes(x))) return r;
 		return 'Custom';
 	}
+	// Picking a role sets its switches and keeps the manual ones as they are.
+	const pickRole = (r: string) => (perms = [...presets[r], ...perms.filter((x) => MANUAL_PERMS.includes(x))]);
 	const role = $derived(roleOf(perms));
 	// Admin turns everything on; the rest of the switches show as on and locked.
 	const isAdmin = $derived(perms.includes('admin'));
@@ -88,7 +90,7 @@
 	async function save() {
 		saving = true;
 		try {
-			const u = await api<User>(`/users/${editing!.id}`, { method: 'PUT', body: JSON.stringify({ perms: isAdmin ? presets.Admin : perms, movieLimit, seasonLimit }) });
+			const u = await api<User>(`/users/${editing!.id}`, { method: 'PUT', body: JSON.stringify({ perms, movieLimit, seasonLimit }) });
 			users = users!.map((x) => (x.id === u.id ? { ...x, ...u } : x));
 			editOpen = false;
 			notify(`Saved ${u.username}.`);
@@ -203,7 +205,8 @@
 						<div class="truncate text-xs text-gray-400">{u.email || (u.local ? 'Local account' : 'Plex account')}{u.local && u.email ? ' · Local account' : ''}{u.owner ? ' · Owner' : ''} · joined {fmtDate(u.createdAt, { month: 'short', day: 'numeric', year: 'numeric' })}</div>
 					</div>
 					<div class="hidden text-right text-xs text-gray-400 tablet:block">{u.requests} {u.requests === 1 ? 'request' : 'requests'}</div>
-					<span class="rounded-md px-1.5 py-0.5 text-[11px] ring-1 {ROLE_TONE[u.role] ?? ROLE_TONE.User}">{u.role}</span>
+					{#if u.perms.includes('watchlist') && !u.perms.includes('admin')}<span class="hidden rounded-md bg-gray-800 px-1.5 py-0.5 text-[11px] text-gray-400 ring-1 ring-gray-700/60 tablet:inline">Watchlist</span>{/if}
+					<span class="rounded-md px-1.5 py-0.5 text-[11px] ring-1 {ROLE_TONE[roleLabel(u)] ?? ROLE_TONE.User}">{roleLabel(u)}</span>
 					<Icon name="chevron" class="size-4 text-gray-500" />
 				</button>
 			{/each}
@@ -216,13 +219,13 @@
 		<div class="space-y-5 p-5">
 			<div class="space-y-2">
 				<div class="text-sm font-medium">Role</div>
-				<div class="grid grid-cols-4 gap-1 rounded-xl border border-gray-700/60 p-1 text-sm" role="radiogroup" aria-label="Role">
-					{#each ROLES as r (r)}
+				<div class="grid grid-cols-4 gap-1 rounded-xl border border-gray-700/60 p-1 text-sm {isAdmin ? 'opacity-50' : ''}" role="radiogroup" aria-label="Role">
+					{#each [...ROLES, 'Custom'] as r (r)}
 						<button class="rounded-lg px-2 py-1.5 {r === role ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'} {r === 'Custom' ? 'pointer-events-none' : ''}"
-							role="radio" aria-checked={r === role} disabled={editing.owner && r !== 'Admin'} onclick={() => r !== 'Custom' && (perms = [...presets[r]])}>{r}</button>
+							role="radio" aria-checked={r === role} disabled={isAdmin} onclick={() => r !== 'Custom' && pickRole(r)}>{r}</button>
 					{/each}
 				</div>
-				<p class="text-xs text-gray-500">{editing.owner ? 'The owner always stays an admin.' : 'A role is a preset. Change any switch below and the role becomes Custom.'}</p>
+				<p class="text-xs text-gray-500">{editing.owner ? 'The owner always stays an admin.' : isAdmin ? 'Admins can do everything. Their role counts again if Admin is turned off.' : 'A role is a preset. Change any of its switches and the role becomes Custom.'}</p>
 			</div>
 			{#snippet limitPicker(id: string, label: string, unit: string, steps: number[], value: number, set: (n: number) => void)}
 				<div>
@@ -233,9 +236,20 @@
 			<div class="divide-y divide-gray-700/40 rounded-xl border border-gray-700/50 bg-gray-800/30 px-4">
 				{#each PERMS as [k, label, about] (k)}
 					<div class="py-3">
-						<Toggle checked={isAdmin || perms.includes(k)} {label} {about} disabled={(k === 'admin' && editing.owner) || (k !== 'admin' && isAdmin)} onchange={(on) => setPerm(k, on)} />
+						<Toggle checked={isAdmin || perms.includes(k)} {label} {about} disabled={isAdmin} onchange={(on) => setPerm(k, on)} />
 					</div>
 				{/each}
+			</div>
+			<div class="space-y-2">
+				<div class="text-sm font-medium">Turned on by hand</div>
+				<div class="divide-y divide-gray-700/40 rounded-xl border border-gray-700/50 bg-gray-800/30 px-4">
+					{#each MANUAL as [k, label, about] (k)}
+						<div class="py-3">
+							<Toggle checked={(k === 'watchlist' && isAdmin) || perms.includes(k)} {label} {about} disabled={(k === 'admin' && editing.owner) || (k === 'watchlist' && isAdmin)} onchange={(on) => setPerm(k, on)} />
+						</div>
+					{/each}
+				</div>
+				<p class="text-xs text-gray-500">Never part of a role: picking a role leaves these as they are.</p>
 			</div>
 			<div class="space-y-2">
 				<div class="text-sm font-medium">Request limits</div>
