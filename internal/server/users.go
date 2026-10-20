@@ -291,23 +291,49 @@ func (s *Server) userSettings(w http.ResponseWriter, r *http.Request, _ *store.U
 func (s *Server) myNotifications(w http.ResponseWriter, r *http.Request, u *store.User) {
 	if r.Method == http.MethodPut {
 		var in struct {
-			Off map[string][]string `json:"off"`
+			Off      map[string][]string `json:"off"`
+			Accounts map[string]string   `json:"accounts"` // optional: own accounts on Discord, Telegram, Pushover, ntfy
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&in); err != nil {
 			writeErr(w, http.StatusBadRequest, "Bad request.")
 			return
 		}
-		if err := s.Notify.SetOff(u.ID, in.Off); err != nil {
-			writeErr(w, http.StatusInternalServerError, "Database error.")
-			return
+		if in.Accounts != nil {
+			if err := s.Notify.SetAccounts(u.ID, in.Accounts); err != nil {
+				writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
+				return
+			}
+		}
+		if in.Off != nil {
+			if err := s.Notify.SetOff(u.ID, in.Off); err != nil {
+				writeErr(w, http.StatusInternalServerError, "Database error.")
+				return
+			}
 		}
 	}
-	emailOn, emailSent := s.Notify.Service("email")
-	pushOn, pushSent := s.Notify.Service("push")
+	// A personal channel shows when the server sends through that service, and (for the account services)
+	// once the person added their own account there (#124).
+	accounts := s.Notify.Accounts(u.ID)
+	channels, sent, services := map[string]bool{}, map[string][]string{}, map[string]bool{}
+	for _, ch := range notify.PersonalChannels {
+		on, events := s.Notify.Service(ch)
+		sent[ch] = events // what Settings sends at all
+		switch ch {
+		case "email":
+			channels[ch] = on && u.Email != ""
+		case "push":
+			channels[ch] = on
+		default:
+			services[ch] = on
+			channels[ch] = on && accounts[ch] != ""
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"channels": map[string]bool{"email": emailOn && u.Email != "", "push": pushOn},
+		"channels": channels,
+		"services": services, // account services an admin set up: Profile asks for the person's account there
+		"accounts": accounts,
 		"events":   s.withoutMaintainerr(notify.EventsFor(u)),
-		"sent":     map[string][]string{"email": emailSent, "push": pushSent}, // what Settings sends at all
+		"sent":     sent,
 		"off":      s.Notify.Off(u.ID),
 	})
 }
@@ -332,4 +358,14 @@ func (s *Server) myWatchlist(w http.ResponseWriter, r *http.Request, u *store.Us
 	}
 	tokenOK := s.Store.PlexToken(u.ID) != "" || (u.Owner && s.Store.SecretSetting("plex_admin_token", "") != "")
 	writeJSON(w, http.StatusOK, map[string]bool{"on": s.Store.Watchlist(u.ID), "allowed": u.Can("watchlist"), "signedIn": tokenOK})
+}
+
+// myDevices lists the devices getting this person's push notifications (Profile; remove one with DELETE /api/push).
+func (s *Server) myDevices(w http.ResponseWriter, r *http.Request, u *store.User) {
+	list, err := s.Store.Devices(u.ID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "Database error.")
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
 }

@@ -220,9 +220,9 @@ func TestPersonalOff(t *testing.T) {
 	st, _ := store.Open(dir, box)
 	t.Cleanup(func() { st.Close() })
 	n := &Notifier{Store: st}
-	n.SetOff(7, map[string][]string{"push": {"request_available", "nonsense"}, "discord": {"request_failed"}})
+	n.SetOff(7, map[string][]string{"push": {"request_available", "nonsense"}, "slack": {"request_failed"}})
 	off := n.Off(7)
-	if len(off["push"]) != 1 || off["push"][0] != "request_available" || len(off["email"]) != 0 || off["discord"] != nil {
+	if len(off["push"]) != 1 || off["push"][0] != "request_available" || len(off["email"]) != 0 || off["slack"] != nil {
 		t.Fatalf("off: %v", off)
 	}
 	user := &store.User{Perms: []string{"requestMovies"}}
@@ -353,5 +353,38 @@ func TestTestInstallQuiet(t *testing.T) {
 	mu.Unlock()
 	if err := n.Test(context.Background(), "webhook", Config{URL: srv.URL, Method: "POST"}); err != nil || hits != 1 {
 		t.Fatalf("send test: %v, %d sent", err, hits)
+	}
+}
+
+// Own accounts (#124): checked when saved, and news about someone's request also goes to their own
+// account through the channel (a Telegram copy to their chat, a Discord mention).
+func TestPersonalAccounts(t *testing.T) {
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	st, _ := store.Open(dir, box)
+	t.Cleanup(func() { st.Close() })
+	n := &Notifier{Store: st, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	u, _ := st.CreateUser(store.User{PlexID: 2, Username: "eryn", Role: "User"})
+	if err := n.SetAccounts(u.ID, map[string]string{"discord": "not a number"}); err == nil {
+		t.Fatal("bad Discord ID saved")
+	}
+	if err := n.SetAccounts(u.ID, map[string]string{"discord": "123456789012345678", "telegram": "555123"}); err != nil {
+		t.Fatal(err)
+	}
+	m := Message{Event: "request_available", UserID: u.ID, Title: "Heat"}
+	if got := n.accountsOn(m, "telegram"); len(got) != 1 || got[0] != "555123" {
+		t.Fatalf("telegram: %v", got)
+	}
+	n.SetOff(u.ID, map[string][]string{"telegram": {"request_available"}})
+	if got := n.accountsOn(m, "telegram"); len(got) != 0 {
+		t.Fatalf("switched off but still sent: %v", got)
+	}
+	body := discordBody(Config{}, m)
+	mention(body, n.accountsOn(m, "discord"))
+	if body["content"] != "<@123456789012345678>" {
+		t.Fatalf("mention: %v", body)
+	}
+	if am := body["allowed_mentions"].(map[string]any); am["users"].([]string)[0] != "123456789012345678" {
+		t.Fatalf("allowed mentions: %v", am)
 	}
 }

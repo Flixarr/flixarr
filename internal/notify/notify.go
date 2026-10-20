@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -293,15 +294,71 @@ func (n *Notifier) people(m Message) []store.User {
 	return out
 }
 
-// PersonalChannels are the channels that reach one person (Discord and webhooks go to a shared place).
-var PersonalChannels = []string{"email", "push"}
+// PersonalChannels are the channels that reach one person: email and Web Push, and (#124) Discord,
+// Telegram, Pushover and ntfy once the person adds their own account there. Webhooks, Slack, Gotify and
+// Pushbullet only go to the shared place set up in Settings.
+var PersonalChannels = []string{"email", "push", "discord", "telegram", "pushover", "ntfy"}
 
-func offKey(userID int64) string { return fmt.Sprintf("notify_off_%d", userID) }
+// AccountServices take a person's own account (Profile → Notifications): a Discord user ID (they're
+// mentioned in the Discord message), a Telegram chat ID, a Pushover user key, an ntfy topic. Their own
+// news then also goes there, through the channel an admin set up.
+var AccountServices = []string{"discord", "telegram", "pushover", "ntfy"}
+
+var accountPattern = map[string]*regexp.Regexp{
+	"discord":  regexp.MustCompile(`^[0-9]{15,21}$`),
+	"telegram": regexp.MustCompile(`^-?[0-9]{3,20}$`),
+	"pushover": regexp.MustCompile(`^[A-Za-z0-9]{30}$`),
+	"ntfy":     regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`),
+}
+var accountWhat = map[string]string{"discord": "Discord user ID (numbers only)", "telegram": "Telegram chat ID (numbers)", "pushover": "Pushover user key (30 letters and numbers)", "ntfy": "ntfy topic (letters, numbers, - and _)"}
+
+func offKey(userID int64) string     { return fmt.Sprintf("notify_off_%d", userID) }
+func accountKey(userID int64) string { return fmt.Sprintf("notify_accounts_%d", userID) }
 
 // Off is what a person has switched off: channel → events. Everything is on until they change it.
 func (n *Notifier) Off(userID int64) map[string][]string {
-	out := map[string][]string{"email": {}, "push": {}}
+	out := map[string][]string{}
 	json.Unmarshal([]byte(n.Store.Setting(offKey(userID), "")), &out)
+	for _, ch := range PersonalChannels {
+		if out[ch] == nil {
+			out[ch] = []string{}
+		}
+	}
+	return out
+}
+
+// Accounts are a person's own accounts on the AccountServices (kept encrypted; "" = none).
+func (n *Notifier) Accounts(userID int64) map[string]string {
+	out := map[string]string{}
+	json.Unmarshal([]byte(n.Store.SecretSetting(accountKey(userID), "")), &out)
+	for _, s := range AccountServices {
+		out[s] = strings.TrimSpace(out[s])
+	}
+	return out
+}
+
+// SetAccounts saves a person's own accounts; each is checked against what the service uses.
+func (n *Notifier) SetAccounts(userID int64, in map[string]string) error {
+	clean := map[string]string{}
+	for _, s := range AccountServices {
+		v := strings.TrimSpace(in[s])
+		if v != "" && !accountPattern[s].MatchString(v) {
+			return fmt.Errorf("that doesn't look like a %s", accountWhat[s])
+		}
+		clean[s] = v
+	}
+	b, _ := json.Marshal(clean)
+	return n.Store.SetSecretSetting(accountKey(userID), string(b))
+}
+
+// accountsOn are the own accounts on a service that an event goes to (people who switched it off left out).
+func (n *Notifier) accountsOn(m Message, ch string) []string {
+	out := []string{}
+	for _, u := range n.peopleOn(m, ch) {
+		if a := n.Accounts(u.ID)[ch]; a != "" && !slices.Contains(out, a) {
+			out = append(out, a)
+		}
+	}
 	return out
 }
 
@@ -570,7 +627,11 @@ func (n *Notifier) Test(ctx context.Context, ch string, c Config) error {
 func (n *Notifier) deliver(ctx context.Context, ch string, c Config, m Message) error {
 	switch ch {
 	case "discord":
-		return n.post(ctx, http.MethodPost, c.WebhookURL, "", discordBody(c, m))
+		body := discordBody(c, m)
+		if m.Event != "test" {
+			mention(body, n.accountsOn(m, "discord"))
+		}
+		return n.post(ctx, http.MethodPost, c.WebhookURL, "", body)
 	case "webhook":
 		return n.post(ctx, c.Method, c.URL, c.Auth, webhookBody(m))
 	case "email":
@@ -593,7 +654,22 @@ func (n *Notifier) deliver(ctx context.Context, ch string, c Config, m Message) 
 		return n.push(ctx, ids, m)
 	}
 	if slices.Contains(Simple, ch) {
-		return n.deliverSimple(ctx, ch, c, m)
+		err := n.deliverSimple(ctx, ch, c, m)
+		if m.Event == "test" || !slices.Contains(AccountServices, ch) {
+			return err
+		}
+		// A copy to each person's own account on this service (#124), through this channel's token.
+		for _, a := range n.accountsOn(m, ch) {
+			if a == c.Target {
+				continue
+			}
+			own := c
+			own.Target = a
+			if e := n.deliverSimple(ctx, ch, own, m); e != nil && err == nil {
+				err = e
+			}
+		}
+		return err
 	}
 	return errors.New("unknown channel")
 }
@@ -631,6 +707,25 @@ func discordBody(c Config, m Message) map[string]any {
 		body["allowed_mentions"] = map[string]any{"parse": []string{"everyone"}}
 	}
 	return body
+}
+
+// mention adds the people's Discord accounts to a message, so Discord pings them (only them).
+func mention(body map[string]any, ids []string) {
+	if len(ids) == 0 {
+		return
+	}
+	tags := []string{}
+	for _, id := range ids {
+		tags = append(tags, "<@"+id+">")
+	}
+	content, _ := body["content"].(string)
+	body["content"] = strings.TrimSpace(content + " " + strings.Join(tags, " "))
+	am, _ := body["allowed_mentions"].(map[string]any)
+	if am == nil {
+		am = map[string]any{"parse": []string{}}
+	}
+	am["users"] = ids
+	body["allowed_mentions"] = am
 }
 
 func webhookBody(m Message) map[string]any {

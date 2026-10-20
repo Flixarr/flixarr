@@ -23,6 +23,31 @@ func (s *Store) DeletePushSub(endpoint string, userID int64) error {
 	return err
 }
 
+// Device is one of a person's Web Push devices, as Profile lists them (#124).
+type Device struct {
+	Endpoint  string `json:"endpoint"`
+	Device    string `json:"device"` // the browser's user agent when it was added
+	CreatedAt string `json:"createdAt"`
+}
+
+// Devices lists a person's Web Push devices, newest first.
+func (s *Store) Devices(userID int64) ([]Device, error) {
+	rows, err := s.db.Query(`SELECT endpoint, device, created_at FROM push_subs WHERE user_id = ? ORDER BY created_at DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Device{}
+	for rows.Next() {
+		var d Device
+		if err := rows.Scan(&d.Endpoint, &d.Device, &d.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
 // PushSubs lists a user's subscriptions (userID 0 = everyone's).
 func (s *Store) PushSubs(userID int64) ([]PushSub, error) {
 	rows, err := s.db.Query(`SELECT endpoint, user_id, p256dh, auth, device FROM push_subs WHERE ? = 0 OR user_id = ?`, userID, userID)

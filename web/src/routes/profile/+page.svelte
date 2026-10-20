@@ -5,7 +5,7 @@
 	import Icon from '#lib/components/Icon.svelte';
 	import Row from '#lib/components/Row.svelte';
 	import Poster from '#lib/components/Poster.svelte';
-	import { api, forgetMeta } from '#lib/api.ts';
+	import { api, forgetMeta, fmtDate } from '#lib/api.ts';
 	import Select from '#lib/components/Select.svelte';
 	import { REGIONS, LANGUAGES } from '#lib/locales.ts';
 	import { notify } from '#lib/toast.svelte.ts';
@@ -24,6 +24,7 @@
 		api<Watch>('/me/watchlist').then((d) => (watch = d)).catch(() => {});
 		api<{ on: boolean }>('/push').then((d) => (pushOn = d.on)).catch(() => {});
 		api<Prefs>('/me/notifications').then((d) => (prefs = d)).catch(() => {});
+		loadDevices();
 		api<Locale>('/me/locale').then((d) => (locale = d)).catch(() => {});
 		subscribed().then((v) => (device = v));
 	});
@@ -38,6 +39,7 @@
 			if (on) await subscribe();
 			else await unsubscribe();
 			device = await subscribed();
+			loadDevices();
 			notify(device ? 'Notifications are on for this device.' : 'Notifications are off for this device.');
 		} catch (e) {
 			device = await subscribed();
@@ -48,16 +50,60 @@
 	}
 
 	// Which events reach me, per personal channel (everything on until switched off).
-	type Prefs = { channels: Record<'email' | 'push', boolean>; events: string[]; sent: Record<'email' | 'push', string[]>; off: Record<'email' | 'push', string[]> };
+	// Own accounts (#124): Discord, Telegram, Pushover and ntfy show once an admin set them up; news about
+	// your own requests then also reaches your account there.
+	type Ch = 'email' | 'push' | 'discord' | 'telegram' | 'pushover' | 'ntfy';
+	type Acct = 'discord' | 'telegram' | 'pushover' | 'ntfy';
+	type Prefs = { channels: Record<Ch, boolean>; services: Record<Acct, boolean>; accounts: Record<Acct, string>; events: string[]; sent: Record<Ch, string[]>; off: Record<Ch, string[]> };
 	let prefs = $state<Prefs | null>(null);
 	const EVENT_TEXT: Record<string, string> = {
 		request_submitted: 'Someone requests something', request_approved: 'My request is approved', request_declined: 'My request is declined',
 		request_available: 'My request is ready to watch', request_failed: "My request couldn't be added", issue_reported: 'Someone reports an issue',
 		issue_resolved: 'My issue is fixed', server_problem: 'Radarr or Sonarr has a problem', request_leaving: 'My request leaves Plex soon'
 	};
-	const CH: ['email' | 'push', string][] = [['email', 'Email'], ['push', 'Push']];
+	const CH: [Ch, string][] = [['email', 'Email'], ['push', 'Push'], ['discord', 'Discord'], ['telegram', 'Telegram'], ['pushover', 'Pushover'], ['ntfy', 'ntfy']];
 	const shownCh = $derived(prefs ? CH.filter(([c]) => prefs!.channels[c]) : []);
-	async function setPref(ch: 'email' | 'push', ev: string, on: boolean) {
+	const ACCOUNTS: [Acct, string, string, string][] = [
+		['discord', 'Discord user ID', '123456789012345678', 'Discord, Settings, Advanced: turn on Developer Mode, then right-click your name and Copy User ID. Messages in the server\'s Discord channel mention you.'],
+		['telegram', 'Telegram chat ID', '123456789', 'Start a chat with the server\'s Flixarr bot first, then ask @userinfobot for your ID.'],
+		['pushover', 'Pushover user key', '30 letters and numbers', 'On your Pushover dashboard, at the top.'],
+		['ntfy', 'ntfy topic', 'my-flixarr', 'Subscribe to this topic in the ntfy app. Pick something hard to guess.']
+	];
+	const shownAcct = $derived(prefs ? ACCOUNTS.filter(([a]) => prefs!.services?.[a]) : []);
+	let acct = $state<Record<string, string>>({});
+	$effect(() => {
+		if (prefs) acct = { ...prefs.accounts };
+	});
+	async function saveAccounts() {
+		try {
+			prefs = await api<Prefs>('/me/notifications', { method: 'PUT', body: JSON.stringify({ accounts: acct }) });
+			notify('Saved.');
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+		}
+	}
+	const acctDirty = $derived(!!prefs && shownAcct.some(([a]) => (acct[a] ?? '') !== (prefs!.accounts[a] ?? '')));
+
+	// Devices getting push notifications (#124): the browser each was added from, and Remove.
+	type Device = { endpoint: string; device: string; createdAt: string };
+	let devices = $state<Device[]>([]);
+	let thisDevice = $state('');
+	async function loadDevices() {
+		devices = await api<Device[]>('/me/devices').catch(() => []);
+		thisDevice = (await navigator.serviceWorker?.getRegistration('/').then((r) => r?.pushManager.getSubscription()).catch(() => null))?.endpoint ?? '';
+	}
+	async function removeDevice(d: Device) {
+		if (d.endpoint === thisDevice) return setDevice(false);
+		await api('/push', { method: 'DELETE', body: JSON.stringify({ endpoint: d.endpoint }) }).catch(() => {});
+		loadDevices();
+	}
+	// "Chrome on Windows" from a user agent.
+	function deviceName(ua: string) {
+		const b = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'A browser';
+		const o = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac OS X/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : '';
+		return o ? `${b} on ${o}` : b;
+	}
+	async function setPref(ch: Ch, ev: string, on: boolean) {
 		const off = { ...prefs!.off, [ch]: on ? prefs!.off[ch].filter((e) => e !== ev) : [...prefs!.off[ch], ev] };
 		try {
 			prefs = await api<Prefs>('/me/notifications', { method: 'PUT', body: JSON.stringify({ off }) });
@@ -137,7 +183,7 @@
 			<div class="-mx-4 laptop:mx-0"><Row title="My requests" items={mine} more="/requests">{#snippet item(c)}<Poster item={c} />{/snippet}</Row></div>
 		{/if}
 
-		{#if pushOn || shownCh.length}
+		{#if pushOn || shownCh.length || shownAcct.length}
 			<section>
 				<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Notifications</div>
 				<div class="card divide-y divide-gray-700/40">
@@ -149,6 +195,18 @@
 							{:else}
 								<Toggle checked={device} disabled={pushBusy} label="Notifications on this device" about="Push notifications reach every device you turn this on for." onchange={setDevice} />
 							{/if}
+						</div>
+					{/if}
+					{#if devices.length}
+						<div class="px-4 py-3">
+							<div class="mb-1 text-xs text-gray-500">Devices getting push notifications</div>
+							{#each devices as d (d.endpoint)}
+								<div class="flex items-center gap-3 py-1.5 text-sm">
+									<span class="min-w-0 flex-1 truncate text-gray-300">{deviceName(d.device)}{#if d.endpoint === thisDevice}<span class="ml-2 text-xs text-gray-500">This device</span>{/if}</span>
+									<span class="hidden text-xs text-gray-500 tablet:inline">since {fmtDate(d.createdAt)}</span>
+									<button class="text-xs text-gray-400 hover:text-red-300" onclick={() => removeDevice(d)}>Remove</button>
+								</div>
+							{/each}
 						</div>
 					{/if}
 					{#if prefs && shownCh.length}
@@ -166,6 +224,23 @@
 							{#if prefs.events.some((ev) => shownCh.some(([ch]) => !prefs!.sent[ch].includes(ev)))}<p class="mt-2 text-xs text-gray-500">Greyed out: not sent by this server at all (an admin sets that in Settings, Notifications).</p>{/if}
 						</div>
 					{/if}
+				</div>
+			</section>
+		{/if}
+
+		{#if shownAcct.length}
+			<section>
+				<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Your accounts</div>
+				<div class="card divide-y divide-gray-700/40 px-4">
+					<p class="py-3 text-xs text-gray-400">Add yours and news about your own requests and issues also reaches you there. Choose which in the table above.</p>
+					{#each shownAcct as [a, label, ph, how] (a)}
+						<div class="py-3">
+							<label for="acct-{a}" class="block text-sm">{label}</label>
+							<input id="acct-{a}" class="mt-1 w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/60" autocomplete="off" spellcheck="false" placeholder={ph} bind:value={acct[a]} />
+							<p class="mt-1 text-xs text-gray-500">{how}</p>
+						</div>
+					{/each}
+					<div class="flex justify-end py-3"><button class="btn px-5 py-1.5 text-sm" disabled={!acctDirty} onclick={saveAccounts}>Save</button></div>
 				</div>
 			</section>
 		{/if}
