@@ -166,6 +166,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/plex/scan", s.auth(s.admin(s.plexScan)))
 	mux.HandleFunc("GET /api/users", s.auth(s.people(s.userList)))
 	mux.HandleFunc("PUT /api/users/{id}", s.auth(s.people(s.userUpdate)))
+	mux.HandleFunc("GET /api/users/{id}", s.auth(s.people(s.userProfile)))
+	mux.HandleFunc("POST /api/users/bulk", s.auth(s.people(s.userBulk)))
 	mux.HandleFunc("DELETE /api/users/{id}", s.auth(s.admin(s.userDelete)))
 	mux.HandleFunc("POST /api/users/local", s.auth(s.admin(s.userAddLocal)))
 	mux.HandleFunc("PUT /api/users/{id}/password", s.auth(s.admin(s.userSetPassword)))

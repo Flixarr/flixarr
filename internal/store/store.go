@@ -152,6 +152,7 @@ type User struct {
 	MovieLimit  int    `json:"movieLimit"`
 	SeasonLimit int    `json:"seasonLimit"`
 	CreatedAt   string `json:"createdAt"`
+	LastSeen    string `json:"lastSeen,omitempty"` // Users list and profiles only
 }
 
 // UserCount returns how many users exist (0 means first-run setup is needed).
@@ -291,7 +292,19 @@ func (s *Store) CreateSession(userID int64) (string, error) {
 func (s *Store) SessionUser(token string) (*User, error) {
 	row := s.db.QueryRow(`SELECT u.id, u.plex_id, u.username, u.email, u.avatar, u.role, u.perms, u.created_at, u.id = (SELECT MIN(id) FROM users), u.movie_limit, u.season_limit, u.region, u.language
 		FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ?`, hashToken(token), now())
-	return scanUser(row)
+	u, err := scanUser(row)
+	if err == nil {
+		t := time.Now().UTC()
+		s.db.Exec(`UPDATE users SET last_seen = ? WHERE id = ? AND last_seen < ?`, t.Format(time.RFC3339), u.ID, t.Add(-5*time.Minute).Format(time.RFC3339))
+	}
+	return u, err
+}
+
+// LastSeen is when someone last used Flixarr ("" = never since it was tracked).
+func (s *Store) LastSeen(id int64) string {
+	var t string
+	s.db.QueryRow(`SELECT last_seen FROM users WHERE id = ?`, id).Scan(&t)
+	return t
 }
 
 // DeleteSession signs a session out.

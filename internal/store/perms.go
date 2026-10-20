@@ -89,7 +89,7 @@ var ErrOwner = errors.New("the owner always stays an admin")
 
 // Users lists everyone who can sign in, owner first, with how many requests each has made.
 func (s *Store) Users() ([]UserRow, error) {
-	rows, err := s.db.Query(`SELECT ` + userCols + `, (SELECT COUNT(*) FROM requests r WHERE r.user_id = users.id) FROM users ORDER BY id`)
+	rows, err := s.db.Query(`SELECT ` + userCols + `, (SELECT COUNT(*) FROM requests r WHERE r.user_id = users.id), last_seen FROM users ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +99,7 @@ func (s *Store) Users() ([]UserRow, error) {
 		var row UserRow
 		var perms string
 		u := &row.User
-		if err := rows.Scan(&u.ID, &u.PlexID, &u.Username, &u.Email, &u.Avatar, &u.Role, &perms, &u.CreatedAt, &u.Owner, &u.MovieLimit, &u.SeasonLimit, &u.Region, &u.Language, &row.Requests); err != nil {
+		if err := rows.Scan(&u.ID, &u.PlexID, &u.Username, &u.Email, &u.Avatar, &u.Role, &perms, &u.CreatedAt, &u.Owner, &u.MovieLimit, &u.SeasonLimit, &u.Region, &u.Language, &row.Requests, &u.LastSeen); err != nil {
 			return nil, err
 		}
 		u.Perms = splitPerms(perms)

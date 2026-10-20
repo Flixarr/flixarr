@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/Flixarr/flixarr/internal/notify"
 	"github.com/Flixarr/flixarr/internal/store"
@@ -70,19 +71,11 @@ func (s *Server) userUpdate(w http.ResponseWriter, r *http.Request, me *store.Us
 		writeErr(w, http.StatusBadRequest, "Bad request.")
 		return
 	}
-	if !me.Can("admin") {
-		// Managers: up to Manager, never the admin switch, admins or the owner (#148).
-		if slices.Contains(in.Perms, "admin") {
-			writeErr(w, http.StatusForbidden, "Only admins can give admin.")
+	if t, err := s.Store.UserByID(id); err == nil {
+		if code, why := mayChange(me, t, in.Perms); code != 0 {
+			writeErr(w, code, why)
 			return
 		}
-		if t, err := s.Store.UserByID(id); err == nil && (t.Owner || t.Can("admin")) {
-			writeErr(w, http.StatusForbidden, "Only admins can change an admin.")
-			return
-		}
-	} else if id == me.ID && !slices.Contains(in.Perms, "admin") {
-		writeErr(w, http.StatusConflict, "You can't take admin away from yourself.")
-		return
 	}
 	if in.MovieLimit < 0 || in.SeasonLimit < 0 || in.MovieLimit > 1000 || in.SeasonLimit > 1000 {
 		writeErr(w, http.StatusBadRequest, "Limits go from 0 (unlimited) to 1000.")
@@ -103,6 +96,100 @@ func (s *Server) userUpdate(w http.ResponseWriter, r *http.Request, me *store.Us
 	default:
 		writeJSON(w, http.StatusOK, u)
 	}
+}
+
+// mayChange says whether me may give t these switches: 0 when yes, otherwise a status and why not.
+// Managers change people up to Manager: never the admin switch, admins or the owner (#148). Nobody takes
+// admin away from themselves or the owner.
+func mayChange(me, t *store.User, perms []string) (int, string) {
+	admin := slices.Contains(perms, "admin")
+	if !me.Can("admin") {
+		if t.Owner || t.Can("admin") {
+			return http.StatusForbidden, "Only admins can change an admin."
+		}
+		if admin {
+			return http.StatusForbidden, "Only admins can give admin."
+		}
+	}
+	if t.Owner && !admin {
+		return http.StatusConflict, "The owner always stays an admin."
+	}
+	if t.ID == me.ID && me.Can("admin") && !admin {
+		return http.StatusConflict, "You can't take admin away from yourself."
+	}
+	return 0, ""
+}
+
+// userProfile is a person's profile page (#149): who they are, their numbers and their latest requests.
+func (s *Server) userProfile(w http.ResponseWriter, r *http.Request, me *store.User) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	u, err := s.Store.UserByID(id)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "That user doesn't exist.")
+		return
+	}
+	u.LastSeen = s.Store.LastSeen(id)
+	stats, _ := s.userStats(id)
+	cards, _ := s.requestCards(r, id)
+	writeJSON(w, http.StatusOK, map[string]any{"user": u, "stats": stats, "requests": cards, "roles": store.RolePerms,
+		"admin": me.Can("admin"), "canChange": me.Can("admin") || !(u.Owner || u.Can("admin"))})
+}
+
+// userBulk changes many people at once (#147): {ids, role, set}. role puts them on a preset (their manual
+// switches stay); set turns switches on (true) or off (false); switches not in set are left alone. People
+// the signed-in person may not change are skipped, with why.
+func (s *Server) userBulk(w http.ResponseWriter, r *http.Request, me *store.User) {
+	var in struct {
+		IDs  []int64         `json:"ids"`
+		Role string          `json:"role"`
+		Set  map[string]bool `json:"set"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 65536)).Decode(&in); err != nil || len(in.IDs) == 0 || len(in.IDs) > 10000 {
+		writeErr(w, http.StatusBadRequest, "Bad request.")
+		return
+	}
+	preset, isRole := store.RolePerms[in.Role]
+	if in.Role != "" && !isRole {
+		writeErr(w, http.StatusBadRequest, "Pick User, Trusted or Manager.")
+		return
+	}
+	type skip struct {
+		Name string `json:"name"`
+		Why  string `json:"why"`
+	}
+	updated, skipped := 0, []skip{}
+	for _, id := range in.IDs {
+		t, err := s.Store.UserByID(id)
+		if err != nil {
+			continue
+		}
+		perms := slices.Clone(t.Perms)
+		if isRole {
+			perms = slices.Clone(preset)
+			for _, p := range store.ManualPerms {
+				if slices.Contains(t.Perms, p) {
+					perms = append(perms, p)
+				}
+			}
+		}
+		for p, on := range in.Set {
+			perms = slices.DeleteFunc(perms, func(x string) bool { return x == p })
+			if on {
+				perms = append(perms, p)
+			}
+		}
+		if code, why := mayChange(me, t, perms); code != 0 {
+			skipped = append(skipped, skip{t.Username, strings.TrimSuffix(why, ".")})
+			continue
+		}
+		if _, err := s.Store.SetPerms(id, perms); err != nil {
+			skipped = append(skipped, skip{t.Username, "couldn't be saved"})
+			continue
+		}
+		updated++
+	}
+	s.Log.Info("users changed together", "by", me.Username, "updated", updated, "skipped", len(skipped))
+	writeJSON(w, http.StatusOK, map[string]any{"updated": updated, "skipped": skipped})
 }
 
 func (s *Server) userDelete(w http.ResponseWriter, r *http.Request, me *store.User) {
