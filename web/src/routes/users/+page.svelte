@@ -11,15 +11,16 @@
 	import Avatar from '#lib/components/Avatar.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import Modal from '#lib/components/Modal.svelte';
-	import { ROLES, ROLE_TONE, roleLabel, PERM_TEXT, MANUAL_TEXT, makePassword } from '#lib/roles.ts';
+	import { ROLES, ROLE_TONE, roleLabel, PERM_TEXT, MANUAL_TEXT, NO_APPROVALS, makePassword } from '#lib/roles.ts';
 
 	type Row = User & { requests: number };
 	type Friend = { plexId: number; username: string; email: string; avatar: string; added: boolean };
-	const ROLE_ABOUT: Record<string, string> = { User: 'Request and report issues', Trusted: 'Plus choose quality and skip approval', Manager: 'Plus manage requests, issues and users' };
+	const roleAbout = (r: string) => ({ User: 'Request and report issues', Trusted: approvals ? 'Plus choose quality and skip approval' : 'Plus choose quality', Manager: 'Plus manage requests, issues and users' })[r];
 
 	let users = $state<Row[] | null>(null);
 	let userQuery = $state('');
 	let iAmAdmin = $state(false);
+	let approvals = $state(true);
 	let saving = $state(false);
 	let importOpen = $state(false);
 	let friends = $state<Friend[] | null>(null);
@@ -31,9 +32,10 @@
 	});
 	async function load() {
 		try {
-			const d = await api<{ users: Row[]; admin: boolean }>('/users');
+			const d = await api<{ users: Row[]; admin: boolean; approvalRequired: boolean }>('/users');
 			users = d.users;
 			iAmAdmin = d.admin;
+			approvals = d.approvalRequired;
 		} catch (e) {
 			notify(e instanceof Error ? e.message : 'Could not load users.', 'orange');
 		}
@@ -215,7 +217,7 @@
 				{#if roleMenu}
 					<div class="absolute bottom-12 right-0 w-64 overflow-hidden rounded-xl border border-gray-700/60 bg-gray-900 py-1.5 shadow-2xl">
 						{#each ROLES as r (r)}
-							<button class="block w-full px-4 py-2 text-left text-sm hover:bg-white/5" onclick={() => bulk({ role: r })}><span class="block">{r}</span><span class="block text-xs text-gray-500">{ROLE_ABOUT[r]}</span></button>
+							<button class="block w-full px-4 py-2 text-left text-sm hover:bg-white/5" onclick={() => bulk({ role: r })}><span class="block">{r}</span><span class="block text-xs text-gray-500">{roleAbout(r)}</span></button>
 						{/each}
 						<p class="border-t border-gray-700/40 px-4 pt-2 text-[11px] text-gray-500">Admin and Plex Watchlist requests stay as they are.</p>
 					</div>
@@ -234,9 +236,10 @@
 			{#each rows as [k, label], i (k)}
 				{@const n = have(k)}
 				{@const mixed = n > 0 && n < who.length}
+				{@const idle = k === 'autoApprove' && !approvals}
 				{#if i === PERM_TEXT.length}<div class="py-2 text-xs font-medium text-gray-500">Turned on by hand</div>{/if}
-				<div class="flex items-center justify-between gap-3 py-3">
-					<span class="min-w-0"><span class="block text-sm">{label}</span><span class="block text-xs text-gray-500">{mixed ? `${n} of ${who.length} have it` : n ? 'All of them have it' : 'None of them have it'}</span></span>
+				<div class="flex items-center justify-between gap-3 py-3 {idle ? 'pointer-events-none opacity-60' : ''}">
+					<span class="min-w-0"><span class="block text-sm">{label}</span><span class="block text-xs text-gray-500">{idle ? NO_APPROVALS : mixed ? `${n} of ${who.length} have it` : n ? 'All of them have it' : 'None of them have it'}</span></span>
 					<span class="flex shrink-0 gap-0.5 rounded-lg border border-gray-700/60 p-0.5 text-xs" role="radiogroup" aria-label={label}>
 						{#each [['off', 'Off'], ...(mixed ? [['keep', 'Mixed']] : []), ['on', 'On']] as [v, t] (v)}
 							<button role="radio" aria-checked={setTo[k] === v} class="rounded-md px-2.5 py-1 {setTo[k] === v ? (v === 'on' ? 'bg-primary text-white' : v === 'off' ? 'bg-gray-700 text-white' : 'bg-gray-800 text-gray-200 ring-1 ring-gray-600') : 'text-gray-400 hover:text-white'}" onclick={() => (setTo[k] = v as 'on' | 'off' | 'keep')}>{t}</button>

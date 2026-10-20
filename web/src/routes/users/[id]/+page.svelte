@@ -15,10 +15,10 @@
 	import Select from '#lib/components/Select.svelte';
 	import Row from '#lib/components/Row.svelte';
 	import Poster from '#lib/components/Poster.svelte';
-	import { ROLES, MANUAL_PERMS, ROLE_TONE, roleLabel, PERM_TEXT, MANUAL_TEXT, makePassword } from '#lib/roles.ts';
+	import { ROLES, MANUAL_PERMS, ROLE_TONE, roleLabel, PERM_TEXT, MANUAL_TEXT, NO_APPROVALS, makePassword } from '#lib/roles.ts';
 
 	type Stats = { requests: number; available: number; waiting: number; inProgress: number; openIssues: number };
-	type Info = { user: User; stats: Stats; requests: Card[]; roles: Record<string, string[]>; admin: boolean; canChange: boolean };
+	type Info = { user: User; stats: Stats; requests: Card[]; roles: Record<string, string[]>; admin: boolean; canChange: boolean; approvalRequired: boolean };
 	let info = $state<Info | null>(null);
 	let perms = $state<string[]>([]);
 	let movieLimit = $state(0);
@@ -148,7 +148,8 @@
 					<div class={head}>Permissions</div>
 					<div class="card divide-y divide-gray-700/40 px-4">
 						{#each PERM_TEXT as [k, label, about] (k)}
-							<div class="py-3"><Toggle checked={isAdmin || perms.includes(k)} {label} {about} disabled={isAdmin || !can} onchange={(on) => setPerm(k, on)} /></div>
+							{@const idle = k === 'autoApprove' && !info.approvalRequired}
+							<div class="py-3 {idle ? 'opacity-60' : ''}"><Toggle checked={isAdmin || perms.includes(k)} {label} about={idle ? NO_APPROVALS : about} disabled={isAdmin || !can || idle} onchange={(on) => setPerm(k, on)} /></div>
 						{/each}
 					</div>
 				</section>

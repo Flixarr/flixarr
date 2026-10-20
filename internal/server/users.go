@@ -57,7 +57,8 @@ func (s *Server) userList(w http.ResponseWriter, r *http.Request, me *store.User
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"users": list, "perms": store.AllPerms, "roles": store.RolePerms, "plexSignIn": s.plexSignInOpen(), "admin": me.Can("admin")})
+	writeJSON(w, http.StatusOK, map[string]any{"users": list, "perms": store.AllPerms, "roles": store.RolePerms, "plexSignIn": s.plexSignInOpen(), "admin": me.Can("admin"),
+		"approvalRequired": s.Requests.ApprovalRequired()})
 }
 
 func (s *Server) userUpdate(w http.ResponseWriter, r *http.Request, me *store.User) {
@@ -132,7 +133,7 @@ func (s *Server) userProfile(w http.ResponseWriter, r *http.Request, me *store.U
 	stats, _ := s.userStats(id)
 	cards, _ := s.requestCards(r, id)
 	writeJSON(w, http.StatusOK, map[string]any{"user": u, "stats": stats, "requests": cards, "roles": store.RolePerms,
-		"admin": me.Can("admin"), "canChange": me.Can("admin") || !(u.Owner || u.Can("admin"))})
+		"admin": me.Can("admin"), "canChange": me.Can("admin") || !(u.Owner || u.Can("admin")), "approvalRequired": s.Requests.ApprovalRequired()})
 }
 
 // userBulk changes many people at once (#147): {ids, role, set}. role puts them on a preset (their manual

@@ -25,6 +25,9 @@ export const PERM_TEXT: [string, string, string][] = [
 	['manageIssues', 'Manage issues', "See, resolve and remove anyone's issues."],
 	['redownload', 'Fix and redownload', 'Fix missing or bad episodes and movies: search again, or delete the file, block its release and download a new copy. Also needed to delete files from the admin panel.']
 ];
+// Auto-approve does nothing while approvals are off (Settings, Requests); the switch says so instead.
+export const NO_APPROVALS = "Approvals are off (Settings, Requests), so everyone's requests go straight through. This only matters if they're turned on.";
+
 // Turned on by hand, never by a role.
 export const MANUAL_TEXT: [string, string, string][] = [
 	['admin', 'Admin', 'Full access to everything, including Settings and Users.'],
