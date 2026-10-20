@@ -34,7 +34,7 @@
 			<span aria-label={dot[2]} class="absolute right-1.5 top-1.5 z-10 grid size-6 place-items-center rounded-full {dot[0]} shadow-lg ring-2 ring-gray-950/60"><svg class="size-3.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">{@html dot[1]}</svg></span>
 		{/if}
 		<div class="absolute left-1.5 top-1.5 z-10">
-			<span class="rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide {item.type === 'series' ? 'bg-blue-600/80' : 'bg-primary/90'}">{item.type === 'series' ? 'Series' : 'Movie'}</span>
+			<span class="rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide {item.type === 'series' ? 'bg-primary/90' : 'bg-blue-600/80'}">{item.type === 'series' ? 'Series' : 'Movie'}</span>
 		</div>
 	</div>
 	<!-- relative: a tilted poster paints in its own layer, so its shadow would otherwise cover this text. -->

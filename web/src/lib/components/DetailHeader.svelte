@@ -34,7 +34,7 @@
 		{/if}
 		<div class="min-w-0 space-y-3 tablet:pb-1">
 			<div class="flex flex-wrap items-center gap-2 text-xs">
-				<span class="rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide {item.type === 'series' ? 'bg-blue-600/80' : 'bg-primary/90'}">{item.type === 'series' ? 'Series' : 'Movie'}</span>
+				<span class="rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide {item.type === 'series' ? 'bg-primary/90' : 'bg-blue-600/80'}">{item.type === 'series' ? 'Series' : 'Movie'}</span>
 				{@render chip?.()}
 			</div>
 			{#if item.logo && !logoBroken}
