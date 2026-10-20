@@ -43,6 +43,13 @@
 					<button class="mt-2 text-xs text-primary-light hover:underline" onclick={() => ((appUrl = location.origin), saveUrl())}>Use {location.origin}</button>
 				{/if}
 			</div>
+		</div>
+	</div>
+	<!-- Region and language are about what Discover and title pages show, not the app's own language (#113). -->
+	<div>
+		<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Discover</div>
+		<div class="card px-4">
+			<p class="pt-3 text-xs text-gray-400">What movies and series show: release dates, ratings, upcoming lists, titles and descriptions. Flixarr itself stays in English. People can pick their own in their Profile.</p>
 			<div class="grid gap-4 py-3 tablet:grid-cols-2">
 				<div>
 					<label for="gen-region" class="block text-sm">Region</label>
