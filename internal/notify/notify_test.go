@@ -354,6 +354,15 @@ func TestTestInstallQuiet(t *testing.T) {
 	if err := n.Test(context.Background(), "webhook", Config{URL: srv.URL, Method: "POST"}); err != nil || hits != 1 {
 		t.Fatalf("send test: %v, %d sent", err, hits)
 	}
+	// A channel switched to send from the dev install does (#136).
+	add(n, "webhook", Config{On: true, URL: srv.URL, Method: "POST", Events: []string{"request_available"}, FromDev: true})
+	n.Send(n.FromRequest("request_available", store.Request{ID: 1, Type: "movie", TmdbID: 603, Title: "The Matrix"}))
+	time.Sleep(200 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if hits != 2 {
+		t.Fatalf("from-dev channel: %d sent in all", hits)
+	}
 }
 
 // Own accounts (#124): checked when saved, and news about someone's request also goes to their own

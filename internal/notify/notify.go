@@ -49,6 +49,9 @@ type Channel struct {
 type Config struct {
 	On     bool     `json:"on"`
 	Events []string `json:"events"`
+	// FromDev: a dev install sends this channel's notifications too (#136). Off by default, so a dev
+	// install never doubles a real install's notifications by accident; ignored on a real install.
+	FromDev bool `json:"fromDev"`
 	// Discord
 	WebhookURL  string `json:"webhookUrl,omitempty"`
 	BotName     string `json:"botName,omitempty"`
@@ -586,14 +589,11 @@ func (n *Notifier) FromServer(name, detail string) Message {
 	return m
 }
 
-// Send delivers a message to every channel that's on and has the event, in the background. A test install
-// sends none (Test still works).
+// Send delivers a message to every channel that's on and has the event, in the background. A dev install
+// sends only through channels switched to send from it (Test always works).
 func (n *Notifier) Send(m Message) {
-	if testinstall.On {
-		return
-	}
 	for _, c := range n.Channels() {
-		if !c.On || !slices.Contains(c.Events, m.Event) {
+		if !c.On || !slices.Contains(c.Events, m.Event) || (testinstall.On && !c.FromDev) {
 			continue
 		}
 		go func() {

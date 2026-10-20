@@ -8,10 +8,11 @@
 	import Select from '#lib/components/Select.svelte';
 	import Modal from '#lib/components/Modal.svelte';
 	import Icon from '#lib/components/Icon.svelte';
+	import { session } from '#lib/session.svelte.ts';
 
 	type Channel = {
 		id: string; service: string; name: string;
-		on: boolean; events: string[]; botName?: string; poster: boolean; mentionHere: boolean; method?: string;
+		on: boolean; fromDev?: boolean; events: string[]; botName?: string; poster: boolean; mentionHere: boolean; method?: string;
 		webhookUrlHint?: string; urlHint?: string; authSet: boolean;
 		host?: string; port?: number; security?: string; username?: string; from?: string; fromName?: string; passwordSet?: boolean;
 		target?: string; server?: string; tokenSet?: boolean;
@@ -89,7 +90,7 @@
 	);
 
 	function body() {
-		const b: Record<string, unknown> = { id: editing, service: tab, name: form.name, on: form.on, events: form.events, poster: form.poster, mentionHere: form.mentionHere, botName: form.botName, method: form.method };
+		const b: Record<string, unknown> = { id: editing, service: tab, name: form.name, on: form.on, fromDev: !!form.fromDev, events: form.events, poster: form.poster, mentionHere: form.mentionHere, botName: form.botName, method: form.method };
 		if (tab === 'discord') b.webhookUrl = form.secret.trim();
 		else if (SIMPLE[tab]) Object.assign(b, { token: form.secret.trim(), target: form.target?.trim(), server: form.server?.trim(), clearAuth: form.clearAuth });
 		else if (tab === 'email') Object.assign(b, { host: form.host?.trim(), port: Number(form.port), security: form.security, username: form.username?.trim(), password: form.secret, from: form.from?.trim(), fromName: form.fromName, clearAuth: form.clearAuth });
@@ -195,6 +196,10 @@
 					<div class="flex-1"><Toggle checked={form.on} label="Enabled" about={form.on ? 'Sending notifications through this channel.' : 'Turned off. Nothing is sent.'} onchange={(on) => (form.on = on)} /></div>
 					<button class="btn-ghost shrink-0 px-3 py-1 text-xs" disabled={!!busy || (!form.secret.trim() && !hasSecret)} onclick={test}>{busy === 'test' ? 'Sending…' : 'Send test'}</button>
 				</div>
+				{#if session.status?.testInstall}
+					<!-- #136: a dev install sends nothing on its own unless a channel says so. -->
+					<div class="py-3"><Toggle checked={!!form.fromDev} label="Send from this dev install" about="A dev install sends no notifications on its own. Turn this on to get this channel's real notifications from it anyway. Leave it off once the real install sends the same ones, or everything arrives twice." onchange={(on) => (form.fromDev = on)} /></div>
+				{/if}
 			</div>
 
 			<div>
