@@ -18,7 +18,7 @@
 		servers: { kind: string; name: string; address: string; action: string; why: string }[];
 		notes: string[];
 	};
-	type Result = { version: string; users: number; requests: number; issues: number; servers: string[]; at: string };
+	type Result = { version: string; users: number; requests: number; issues: number; servers: string[]; at: string; plan?: Preview };
 	type State = { running: boolean; stage: string; done: number; total: number; error?: string; result?: Result; finished?: string };
 
 	const STATUSES: [string, string, string, string][] = [
@@ -38,6 +38,8 @@
 	let mode = $state<'api' | 'file'>('api');
 	let dbFile = $state<File | null>(null);
 	let settingsFile = $state<File | null>(null);
+	// The summary (#126): open right after an import finishes; the last import's can be opened again.
+	let summary = $state(false);
 
 	$effect(() => {
 		api<State>('/import/seerr').then((s) => (st = s));
@@ -47,7 +49,7 @@
 			if (was && !s.running) {
 				preview = null;
 				if (s.error) notify(s.error, 'orange');
-				else notify('Import finished.', 'green');
+				else summary = !!s.result?.plan;
 			}
 		});
 	});
@@ -86,7 +88,66 @@
 	<div class="card p-4"><div class="text-xs uppercase tracking-wide text-gray-500">{label}</div><div class="mt-1 text-2xl font-bold tabular-nums">{fmtNum(n)}</div><div class="text-xs text-gray-500">{sub}</div></div>
 {/snippet}
 
-{#if st?.running}
+{#snippet report(r: Result, p: Preview)}
+	{@const by = p.requests.byStatus}
+	{@const next = [
+		p.users.noPassword && [`Set a password for ${fmtNum(p.users.noPassword)} local account${p.users.noPassword === 1 ? '' : 's'}, then give it to them. They came over without one.`, '/users', 'Users'],
+		[`Set up notifications so people hear when their requests are ready.`, '/settings#notifications', 'Notifications'],
+		by.importing && [`${fmtNum(by.importing)} request${by.importing === 1 ? ' is' : 's are'} almost ready. Flixarr asks Plex to scan for them, and they turn Available on their own.`, '/requests', 'Requests'],
+		by.pending && [`${fmtNum(by.pending)} request${by.pending === 1 ? '' : 's'} wait for approval.`, '/requests', 'Requests'],
+		r.servers.length && [`Check ${r.servers.join(' and ')}: the quality and folder new requests use.`, '/settings#services', 'Services']
+	].filter(Boolean) as [string, string, string][]}
+	<div class="space-y-4">
+		<div class="flex items-center gap-2 text-sm font-medium"><span class="grid size-5 place-items-center rounded-full bg-green-500/20 text-green-400"><Icon name="check" class="size-3" /></span>Imported from Seerr {r.version} · {fmtDate(r.at, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
+		<div class="grid gap-3 tablet:grid-cols-3">
+			{@render stat('People', p.users.total, [p.users.new && `${fmtNum(p.users.new)} added`, p.users.existing && `${fmtNum(p.users.existing)} matched to people already here`, p.users.imported && `${fmtNum(p.users.imported)} brought over before`].filter(Boolean).join(' · ') || 'None')}
+			{@render stat('Requests', r.requests, `${fmtNum(p.requests.movies)} movies · ${fmtNum(p.requests.series)} series`)}
+			{@render stat('Issues', r.issues, `${fmtNum(p.issues.open)} open · ${fmtNum(p.issues.resolved)} resolved`)}
+		</div>
+		<div>
+			{@render heading('How the requests came in')}
+			<div class="card divide-y divide-gray-700/40 px-4 text-sm">
+				{#each STATUSES as [k, l, about, dot] (k)}
+					<div class="flex items-center gap-3 py-2.5"><span class="size-2 shrink-0 rounded-full {dot}"></span><span class="min-w-0 flex-1">{l} {#if about}<span class="text-xs text-gray-500">{about}</span>{/if}</span><span class="tabular-nums">{fmtNum(by[k] ?? 0)}</span></div>
+				{/each}
+			</div>
+		</div>
+		{#if p.servers.length}
+			<div>
+				{@render heading('Radarr and Sonarr')}
+				<div class="card divide-y divide-gray-700/40 px-4 text-sm">
+					{#each p.servers as s (s.kind + s.name + s.address)}
+						<div class="flex items-center gap-3 py-2.5"><span class="min-w-0 flex-1 truncate">{s.name} <span class="text-xs text-gray-500">{s.address}</span></span><span class="shrink-0 text-xs {s.action === 'add' ? 'text-green-400' : 'text-gray-400'}">{s.action === 'add' ? 'Added' : s.why}</span></div>
+					{/each}
+				</div>
+			</div>
+		{/if}
+		{#if p.notes.length || p.requests.skipped || p.requests.imported}
+			<div>
+				{@render heading('Left out')}
+				<div class="card space-y-1 px-4 py-3 text-xs text-gray-400">
+					{#if p.requests.imported}<p>{fmtNum(p.requests.imported)} request{p.requests.imported === 1 ? ' was' : 's were'} brought over before, so {p.requests.imported === 1 ? 'it was' : 'they were'} skipped.</p>{/if}
+					{#each p.notes as n (n)}<p>{n}</p>{/each}
+				</div>
+			</div>
+		{/if}
+		<div>
+			{@render heading("What's next")}
+			<div class="card divide-y divide-gray-700/40 px-4 text-sm">
+				{#each next as [text, href, label] (href + text)}
+					<a {href} class="flex items-center gap-3 py-3 hover:text-white"><span class="min-w-0 flex-1 text-gray-300">{text}</span><span class="shrink-0 text-xs text-primary-light">{label}</span><Icon name="chevron" class="size-4 shrink-0 text-gray-500" /></a>
+				{/each}
+			</div>
+		</div>
+	</div>
+{/snippet}
+
+{#if summary && st?.result?.plan && !st.running}
+	<div class="space-y-4">
+		{@render report(st.result, st.result.plan)}
+		{#if !setup}<div class="flex justify-end"><button class="btn px-6" onclick={() => (summary = false)}>Done</button></div>{/if}
+	</div>
+{:else if st?.running}
 	<div class="card space-y-3 p-4 text-sm">
 		<div class="flex justify-between gap-3"><span>{st.stage}</span>{#if st.total}<span class="tabular-nums text-gray-400">{fmtNum(st.done)} of {fmtNum(st.total)}</span>{/if}</div>
 		<div class="h-1.5 overflow-hidden rounded-full bg-gray-700/60"><div class="h-full rounded-full bg-primary transition-all" style="width:{pct}%"></div></div>
@@ -137,6 +198,7 @@
 			<div class="card space-y-1 p-4 text-sm">
 				<div class="flex items-center gap-2 font-medium"><span class="grid size-5 place-items-center rounded-full bg-green-500/20 text-green-400"><Icon name="check" class="size-3" /></span>Imported from Seerr {st.result.version}</div>
 				<p class="text-xs text-gray-400">{fmtNum(st.result.users)} new {st.result.users === 1 ? 'person' : 'people'}, {fmtNum(st.result.requests)} request{st.result.requests === 1 ? '' : 's'}, {fmtNum(st.result.issues)} issue{st.result.issues === 1 ? '' : 's'}{st.result.servers.length ? ` and ${st.result.servers.join(', ')}` : ''}. {fmtDate(st.result.at, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.</p>
+				{#if st.result.plan}<button class="text-xs text-primary-light hover:underline" onclick={() => (summary = true)}>See the summary</button>{/if}
 			</div>
 		{/if}
 		{#if st?.error}<p class="rounded-xl bg-red-500/10 p-3 text-xs text-red-300 ring-1 ring-red-500/30">The last import stopped: {st.error}</p>{/if}

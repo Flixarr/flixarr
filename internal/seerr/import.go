@@ -303,6 +303,8 @@ type Result struct {
 	Issues   int      `json:"issues"`
 	Servers  []string `json:"servers"`
 	At       string   `json:"at"`
+	// Plan is what the import worked out before bringing things over, for the summary (#126).
+	Plan *Preview `json:"plan,omitempty"`
 }
 
 const keyLast = "seerr_import_last"
@@ -576,7 +578,7 @@ func (im *Importer) Run(ctx context.Context, src Source) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	res := &Result{Version: d.Version, Servers: []string{}}
+	res := &Result{Version: d.Version, Servers: []string{}, Plan: p}
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	// Radarr / Sonarr first, so requests belong to them.
