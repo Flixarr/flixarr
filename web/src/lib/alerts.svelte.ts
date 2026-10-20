@@ -2,6 +2,7 @@
 // since the bell was last opened; the number = alerts not tapped yet.
 import { api } from './api';
 import { on } from './live.svelte';
+import { alertToast } from './toast.svelte';
 
 export interface Alert { id: number; key: string; kind: 'news' | 'todo'; title: string; detail: string; link: string; poster: string; at: string; tapped: boolean; new: boolean }
 
@@ -12,9 +13,16 @@ export const anyNew = () => alerts.list.some((a) => a.new);
 // Radarr/Sonarr problems lead to Settings → Services, so the red-dot trail follows them there.
 export const servicesUnread = () => alerts.list.some((a) => !a.tapped && a.key.startsWith('arr:'));
 
+// What the bell held already (id and time), so only alerts that arrive or come back later pop up as a toast
+// (#121); null until the first load, which never pops anything.
+let known: Set<string> | null = null;
+const mark = (a: Alert) => `${a.id}:${a.at}`;
+
 async function set(p: Promise<{ alerts: Alert[] }>) {
 	try {
 		alerts.list = (await p).alerts;
+		if (known) for (const a of alerts.list) if (a.new && !a.tapped && !known.has(mark(a))) alertToast(a.title, a.detail, a.link, () => tapAlert(a.id));
+		known = new Set(alerts.list.map(mark));
 	} catch {
 		/* signed out or offline: keep what's shown */
 	}
