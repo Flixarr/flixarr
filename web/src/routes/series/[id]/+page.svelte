@@ -87,9 +87,9 @@
 			{#if t}<RequestButton item={t} bind:req={brief} />{/if}
 			{#if t && (inLib || waiting) && can('reportIssues')}<button class="btn-ghost act" onclick={() => (issueOpen = true)}><Icon name="issues" class="size-4" />Report issue</button>{/if}
 			{#if t && (inLib || waiting) && can('redownload') && !can('manageRequests')}<FixMenu title={t.title} series={true} redownload={() => (fixOpen = true)} class="btn-ghost act" />{/if}
-			{#if t && can('manageRequests')}<button class="btn-ghost act" onclick={() => (adminOpen = true)}><Icon name="settings" class="size-4" />Admin</button>{/if}
 			{#if t?.trailer}<button class="btn-ghost act" onclick={() => (trailer = true)}><Icon name="play" class="size-4" />Trailer</button>{/if}
 			{#if t && brief?.plex}<LeavingActions type="series" id={t.id} title={t.title} />{/if}
+			{#if t && can('manageRequests')}<button class="btn-ghost act" onclick={() => (adminOpen = true)}><Icon name="settings" class="size-4" />Admin</button>{/if}
 		{/snippet}
 	</DetailHeader>
 	<IssueModal bind:open={issueOpen} item={t} inLibrary={inLib} {waiting} />
