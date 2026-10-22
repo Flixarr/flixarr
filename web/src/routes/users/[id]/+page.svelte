@@ -15,7 +15,7 @@
 	import Select from '#lib/components/Select.svelte';
 	import Row from '#lib/components/Row.svelte';
 	import Poster from '#lib/components/Poster.svelte';
-	import { ROLES, MANUAL_PERMS, ROLE_TONE, roleLabel, PERM_TEXT, MANUAL_TEXT, NO_APPROVALS, makePassword } from '#lib/roles.ts';
+	import { ROLES, MANUAL_PERMS, ROLE_TONE, roleLabel, PERM_GROUPS, NOT_IN_ROLE, NO_APPROVALS, makePassword } from '#lib/roles.ts';
 
 	type Stats = { requests: number; available: number; waiting: number; inProgress: number; openIssues: number };
 	type Info = { user: User; stats: Stats; requests: Card[]; roles: Record<string, string[]>; admin: boolean; canChange: boolean; approvalRequired: boolean };
@@ -144,24 +144,22 @@
 					</div>
 					<p class="mt-1.5 text-xs text-gray-500">{u.owner ? 'The owner always stays an admin.' : isAdmin ? 'Admins can do everything. Their role counts again if Admin is turned off.' : 'A role is a preset. Change any of its switches and the role becomes Custom.'}</p>
 				</section>
-				<section>
-					<div class={head}>Permissions</div>
-					<div class="card divide-y divide-gray-700/40 px-4">
-						{#each PERM_TEXT as [k, label, about] (k)}
-							{@const idle = k === 'autoApprove' && !info.approvalRequired}
-							<div class="py-3 {idle ? 'opacity-60' : ''}"><Toggle checked={isAdmin || perms.includes(k)} {label} about={idle ? NO_APPROVALS : about} disabled={isAdmin || !can || idle} onchange={(on) => setPerm(k, on)} /></div>
-						{/each}
-					</div>
-				</section>
-				<section>
-					<div class={head}>Turned on by hand</div>
-					<div class="card divide-y divide-gray-700/40 px-4">
-						{#each MANUAL_TEXT.filter(([k]) => info!.admin || k !== 'admin') as [k, label, about] (k)}
-							<div class="py-3"><Toggle checked={(k === 'watchlist' && isAdmin) || perms.includes(k)} {label} {about} disabled={!can || (k === 'admin' && (u.owner || u.id === session.me?.id)) || (k === 'watchlist' && isAdmin)} onchange={(on) => setPerm(k, on)} /></div>
-						{/each}
-					</div>
-					<p class="mt-1.5 text-xs text-gray-500">Never part of a role: picking a role leaves these as they are.</p>
-				</section>
+				<!-- Grouped by what they're for (#158). Admin is last in Managing; while it's on, the rest show on. -->
+				{#each PERM_GROUPS as [group, list] (group)}
+					<section>
+						<div class={head}>{group}</div>
+						<div class="card divide-y divide-gray-700/40 px-4">
+							{#each list.filter(([k]) => info!.admin || k !== 'admin') as [k, label, about] (k)}
+								{@const idle = k === 'autoApprove' && !info.approvalRequired}
+								{@const self = k === 'admin'}
+								<div class="py-3 {idle ? 'opacity-60' : ''}">
+									<Toggle checked={(!self && isAdmin) || perms.includes(k)} {label} about={idle ? NO_APPROVALS : about} tag={MANUAL_PERMS.includes(k) ? NOT_IN_ROLE : ''}
+										disabled={!can || idle || (self ? u.owner || u.id === session.me?.id : isAdmin)} onchange={(on) => setPerm(k, on)} />
+								</div>
+							{/each}
+						</div>
+					</section>
+				{/each}
 			</div>
 			<div class="space-y-6">
 				<section>

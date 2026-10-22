@@ -14,25 +14,33 @@ export const ROLE_TONE: Record<string, string> = {
 	User: 'bg-gray-800 text-gray-300 ring-gray-700/60'
 };
 
-// The switches as Users and profiles show them: [key, label, what it does].
-export const PERM_TEXT: [string, string, string][] = [
-	['manageRequests', 'Manage requests', "Approve, decline, retry and remove anyone's requests."],
-	['autoApprove', 'Auto-approve', 'Their requests skip approval.'],
-	['requestMovies', 'Request movies', ''],
-	['requestTv', 'Request series', ''],
-	['advanced', 'Choose quality', 'Pick a quality other than the default when requesting.'],
-	['reportIssues', 'Report issues', 'Report problems on titles in the library.'],
-	['manageIssues', 'Manage issues', "See, resolve and remove anyone's issues."],
-	['redownload', 'Fix and redownload', 'Fix missing or bad episodes and movies: search again, or delete the file, block its release and download a new copy. Also needed to delete files from the admin panel.']
+// The switches as profiles and Edit permissions show them, grouped by what they're for (#158). Each group
+// goes from what everyone gets to what fewer people get. [key, label, what it does].
+export type Perm = [string, string, string];
+export const PERM_GROUPS: [string, Perm[]][] = [
+	['Requests', [
+		['requestMovies', 'Request movies', ''],
+		['requestTv', 'Request series', ''],
+		['advanced', 'Choose quality', 'Pick a quality other than the default when requesting.'],
+		['autoApprove', 'Auto-approve', 'Their requests skip approval.'],
+		['watchlist', 'Plex Watchlist requests', 'Can switch on requests from their Plex Watchlist (in their Profile).']
+	]],
+	['Issues', [
+		['reportIssues', 'Report issues', 'Report problems on titles in the library.']
+	]],
+	['Managing', [
+		['manageRequests', 'Manage requests', "Approve, decline, retry and remove anyone's requests."],
+		['manageIssues', 'Manage issues', "See, resolve and remove anyone's issues."],
+		['redownload', 'Fix and redownload', 'Fix missing or bad episodes and movies: search again, or delete the file, block its release and download a new copy. Also needed to delete files from the admin panel.'],
+		['admin', 'Admin', 'Full access to everything, including Settings and Users.']
+	]]
 ];
+// The tag on switches no role sets (picking a role leaves them as they are).
+export const NOT_IN_ROLE = 'Not in any role';
+
 // Auto-approve does nothing while approvals are off (Settings, Requests); the switch says so instead.
 export const NO_APPROVALS = "Approvals are off (Settings, Requests), so everyone's requests go straight through. This only matters if they're turned on.";
 
-// Turned on by hand, never by a role.
-export const MANUAL_TEXT: [string, string, string][] = [
-	['admin', 'Admin', 'Full access to everything, including Settings and Users.'],
-	['watchlist', 'Plex Watchlist requests', 'Can switch on requests from their Plex Watchlist (in their Profile).']
-];
 
 // A password to hand someone for a new or reset local account (#122): 16 characters with upper and lower
 // case letters, numbers and symbols, leaving out ones easy to misread (l, 1, I, O, 0).

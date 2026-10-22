@@ -11,7 +11,7 @@
 	import Avatar from '#lib/components/Avatar.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import Modal from '#lib/components/Modal.svelte';
-	import { ROLES, ROLE_TONE, roleLabel, PERM_TEXT, MANUAL_TEXT, NO_APPROVALS, makePassword } from '#lib/roles.ts';
+	import { ROLES, ROLE_TONE, roleLabel, PERM_GROUPS, MANUAL_PERMS, NOT_IN_ROLE, NO_APPROVALS, makePassword } from '#lib/roles.ts';
 
 	type Row = User & { requests: number };
 	type Friend = { plexId: number; username: string; email: string; avatar: string; added: boolean };
@@ -84,7 +84,9 @@
 	// Edit permissions: each switch on, off, or (when the chosen people differ) keep.
 	let permsOpen = $state(false);
 	let setTo = $state<Record<string, 'on' | 'off' | 'keep'>>({});
-	const rows = $derived([...PERM_TEXT, ...MANUAL_TEXT.filter(([k]) => iAmAdmin || k !== 'admin')]);
+	// Same groups and order as a profile (#158); only admins see the Admin switch.
+	const groups = $derived(PERM_GROUPS.map(([g, list]) => [g, list.filter(([k]) => iAmAdmin || k !== 'admin')] as const));
+	const rows = $derived(groups.flatMap(([, list]) => list));
 	const have = (k: string) => who.filter((u) => u.perms.includes(k)).length;
 	const startOf = (k: string) => (have(k) === who.length ? 'on' : have(k) === 0 ? 'off' : 'keep');
 	function openPerms() {
@@ -232,22 +234,26 @@
 <Modal bind:open={permsOpen} title="Edit permissions" sub="{who.length} {who.length === 1 ? 'person' : 'people'}: {who.slice(0, 3).map((u) => u.username).join(', ')}{who.length > 3 ? ` and ${who.length - 3} more` : ''}">
 	<div class="space-y-4 p-5">
 		<p class="text-xs text-gray-500">Mixed means some of them have it. Leave it on Mixed and nobody changes.</p>
-		<div class="divide-y divide-gray-700/40 rounded-xl border border-gray-700/50 bg-gray-800/30 px-4">
-			{#each rows as [k, label], i (k)}
-				{@const n = have(k)}
-				{@const mixed = n > 0 && n < who.length}
-				{@const idle = k === 'autoApprove' && !approvals}
-				{#if i === PERM_TEXT.length}<div class="py-2 text-xs font-medium text-gray-500">Turned on by hand</div>{/if}
-				<div class="flex items-center justify-between gap-3 py-3 {idle ? 'pointer-events-none opacity-60' : ''}">
-					<span class="min-w-0"><span class="block text-sm">{label}</span><span class="block text-xs text-gray-500">{idle ? NO_APPROVALS : mixed ? `${n} of ${who.length} have it` : n ? 'All of them have it' : 'None of them have it'}</span></span>
-					<span class="flex shrink-0 gap-0.5 rounded-lg border border-gray-700/60 p-0.5 text-xs" role="radiogroup" aria-label={label}>
-						{#each [['off', 'Off'], ...(mixed ? [['keep', 'Mixed']] : []), ['on', 'On']] as [v, t] (v)}
-							<button role="radio" aria-checked={setTo[k] === v} class="rounded-md px-2.5 py-1 {setTo[k] === v ? (v === 'on' ? 'bg-primary text-white' : v === 'off' ? 'bg-gray-700 text-white' : 'bg-gray-800 text-gray-200 ring-1 ring-gray-600') : 'text-gray-400 hover:text-white'}" onclick={() => (setTo[k] = v as 'on' | 'off' | 'keep')}>{t}</button>
-						{/each}
-					</span>
+		{#each groups as [group, list] (group)}
+			<div>
+				<div class="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">{group}</div>
+				<div class="divide-y divide-gray-700/40 rounded-xl border border-gray-700/50 bg-gray-800/30 px-4">
+					{#each list as [k, label] (k)}
+						{@const n = have(k)}
+						{@const mixed = n > 0 && n < who.length}
+						{@const idle = k === 'autoApprove' && !approvals}
+						<div class="flex items-center justify-between gap-3 py-3 {idle ? 'pointer-events-none opacity-60' : ''}">
+							<span class="min-w-0"><span class="block text-sm">{label}{#if MANUAL_PERMS.includes(k)}<span class="ml-2 rounded-md bg-gray-800 px-1.5 py-0.5 align-middle text-[10px] text-gray-400 ring-1 ring-gray-700/60">{NOT_IN_ROLE}</span>{/if}</span><span class="block text-xs text-gray-500">{idle ? NO_APPROVALS : mixed ? `${n} of ${who.length} have it` : n ? 'All of them have it' : 'None of them have it'}</span></span>
+							<span class="flex shrink-0 gap-0.5 rounded-lg border border-gray-700/60 p-0.5 text-xs" role="radiogroup" aria-label={label}>
+								{#each [['off', 'Off'], ...(mixed ? [['keep', 'Mixed']] : []), ['on', 'On']] as [v, t] (v)}
+									<button role="radio" aria-checked={setTo[k] === v} class="rounded-md px-2.5 py-1 {setTo[k] === v ? (v === 'on' ? 'bg-primary text-white' : v === 'off' ? 'bg-gray-700 text-white' : 'bg-gray-800 text-gray-200 ring-1 ring-gray-600') : 'text-gray-400 hover:text-white'}" onclick={() => (setTo[k] = v as 'on' | 'off' | 'keep')}>{t}</button>
+								{/each}
+							</span>
+						</div>
+					{/each}
 				</div>
-			{/each}
-		</div>
+			</div>
+		{/each}
 	</div>
 	{#snippet footer()}
 		<button class="btn-ghost" onclick={() => (permsOpen = false)}>Cancel</button>
