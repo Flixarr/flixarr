@@ -15,7 +15,7 @@
 	import Select from '#lib/components/Select.svelte';
 	import Row from '#lib/components/Row.svelte';
 	import Poster from '#lib/components/Poster.svelte';
-	import { ROLES, MANUAL_PERMS, ROLE_TONE, roleLabel, PERM_GROUPS, NOT_IN_ROLE, NO_APPROVALS, makePassword } from '#lib/roles.ts';
+	import { ROLES, MANUAL_PERMS, ROLE_TONE, roleLabel, PERM_GROUPS, NO_APPROVALS, makePassword } from '#lib/roles.ts';
 
 	type Stats = { requests: number; available: number; waiting: number; inProgress: number; openIssues: number };
 	type Info = { user: User; stats: Stats; requests: Card[]; roles: Record<string, string[]>; admin: boolean; canChange: boolean; approvalRequired: boolean };
@@ -153,7 +153,7 @@
 								{@const idle = k === 'autoApprove' && !info.approvalRequired}
 								{@const self = k === 'admin'}
 								<div class="py-3 {idle ? 'opacity-60' : ''}">
-									<Toggle checked={(!self && isAdmin) || perms.includes(k)} {label} about={idle ? NO_APPROVALS : about} tag={MANUAL_PERMS.includes(k) ? NOT_IN_ROLE : ''}
+									<Toggle checked={(!self && isAdmin) || perms.includes(k)} {label} about={idle ? NO_APPROVALS : about}
 										disabled={!can || idle || (self ? u.owner || u.id === session.me?.id : isAdmin)} onchange={(on) => setPerm(k, on)} />
 								</div>
 							{/each}

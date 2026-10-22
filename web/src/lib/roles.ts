@@ -35,9 +35,6 @@ export const PERM_GROUPS: [string, Perm[]][] = [
 		['admin', 'Admin', 'Full access to everything, including Settings and Users.']
 	]]
 ];
-// The tag on switches no role sets (picking a role leaves them as they are).
-export const NOT_IN_ROLE = 'Not in any role';
-
 // Auto-approve does nothing while approvals are off (Settings, Requests); the switch says so instead.
 export const NO_APPROVALS = "Approvals are off (Settings, Requests), so everyone's requests go straight through. This only matters if they're turned on.";
 
