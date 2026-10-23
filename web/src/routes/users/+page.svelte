@@ -212,12 +212,13 @@
 
 {#if editing && chosen.length}
 	<div class="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-40 px-3 tablet:bottom-6">
-		<div class="mx-auto flex max-w-2xl flex-wrap items-center gap-2 rounded-2xl border border-gray-700/60 bg-gray-900/95 p-2.5 shadow-2xl backdrop-blur-xl">
+		<div class="relative mx-auto flex max-w-2xl flex-wrap items-center gap-2 rounded-2xl border border-gray-700/60 bg-gray-900/95 p-2.5 shadow-2xl backdrop-blur-xl">
 			<span class="px-2 text-sm font-medium">{chosen.length} selected</span>
-			<div class="relative ml-auto">
+			<!-- On phones the role menu spans the bar, so it never runs off the screen (#155). -->
+			<div class="ml-auto tablet:relative">
 				<button class="btn-ghost text-sm" disabled={saving} onclick={() => (roleMenu = !roleMenu)}>Set role</button>
 				{#if roleMenu}
-					<div class="absolute bottom-12 right-0 w-64 overflow-hidden rounded-xl border border-gray-700/60 bg-gray-900 py-1.5 shadow-2xl">
+					<div class="absolute inset-x-0 bottom-full mb-2 overflow-hidden rounded-xl border border-gray-700/60 bg-gray-900 py-1.5 shadow-2xl tablet:inset-x-auto tablet:bottom-12 tablet:right-0 tablet:mb-0 tablet:w-64">
 						{#each ROLES as r (r)}
 							<button class="block w-full px-4 py-2 text-left text-sm hover:bg-white/5" onclick={() => bulk({ role: r })}><span class="block">{r}</span><span class="block text-xs text-gray-500">{roleAbout(r)}</span></button>
 						{/each}
