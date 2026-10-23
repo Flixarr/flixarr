@@ -12,7 +12,7 @@
 	import PlexMark from '#lib/components/PlexMark.svelte';
 	import RequestDetail from '#lib/components/RequestDetail.svelte';
 	import { statusOf } from '#lib/availability.svelte.ts';
-	import { simple, askedFor } from '#lib/requeststatus.ts';
+	import { simple, askedFor, releaseText } from '#lib/requeststatus.ts';
 	import { on } from '#lib/live.svelte.ts';
 	import { page } from '$app/state';
 	import { infinite } from '#lib/infinite.ts';
@@ -27,7 +27,7 @@
 		localStorage.setItem('flixarr:requests-scope', k);
 	}
 	const mine = $derived((list ?? []).filter((r) => r.userId === session.me?.id).length);
-	let group = $state<'all' | 'onway' | 'attention' | 'ready' | 'ended'>('all');
+	let group = $state<'all' | 'onway' | 'soon' | 'attention' | 'ready' | 'ended'>('all');
 	let query = $state('');
 	let sort = $state<'new' | 'old' | 'title' | 'status'>('new');
 	let busy = $state(0);
@@ -60,13 +60,14 @@
 	});
 
 	// Where a request is. Waiting for approval needs attention from people who approve; for everyone else
-	// it's on its way.
+	// it's on its way. Not out yet has its own group, Coming soon (#151).
 	const groupOf = (r: Request) =>
 		r.status === 'available' ? 'ready'
+		: r.status === 'notout' ? 'soon'
 		: r.status === 'declined' || r.status === 'expired' || r.status === 'removed' ? 'ended'
 		: r.status === 'failed' || r.trouble || (r.status === 'pending' && admin) ? 'attention'
 		: 'onway';
-	const ORDER = ['pending', 'failed', 'importing', 'downloading', 'grabbed', 'sent', 'approved', 'available', 'declined', 'removed', 'expired'];
+	const ORDER = ['pending', 'failed', 'importing', 'downloading', 'grabbed', 'sent', 'approved', 'notout', 'available', 'declined', 'removed', 'expired'];
 	const scoped = $derived((list ?? []).filter((r) => scope === 'all' || r.userId === session.me?.id));
 	const person = (r: Request) => ({ username: r.userName || '?', avatar: r.userAvatar }) as User;
 	const shown = $derived.by(() => {
@@ -94,7 +95,7 @@
 		drawn += STEP;
 		return true;
 	};
-	const GROUPS: [typeof group, string][] = [['all', 'All'], ['onway', 'On its way'], ['attention', 'Needs attention'], ['ready', 'Ready'], ['ended', 'Ended']];
+	const GROUPS: [typeof group, string][] = [['all', 'All'], ['onway', 'On its way'], ['soon', 'Coming soon'], ['attention', 'Needs attention'], ['ready', 'Ready'], ['ended', 'Ended']];
 
 	const status = (r: Request) => simple(r.status, r.progress);
 
@@ -166,6 +167,7 @@
 								</div>
 								{#if st}<span class="shrink-0 rounded-lg px-2 py-0.5 text-[11px] font-medium ring-1 {st.tone}">{st.label}</span>{/if}
 							</div>
+							{#if r.status === 'notout'}<div class="text-xs text-sky-300">{releaseText(r.release, r.mode === 'seasons' ? r.seasons : [])}</div>{/if}
 							<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-400">
 								<span class="flex items-center gap-1.5 text-gray-300"><Avatar user={person(r)} class="size-4 text-[9px]" />{r.source === 'redownload' ? 'Redownload by ' : ''}{r.userName || 'Someone'}</span>
 								{#if admin && r.profileName}<span>{r.profileName}</span>{/if}

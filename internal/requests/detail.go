@@ -321,6 +321,8 @@ func hintFor(r store.Request, l Live) string {
 		}
 	}
 	switch {
+	case r.Status == "notout" && len(l.Queue) == 0:
+		return "It isn't out yet. It downloads on its own once it is." // the date shows next to it (#151)
 	case !l.InArr || !l.Monitored && len(l.Queue) == 0 && (r.Status == "sent" || r.Status == "approved"):
 		return "Something went wrong with this request. Someone who manages requests can sort it out."
 	case len(l.Queue) == 0 && (r.Status == "sent" || r.Status == "approved"):

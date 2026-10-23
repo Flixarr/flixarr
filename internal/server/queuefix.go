@@ -60,7 +60,7 @@ func (s *Server) queueFix(w http.ResponseWriter, r *http.Request, u *store.User)
 // downloads; for everyone else, their own failed requests and stuck downloads.
 func (s *Server) requestAttention(w http.ResponseWriter, r *http.Request, u *store.User) {
 	manage := u.Can("manageRequests")
-	list, err := s.Store.RequestsIn("failed", "pending", "sent", "grabbed", "downloading", "importing")
+	list, err := s.Store.RequestsIn("failed", "pending", "sent", "notout", "grabbed", "downloading", "importing")
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return

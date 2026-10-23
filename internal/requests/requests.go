@@ -49,6 +49,8 @@ func followEvery(status string) time.Duration {
 	switch status {
 	case "grabbed", "downloading", "importing":
 		return 30 * time.Second
+	case "notout":
+		return time.Hour // release dates don't move fast; a Grab webhook reports the download at once
 	}
 	return 2 * time.Minute
 }
@@ -806,7 +808,11 @@ func (s *Service) follow(ctx context.Context, v store.Server, r *store.Request) 
 			s.filesDone(ctx, r, nil)
 			return nil
 		}
-		return s.queueProgress(ctx, c, fmt.Sprintf("queue/details?movieId=%d", r.ArrID), r, nil, 0, 0)
+		if err := s.queueProgress(ctx, c, fmt.Sprintf("queue/details?movieId=%d", r.ArrID), r, nil, 0, 0); err != nil {
+			return err
+		}
+		notOut(r, movieRelease(m, time.Now()))
+		return nil
 	}
 	if r.Mode == "episodes" {
 		eps, err := episodeList(ctx, c, r.ArrID, false)
@@ -876,7 +882,57 @@ func (s *Service) follow(ctx context.Context, v store.Server, r *store.Request) 
 	if r.Mode == "seasons" {
 		only = want
 	}
-	return s.queueProgress(ctx, c, fmt.Sprintf("queue/details?seriesId=%d", r.ArrID), r, only, sum(have), wanted)
+	if err := s.queueProgress(ctx, c, fmt.Sprintf("queue/details?seriesId=%d", r.ArrID), r, only, sum(have), wanted); err != nil {
+		return err
+	}
+	// Nothing asked for has aired yet: Not out yet, with when the next episode airs (#151).
+	rel := ""
+	if wanted == 0 {
+		rel = "none:"
+		if next, _ := sr["nextAiring"].(string); len(next) >= 10 {
+			rel = "air:" + next[:10]
+		}
+	}
+	notOut(r, rel)
+	return nil
+}
+
+// notOut puts a request that's only waiting for its release on Not out yet (#151), with when it comes out
+// (rel, "" when it's out), and takes it off again once it is. A download in the queue always wins.
+func notOut(r *store.Request, rel string) {
+	waiting := r.Status == "sent" || r.Status == "notout"
+	switch {
+	case rel != "" && waiting:
+		r.Status, r.Release, r.Progress = "notout", rel, 0
+	case r.Status == "notout":
+		r.Status, r.Release = "sent", "" // out now: Radarr / Sonarr pick it up
+	default:
+		r.Release = ""
+	}
+}
+
+// movieRelease says when a movie Radarr doesn't count as available yet comes out ("" once it is):
+// the digital date when there is one, else the disc date, else theaters (past: in theaters now), else none.
+func movieRelease(m map[string]any, now time.Time) string {
+	if ok, _ := m["isAvailable"].(bool); ok {
+		return ""
+	}
+	day := func(k string) string {
+		if v, _ := m[k].(string); len(v) >= 10 {
+			return v[:10]
+		}
+		return ""
+	}
+	today := now.UTC().Format("2006-01-02")
+	for _, k := range []struct{ field, kind string }{{"digitalRelease", "digital"}, {"physicalRelease", "disc"}} {
+		if d := day(k.field); d != "" && d >= today {
+			return k.kind + ":" + d
+		}
+	}
+	if d := day("inCinemas"); d != "" {
+		return "theaters:" + d // in theaters now (past) or coming to theaters (future)
+	}
+	return "none:"
 }
 
 // queueProgress reads the download queue: grabbed (waiting in the download client), downloading with the

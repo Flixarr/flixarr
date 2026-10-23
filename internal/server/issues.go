@@ -30,7 +30,7 @@ func (s *Server) waitingFor(typ string, id int) bool {
 	reqs, _ := s.Store.RequestsForTitle(typ, id)
 	for _, r := range reqs {
 		switch r.Status {
-		case "approved", "sent", "grabbed", "downloading", "importing", "failed":
+		case "approved", "sent", "notout", "grabbed", "downloading", "importing", "failed":
 			return true
 		}
 	}

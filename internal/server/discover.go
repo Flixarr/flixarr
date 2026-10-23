@@ -148,7 +148,7 @@ func (s *Server) userStats(id int64) (map[string]int, error) {
 			out["available"]++
 		case "pending":
 			out["waiting"]++
-		case "approved", "sent", "downloading":
+		case "approved", "sent", "notout", "downloading":
 			out["inProgress"]++
 		}
 	}
