@@ -1,7 +1,7 @@
 <script lang="ts">
-	// A person's profile (#149), opened from Users: who they are, their numbers and latest requests, and
-	// below that whatever the viewer may change (role and switches, limits; for admins also password and
-	// Remove). Admins and Managers only; Managers can't change admins or the owner (the server checks too).
+	// A person's profile (#149), opened from Users: who they are, their numbers and latest requests. Their
+	// settings (role and switches, limits; for admins also password and Remove) open in a window (#160).
+	// People with Manage users only; without admin they can't change admins or the owner (the server checks too).
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api, ago, fmtDate } from '#lib/api.ts';
@@ -27,6 +27,19 @@
 	let saving = $state(false);
 	let removeOpen = $state(false);
 	let newPassword = $state('');
+	let settingsOpen = $state(false);
+	function openSettings() {
+		reset();
+		settingsOpen = true;
+	}
+	function closeSettings() {
+		reset();
+		settingsOpen = false;
+	}
+	async function saveAndClose() {
+		await save();
+		if (!dirty) settingsOpen = false;
+	}
 
 	$effect(() => {
 		if (session.me && !session.me.managesUsers) goto('/', { replaceState: true });
@@ -79,7 +92,7 @@
 		}
 	}
 	async function remove() {
-		removeOpen = false;
+		removeOpen = settingsOpen = false;
 		try {
 			await api(`/users/${u!.id}`, { method: 'DELETE' });
 			notify(`Removed ${u!.username}.`);
@@ -119,6 +132,7 @@
 				</div>
 				<div class="mt-0.5 text-xs text-gray-500">Joined {fmtDate(u.createdAt)} · {u.lastSeen ? `last seen ${ago(u.lastSeen)}` : 'not seen yet'}</div>
 			</div>
+			<button class="btn-ghost text-sm" onclick={openSettings}><Icon name="settings" class="size-4" />{can ? 'Settings' : 'Permissions'}</button>
 		</section>
 
 		<section class="grid grid-cols-2 gap-2 tablet:grid-cols-4">
@@ -130,85 +144,81 @@
 			<div class="-mx-4 laptop:mx-0"><Row title="{u.username}'s requests" items={info.requests}>{#snippet item(c)}<Poster item={c} />{/snippet}</Row></div>
 		{/if}
 
-		<div class="grid gap-6 laptop:grid-cols-2">
-			<div class="space-y-6">
-				{#if !can}<p class="rounded-lg bg-gray-800/70 px-3 py-2 text-sm text-gray-300 ring-1 ring-gray-700/60">Only admins can change an admin.</p>{/if}
-				<section>
-					<div class={head}>Role</div>
-					<div class="card p-1">
-						<div class="grid grid-cols-4 gap-1 text-sm {isAdmin || !can ? 'opacity-50' : ''}" role="radiogroup" aria-label="Role">
-							{#each [...ROLES, 'Custom'] as r (r)}
-								<button class="rounded-lg px-2 py-1.5 {r === role ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'} {r === 'Custom' ? 'pointer-events-none' : ''}"
-									role="radio" aria-checked={r === role} disabled={isAdmin || !can} onclick={() => r !== 'Custom' && pickRole(r)}>{r}</button>
-							{/each}
-						</div>
-					</div>
-					<p class="mt-1.5 text-xs text-gray-500">{u.owner ? 'The owner always stays an admin.' : isAdmin ? 'Admins can do everything. Their role counts again if Admin is turned off.' : 'A role is a preset. Change any of its switches and the role becomes Custom.'}</p>
-				</section>
-				<!-- Grouped by what they're for (#158). Admin is last in Managing; while it's on, the rest show on. -->
-				{#each PERM_GROUPS as [group, list] (group)}
-					<section>
-						<div class={head}>{group}</div>
-						<div class="card divide-y divide-gray-700/40 px-4">
-							{#each list.filter(([k]) => info!.admin || k !== 'admin') as [k, label, about] (k)}
-								{@const idle = k === 'autoApprove' && !info.approvalRequired}
-								{@const self = k === 'admin'}
-								<div class="py-3 {idle ? 'opacity-60' : ''}">
-									<Toggle checked={(!self && isAdmin) || perms.includes(k)} {label} about={idle ? NO_APPROVALS : about}
-										disabled={!can || idle || (self ? u.owner || u.id === session.me?.id : isAdmin)} onchange={(on) => setPerm(k, on)} />
-								</div>
-							{/each}
-						</div>
-					</section>
-				{/each}
-			</div>
-			<div class="space-y-6">
-				<section>
-					<div class={head}>Request limits</div>
-					<div class="card grid grid-cols-2 gap-3 px-4 py-3">
-						{#each [['lim-movies', 'Movies', 'movie', movieLimit, (n: number) => (movieLimit = n)], ['lim-seasons', 'Series seasons', 'season', seasonLimit, (n: number) => (seasonLimit = n)]] as const as [id, label, unit, value, set] (id)}
-							<div>
-								<label for={id} class="block text-xs text-gray-400">{label}</label>
-								<Select {id} {value} disabled={isAdmin || !can} options={[{ value: 0, label: 'Unlimited' }, ...[1, 3, 5, 10, 20].map((n) => ({ value: n, label: `${n} ${unit}${n === 1 ? '' : 's'} a week` }))]} onchange={set} />
-							</div>
-						{/each}
-					</div>
-					<p class="mt-1.5 text-xs text-gray-500">{isAdmin ? 'Admins have no limits.' : 'Counted over the last 7 days. Declined and failed requests are not counted.'}</p>
-				</section>
-				{#if u.local && info.admin}
-					<section>
-						<div class={head}>Password</div>
-						<div class="card flex gap-2 px-4 py-3">
-							<input class="w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/60" type="text" autocomplete="new-password" placeholder="New password (8 or more characters)" bind:value={newPassword} />
-							<span class="shrink-0"><Tooltip text="New password"><button class="btn-ghost h-full px-3" aria-label="New password" onclick={() => (newPassword = makePassword())}><Icon name="refresh" class="size-4" /></button></Tooltip></span>
-							<button class="btn shrink-0 px-4 text-sm" disabled={saving || newPassword.length < 8} onclick={setPassword}>Set</button>
-						</div>
-						<p class="mt-1.5 text-xs text-gray-500">Setting a new password signs them out everywhere.</p>
-					</section>
-				{/if}
-				{#if info.admin && !u.owner && u.id !== session.me?.id}
-					<section>
-						<div class={head}>Remove</div>
-						<div class="card flex items-center justify-between gap-4 px-4 py-3">
-							<span class="text-sm text-gray-300">Signs them out and removes their requests from Flixarr. Nothing changes in Plex, Radarr or Sonarr.</span>
-							<button class="btn-ghost shrink-0 text-red-300" onclick={() => (removeOpen = true)}><Icon name="trash" class="size-4" />Remove</button>
-						</div>
-					</section>
-				{/if}
-			</div>
-		</div>
 	{/if}
 </main>
 
-{#if dirty}
-	<div class="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-40 px-3 tablet:bottom-6">
-		<div class="mx-auto flex max-w-xl items-center gap-2 rounded-2xl border border-gray-700/60 bg-gray-900/95 p-2.5 shadow-2xl backdrop-blur-xl">
-			<span class="px-2 text-sm">Unsaved changes</span>
-			<button class="btn-ghost ml-auto text-sm" onclick={reset}>Undo</button>
-			<button class="btn px-6 text-sm" disabled={saving} onclick={save}>{saving ? 'Saving…' : 'Save'}</button>
+<!-- Their settings live in a window, not spread down the profile (#160). -->
+<Modal bind:open={settingsOpen} wide title="{u?.username ?? ''}'s settings" sub={u ? roleLabel(u) : ''}>
+	{#if info && u}
+		<div class="p-5">
+			<div class="grid gap-6 laptop:grid-cols-2">
+				<div class="space-y-6">
+					{#if !can}<p class="rounded-lg bg-gray-800/70 px-3 py-2 text-sm text-gray-300 ring-1 ring-gray-700/60">Only admins can change an admin.</p>{/if}
+					<section>
+						<div class={head}>Role</div>
+						<div class="card p-1">
+							<div class="grid grid-cols-4 gap-1 text-sm {isAdmin || !can ? 'opacity-50' : ''}" role="radiogroup" aria-label="Role">
+								{#each [...ROLES, 'Custom'] as r (r)}
+									<button class="rounded-lg px-2 py-1.5 {r === role ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'} {r === 'Custom' ? 'pointer-events-none' : ''}"
+										role="radio" aria-checked={r === role} disabled={isAdmin || !can} onclick={() => r !== 'Custom' && pickRole(r)}>{r}</button>
+								{/each}
+							</div>
+						</div>
+						<p class="mt-1.5 text-xs text-gray-500">{u.owner ? 'The owner always stays an admin.' : isAdmin ? 'Admins can do everything. Their role counts again if Admin is turned off.' : 'A role is a preset. Change any of its switches and the role becomes Custom.'}</p>
+					</section>
+					<!-- Grouped by what they're for (#158). Admin is last in Managing; while it's on, the rest show on. -->
+					{#each PERM_GROUPS as [group, list] (group)}
+						<section>
+							<div class={head}>{group}</div>
+							<div class="card divide-y divide-gray-700/40 px-4">
+								{#each list.filter(([k]) => info!.admin || k !== 'admin') as [k, label, about] (k)}
+									{@const idle = k === 'autoApprove' && !info.approvalRequired}
+									{@const self = k === 'admin'}
+									<div class="py-3 {idle ? 'opacity-60' : ''}">
+										<Toggle checked={(!self && isAdmin) || perms.includes(k)} {label} about={idle ? NO_APPROVALS : about}
+											disabled={!can || idle || (self ? u.owner || u.id === session.me?.id : isAdmin)} onchange={(on) => setPerm(k, on)} />
+									</div>
+								{/each}
+							</div>
+						</section>
+					{/each}
+				</div>
+				<div class="space-y-6">
+					<section>
+						<div class={head}>Request limits</div>
+						<div class="card grid grid-cols-2 gap-3 px-4 py-3">
+							{#each [['lim-movies', 'Movies', 'movie', movieLimit, (n: number) => (movieLimit = n)], ['lim-seasons', 'Series seasons', 'season', seasonLimit, (n: number) => (seasonLimit = n)]] as const as [id, label, unit, value, set] (id)}
+								<div>
+									<label for={id} class="block text-xs text-gray-400">{label}</label>
+									<Select {id} {value} disabled={isAdmin || !can} options={[{ value: 0, label: 'Unlimited' }, ...[1, 3, 5, 10, 20].map((n) => ({ value: n, label: `${n} ${unit}${n === 1 ? '' : 's'} a week` }))]} onchange={set} />
+								</div>
+							{/each}
+						</div>
+						<p class="mt-1.5 text-xs text-gray-500">{isAdmin ? 'Admins have no limits.' : 'Counted over the last 7 days. Declined and failed requests are not counted.'}</p>
+					</section>
+					{#if u.local && info.admin}
+						<section>
+							<div class={head}>Password</div>
+							<div class="card flex gap-2 px-4 py-3">
+								<input class="w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/60" type="text" autocomplete="new-password" placeholder="New password (8 or more characters)" bind:value={newPassword} />
+								<span class="shrink-0"><Tooltip text="New password"><button class="btn-ghost h-full px-3" aria-label="New password" onclick={() => (newPassword = makePassword())}><Icon name="refresh" class="size-4" /></button></Tooltip></span>
+								<button class="btn shrink-0 px-4 text-sm" disabled={saving || newPassword.length < 8} onclick={setPassword}>Set</button>
+							</div>
+							<p class="mt-1.5 text-xs text-gray-500">Setting a new password signs them out everywhere.</p>
+						</section>
+					{/if}
+				</div>
+			</div>
 		</div>
-	</div>
-{/if}
+	{/if}
+	{#snippet footer()}
+		{#if info?.admin && u && !u.owner && u.id !== session.me?.id}
+			<button class="btn-ghost mr-auto text-red-300" onclick={() => (removeOpen = true)}><Icon name="trash" class="size-4" />Remove</button>
+		{/if}
+		<button class="btn-ghost" onclick={closeSettings}>{can ? 'Cancel' : 'Close'}</button>
+		{#if can}<button class="btn px-6" disabled={saving || !dirty} onclick={saveAndClose}>{saving ? 'Saving…' : 'Save'}</button>{/if}
+	{/snippet}
+</Modal>
 
 <Modal bind:open={removeOpen} title="Remove {u?.username}?">
 	<p class="p-5 text-sm text-gray-300">They're signed out and their requests are removed from Flixarr. Nothing changes in Plex, Radarr or Sonarr. If your Plex server is still shared with them, they can sign in again as a new user.</p>
