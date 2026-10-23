@@ -213,17 +213,16 @@
 
 {#if editing && chosen.length}
 	<div class="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-40 px-3 tablet:bottom-6">
-		<div class="relative mx-auto flex max-w-2xl flex-wrap items-center gap-2 rounded-2xl border border-gray-700/60 bg-gray-900/95 p-2.5 shadow-2xl backdrop-blur-xl">
+		<div class="mx-auto flex max-w-2xl flex-wrap items-center gap-2 rounded-2xl border border-gray-700/60 bg-gray-900/95 p-2.5 shadow-2xl backdrop-blur-xl">
 			<span class="px-2 text-sm font-medium">{chosen.length} selected</span>
-			<!-- On phones the role menu spans the bar, so it never runs off the screen (#155). -->
-			<div class="ml-auto tablet:relative">
+			<!-- The role menu opens centered over Set role, so it stays on screen on phones (#155). -->
+			<div class="relative ml-auto">
 				<button class="btn-ghost text-sm" disabled={saving} onclick={() => (roleMenu = !roleMenu)}>Set role</button>
 				{#if roleMenu}
-					<div class="absolute inset-x-0 bottom-full mb-2 overflow-hidden rounded-xl border border-gray-700/60 bg-gray-900 py-1.5 shadow-2xl tablet:inset-x-auto tablet:bottom-12 tablet:right-0 tablet:mb-0 tablet:w-64">
+					<div class="absolute bottom-full left-1/2 mb-2 w-60 -translate-x-1/2 overflow-hidden rounded-xl border border-gray-700/60 bg-gray-900 py-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.7)] ring-1 ring-black/40">
 						{#each ROLES as r (r)}
 							<button class="block w-full px-4 py-2 text-left text-sm hover:bg-white/5" onclick={() => bulk({ role: r })}><span class="block">{r}</span><span class="block text-xs text-gray-500">{roleAbout(r)}</span></button>
 						{/each}
-						<p class="border-t border-gray-700/40 px-4 pt-2 text-[11px] text-gray-500">Admin and Plex Watchlist requests stay as they are.</p>
 					</div>
 				{/if}
 			</div>
