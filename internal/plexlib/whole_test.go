@@ -47,13 +47,13 @@ func TestSeriesEpisodes(t *testing.T) {
 		"series/1":          `{"seasons":[{"n":1,"episodes":10,"air":"2024-01-01"},{"n":2,"episodes":8,"air":"2026-10-01"},{"n":3,"episodes":6,"air":"2027-03-01"}],"next":"2026-10-27"}`,
 		"series/1/season/2": `{"episodes":[{"air":"2026-10-01"},{"air":"2026-10-08"},{"air":"2026-10-15"},{"air":"2026-10-20"},{"air":"2026-10-27"},{"air":null},{"air":null},{"air":null}]}`,
 	}}
-	have, total, err := l.seriesEpisodes(context.Background(), 1, "2026-10-20")
+	have, total, _, err := l.seriesEpisodes(context.Background(), 1, "2026-10-20")
 	if err != nil || have != 13 || total != 14 {
 		t.Fatalf("got %d of %d (%v), want 13 of 14", have, total, err)
 	}
 	// Once season 2 has finished airing, all 8 count.
 	l.Meta = fakeMeta{"series/1": `{"seasons":[{"n":1,"episodes":10,"air":"2024-01-01"},{"n":2,"episodes":8,"air":"2026-10-01"}],"next":null}`}
-	if have, total, _ = l.seriesEpisodes(context.Background(), 1, "2027-01-01"); have != 13 || total != 18 {
+	if have, total, _, _ = l.seriesEpisodes(context.Background(), 1, "2027-01-01"); have != 13 || total != 18 {
 		t.Fatalf("ended: %d of %d", have, total)
 	}
 }

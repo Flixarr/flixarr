@@ -101,3 +101,39 @@ func TestCountersByKind(t *testing.T) {
 		t.Errorf("totals %d hits %d misses", got.Hits, got.Misses)
 	}
 }
+
+// Background calls (#165) take turns BackgroundEvery apart and say so in a header; others don't wait.
+func TestBackgroundPace(t *testing.T) {
+	var marked int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Flixarr-Background") == "1" {
+			marked++
+		}
+		w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	st, _ := store.Open(dir, box)
+	defer st.Close()
+	c := New(srv.URL, "test", st)
+	every := BackgroundEvery
+	BackgroundEvery = 100 * time.Millisecond
+	t.Cleanup(func() { BackgroundEvery = every })
+	bg := Background(context.Background())
+	start := time.Now()
+	for _, id := range []string{"1", "2", "3"} {
+		c.Get(bg, "movie/"+id, url.Values{})
+	}
+	if took := time.Since(start); took < 200*time.Millisecond {
+		t.Fatalf("3 background calls in %v", took)
+	}
+	if marked != 3 {
+		t.Fatalf("marked %d", marked)
+	}
+	start = time.Now()
+	c.Get(context.Background(), "movie/4", url.Values{})
+	if took := time.Since(start); took > 90*time.Millisecond {
+		t.Fatalf("a page waited %v", took)
+	}
+}

@@ -94,7 +94,7 @@ func main() {
 	ic := images.New(dataDir, st)
 
 	// Scheduled jobs (Settings → Jobs); schedules are editable there.
-	runner := &jobs.Runner{Store: st, Log: log}
+	runner := &jobs.Runner{Store: st, Log: log, Background: meta.Background}
 	runner.Add(&jobs.Job{ID: "cache-cleanup", Name: "Clear expired cache", Default: "0 3 * * *",
 		About: "Removes saved results that expired more than a day ago and keeps the cache under its size limit.",
 		Run: func(context.Context) (string, error) {
@@ -119,8 +119,9 @@ func main() {
 	// Flixarr's quality profiles: downloaded from the API, added to Radarr/Sonarr on request, kept up to date.
 	pm := &profiles.Manager{Store: st, API: api, UserAgent: "Flixarr/" + version.Full(), Log: log}
 	runner.Add(&jobs.Job{ID: "profiles-sync", Name: "Quality profiles: sync", Default: "30 4 * * *",
-		About: "Downloads Flixarr's quality profiles and updates the ones added to Radarr and Sonarr. Profiles edited there are left alone.",
-		Run:   pm.SyncAll})
+		About:  "Downloads Flixarr's quality profiles and updates the ones added to Radarr and Sonarr. Profiles edited there are left alone.",
+		Spread: 2 * time.Hour,
+		Run:    pm.SyncAll})
 	// The daily update check also says which profiles version is current; a new one syncs right away.
 	checker.OnResult = func(r *update.Result) {
 		if r.UpdateAvailable && r.Latest != nil { // once per version, for admins
@@ -171,12 +172,14 @@ func main() {
 		About: "Reads the newest additions to the chosen Plex libraries. A backup: Plex itself tells Flixarr about new titles the moment they're added.",
 		Run:   lib.RecentScan})
 	runner.Add(&jobs.Job{ID: "plex-episodes", Name: "Plex: whole or part of each series", Default: "30 3 * * *",
-		About: "Counts how many of each series' aired episodes are in Plex, so posters can tell a whole series from part of one.",
-		Run:   lib.EpisodeCounts})
+		About:  "Counts how many of each series' aired episodes are in Plex, so posters can tell a whole series from part of one.",
+		Spread: 2 * time.Hour,
+		Run:    lib.EpisodeCounts})
 	wl := &watchlist.Syncer{Store: st, Requests: reqs, Meta: mc, ClientID: clientID, Log: log}
 	runner.Add(&jobs.Job{ID: "watchlist", Name: "Plex Watchlist: sync", Default: "*/15 * * * *",
-		About: "Requests what people add to their Plex Watchlist, for those who switched it on in their Profile.",
-		Run:   wl.Run})
+		About:  "Requests what people add to their Plex Watchlist, for those who switched it on in their Profile.",
+		Spread: 10 * time.Minute,
+		Run:    wl.Run})
 	// Maintainerr: titles leaving Plex by its rules, kept on request, and new requests kept for a while.
 	maint := &maintainerr.Watcher{Store: st, Log: log}
 	maint.Changed = func(keys []string) { hub.Publish(live.Event{Type: "leaving", Data: keys}) }

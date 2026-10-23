@@ -191,8 +191,26 @@ func (s *Store) PlexSeriesIDs() ([]int, error) {
 	return out, rows.Err()
 }
 
-// SetSeriesEpisodes records how much of a series Plex has: episodes it has of those aired so far.
-func (s *Store) SetSeriesEpisodes(tmdbID, have, total int) error {
-	_, err := s.db.Exec(`UPDATE plex_items SET eps_have = ?, eps_total = ? WHERE type = 'series' AND tmdb_id = ?`, have, total, tmdbID)
+// SetSeriesEpisodes records how much of a series Plex has (episodes it has of those aired so far),
+// whether the show has ended, and when it was checked.
+func (s *Store) SetSeriesEpisodes(tmdbID, have, total int, ended bool) error {
+	_, err := s.db.Exec(`UPDATE plex_items SET eps_have = ?, eps_total = ?, eps_ended = ?, eps_checked = ? WHERE type = 'series' AND tmdb_id = ?`, have, total, ended, now(), tmdbID)
 	return err
+}
+
+// SeriesCheckedLately lists the ended series checked within the last week (they can wait, #165).
+func (s *Store) SeriesCheckedLately() (map[int]bool, error) {
+	rows, err := s.db.Query(`SELECT tmdb_id FROM plex_items WHERE type = 'series' AND eps_ended = 1 AND eps_total > 0 AND eps_checked > ?`, time.Now().UTC().Add(-7*24*time.Hour).Format(time.RFC3339))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int]bool{}
+	for rows.Next() {
+		var id int
+		if rows.Scan(&id) == nil {
+			out[id] = true
+		}
+	}
+	return out, rows.Err()
 }

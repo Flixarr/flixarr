@@ -19,7 +19,8 @@ type seriesPage struct {
 		Episodes int     `json:"episodes"`
 		Air      *string `json:"air"`
 	} `json:"seasons"`
-	Next *string `json:"next"` // the next episode's air date: the show is still airing
+	Next   *string `json:"next"`   // the next episode's air date: the show is still airing
+	Status string  `json:"status"` // TMDB's: Ended and Canceled shows don't change, so they're checked weekly
 }
 
 type seasonPage struct {
@@ -38,24 +39,32 @@ func (l *Library) EpisodeCounts(ctx context.Context) (string, error) {
 		return "", err
 	}
 	today := time.Now().Format("2006-01-02")
-	whole, part, failed := 0, 0, 0
+	lately, _ := l.Store.SeriesCheckedLately()
+	whole, part, failed, waited := 0, 0, 0, 0
 	for _, id := range ids {
 		if ctx.Err() != nil {
 			return "", ctx.Err()
 		}
-		have, total, err := l.seriesEpisodes(ctx, id, today)
+		if lately[id] {
+			waited++ // ended and checked this week
+			continue
+		}
+		have, total, ended, err := l.seriesEpisodes(ctx, id, today)
 		if err != nil {
 			failed++
 			continue
 		}
-		l.Store.SetSeriesEpisodes(id, have, total)
+		l.Store.SetSeriesEpisodes(id, have, total, ended)
 		if have >= total {
 			whole++
 		} else {
 			part++
 		}
 	}
-	msg := fmt.Sprintf("%d series: %d whole, %d in part", len(ids), whole, part)
+	msg := fmt.Sprintf("%d series checked: %d whole, %d in part", len(ids)-waited, whole, part)
+	if waited > 0 {
+		msg += fmt.Sprintf(" (%d ended ones wait for their weekly check)", waited)
+	}
 	if failed > 0 {
 		msg += fmt.Sprintf(", %d couldn't be checked", failed)
 	}
@@ -63,15 +72,16 @@ func (l *Library) EpisodeCounts(ctx context.Context) (string, error) {
 }
 
 // seriesEpisodes is how many aired episodes of a series Plex has, out of how many have aired.
-func (l *Library) seriesEpisodes(ctx context.Context, tmdbID int, today string) (have, total int, err error) {
+func (l *Library) seriesEpisodes(ctx context.Context, tmdbID int, today string) (have, total int, ended bool, err error) {
 	inPlex, err := l.Seasons(ctx, tmdbID)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, false, err
 	}
 	var sp seriesPage
 	if err := l.metaJSON(ctx, fmt.Sprintf("series/%d", tmdbID), &sp); err != nil {
-		return 0, 0, err
+		return 0, 0, false, err
 	}
+	ended = sp.Status == "Ended" || sp.Status == "Canceled"
 	latest := 0 // the newest season that has started
 	for _, s := range sp.Seasons {
 		if s.Air != nil && *s.Air <= today && s.N > latest {
@@ -87,7 +97,7 @@ func (l *Library) seriesEpisodes(ctx context.Context, tmdbID int, today string) 
 			// Still airing: count only the episodes already out.
 			var season seasonPage
 			if err := l.metaJSON(ctx, fmt.Sprintf("series/%d/season/%d", tmdbID, s.N), &season); err != nil {
-				return 0, 0, err
+				return 0, 0, false, err
 			}
 			aired = 0
 			for _, e := range season.Episodes {
@@ -99,7 +109,7 @@ func (l *Library) seriesEpisodes(ctx context.Context, tmdbID int, today string) 
 		total += aired
 		have += min(inPlex[s.N], aired)
 	}
-	return have, total, nil
+	return have, total, ended, nil
 }
 
 func (l *Library) metaJSON(ctx context.Context, path string, out any) error {

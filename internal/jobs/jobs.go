@@ -2,14 +2,37 @@ package jobs
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"hash/fnv"
 	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/Flixarr/flixarr/internal/store"
 )
+
+// offset is how long after its scheduled time this install runs a spread job: fixed per install and job,
+// from a random seed that stays on this install (never sent anywhere).
+func (r *Runner) offset(j *Job) time.Duration {
+	if j.Spread <= 0 {
+		return 0
+	}
+	seed := r.Store.Setting(keySeed, "")
+	if seed == "" {
+		b := make([]byte, 16)
+		rand.Read(b)
+		seed = hex.EncodeToString(b)
+		r.Store.SetSetting(keySeed, seed)
+	}
+	h := fnv.New64a()
+	h.Write([]byte(seed + ":" + j.ID))
+	return time.Duration(h.Sum64()%uint64(j.Spread/time.Second)) * time.Second
+}
+
+const keySeed = "jobs_spread_seed"
 
 // Job is one scheduled task.
 type Job struct {
@@ -18,6 +41,9 @@ type Job struct {
 	About   string // one line shown in Settings → Jobs
 	Default string // cron schedule a new install starts with
 	Run     func(ctx context.Context) (string, error)
+	// Spread: jobs that call the Flixarr API don't all run on the same minute on every install (#165).
+	// Each install runs them this install's own offset (0 up to Spread) after the scheduled time.
+	Spread time.Duration
 }
 
 // Event is sent to subscribers when a job starts and when it finishes.
@@ -82,6 +108,8 @@ type Info struct {
 type Runner struct {
 	Store *store.Store
 	Log   *slog.Logger
+	// Background marks a job's context so its API calls are background calls (meta.Background).
+	Background func(context.Context) context.Context
 
 	mu      sync.Mutex
 	jobs    []*Job
@@ -122,7 +150,8 @@ func (r *Runner) List() []Info {
 	for _, j := range r.jobs {
 		in := Info{ID: j.ID, Name: j.Name, About: j.About, Schedule: r.schedule(j), Default: j.Default, Enabled: r.enabled(j), Running: r.running[j.ID]}
 		if s, err := Parse(in.Schedule); err == nil && in.Enabled {
-			in.Next = s.Next(time.Now())
+			off := r.offset(j)
+			in.Next = s.Next(time.Now().Add(-off)).Add(off)
 		}
 		if raw := r.Store.Setting("job_"+j.ID+"_last", ""); raw != "" {
 			var last Run
@@ -179,6 +208,9 @@ func (r *Runner) exec(ctx context.Context, j *Job) {
 
 	start := time.Now()
 	r.publish(Event{Job: j.ID, Name: j.Name, Phase: "start"})
+	if r.Background != nil {
+		ctx = r.Background(ctx) // the API calls jobs make are background calls (#165)
+	}
 	result, err := j.Run(ctx)
 	last := Run{At: start.UTC(), Seconds: time.Since(start).Seconds(), Result: result}
 	defer func() {
@@ -210,7 +242,16 @@ func (r *Runner) Start(ctx context.Context) {
 					continue
 				}
 				if s, err := Parse(r.schedule(j)); err == nil && s.Matches(t) {
-					go r.exec(ctx, j)
+					go func() {
+						if off := r.offset(j); off > 0 {
+							select {
+							case <-ctx.Done():
+								return
+							case <-time.After(off):
+							}
+						}
+						r.exec(ctx, j)
+					}()
 				}
 			}
 		}

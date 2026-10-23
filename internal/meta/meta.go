@@ -100,6 +100,8 @@ type Client struct {
 	stale   atomic.Int64
 	inserts atomic.Int64
 	byKind  map[string]*HitMissCounter
+	bgMu    sync.Mutex // background calls take turns (#165)
+	bgNext  time.Time
 }
 
 // New returns an API client. base is e.g. https://api.flixarr.app.
@@ -224,6 +226,37 @@ func (cfg Config) keep(kind string, fresh time.Duration) time.Duration {
 
 // Get fetches /v1/<path> with the given query (region and language are added by the caller).
 // It returns the raw JSON body and the upstream status code.
+// Background marks work nobody is waiting for (scheduled jobs, imports). Its API calls go at most one per
+// BackgroundEvery and carry X-Flixarr-Background, so the API can slow them first when it's busy (#165).
+// Pages people open are never held back.
+func Background(ctx context.Context) context.Context { return context.WithValue(ctx, bgKey{}, true) }
+
+type bgKey struct{}
+
+func isBackground(ctx context.Context) bool { b, _ := ctx.Value(bgKey{}).(bool); return b }
+
+// BackgroundEvery spaces background API calls (2 a second).
+var BackgroundEvery = 500 * time.Millisecond
+
+// waitTurn holds a background call until its turn (or ctx ends).
+func (c *Client) waitTurn(ctx context.Context) error {
+	c.bgMu.Lock()
+	at := time.Now()
+	if c.bgNext.After(at) {
+		at = c.bgNext
+	}
+	c.bgNext = at.Add(BackgroundEvery)
+	c.bgMu.Unlock()
+	t := time.NewTimer(time.Until(at))
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
 func (c *Client) Get(ctx context.Context, path string, q url.Values) ([]byte, int, error) {
 	path = strings.TrimPrefix(path, "/")
 	if !allowed(path) || strings.Contains(path, "..") {
@@ -250,6 +283,11 @@ func (c *Client) Get(ctx context.Context, path string, q url.Values) ([]byte, in
 		c.byKind[kind].Miss()
 	}
 
+	if isBackground(ctx) {
+		if err := c.waitTurn(ctx); err != nil {
+			return nil, 0, err
+		}
+	}
 	body, status, fresh, err := c.fetch(ctx, c.Base+"/v1/"+key)
 	if err != nil || status >= 500 || status == http.StatusTooManyRequests {
 		// The API is down or throttling us: an expired copy beats an error page.
@@ -278,6 +316,9 @@ func (c *Client) fetch(ctx context.Context, u string) ([]byte, int, time.Duratio
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, 0, 0, err
+	}
+	if isBackground(ctx) {
+		req.Header.Set("X-Flixarr-Background", "1")
 	}
 	res, err := c.HTTP.Do(req)
 	if err != nil {

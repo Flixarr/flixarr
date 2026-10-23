@@ -547,9 +547,11 @@ func (im *Importer) Start(src Source, done func()) error {
 	im.state = State{Running: true, Stage: "Reading Seerr"}
 	im.mu.Unlock()
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
+		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Hour)
 		defer cancel()
-		res, err := im.Run(ctx, src)
+		// Title lookups go at the background pace (#165): an import is thousands of titles no cache has,
+		// and many installs importing at once must not swamp the API.
+		res, err := im.Run(meta.Background(ctx), src)
 		if done != nil {
 			done()
 		}
