@@ -11,6 +11,7 @@
 	import Avatar from '#lib/components/Avatar.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import Modal from '#lib/components/Modal.svelte';
+	import Tooltip from '#lib/components/Tooltip.svelte';
 	import { ROLES, ROLE_TONE, roleLabel, PERM_GROUPS, NO_APPROVALS, makePassword } from '#lib/roles.ts';
 
 	type Row = User & { requests: number };
@@ -277,7 +278,7 @@
 		</div>
 		<div>
 			<label for="lu-pass" class="block text-sm">Password</label>
-			<div class="flex gap-2"><input id="lu-pass" type="text" autocomplete="new-password" class={field} bind:value={local.password} /><button class="btn-ghost mt-1 shrink-0 text-sm" onclick={() => (local.password = makePassword())}>Make one</button></div>
+			<div class="flex gap-2"><input id="lu-pass" type="text" autocomplete="new-password" class={field} bind:value={local.password} /><span class="mt-1 shrink-0"><Tooltip text="New password"><button class="btn-ghost h-full px-3" aria-label="New password" onclick={() => (local.password = makePassword())}><Icon name="refresh" class="size-4" /></button></Tooltip></span></div>
 			<p class="mt-1 text-xs text-gray-500">8 or more characters. Give it to them; they can change it in their Profile.</p>
 		</div>
 	</div>

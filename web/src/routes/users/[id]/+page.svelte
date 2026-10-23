@@ -11,6 +11,7 @@
 	import Avatar from '#lib/components/Avatar.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import Modal from '#lib/components/Modal.svelte';
+	import Tooltip from '#lib/components/Tooltip.svelte';
 	import Toggle from '#lib/components/Toggle.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import Row from '#lib/components/Row.svelte';
@@ -179,7 +180,7 @@
 						<div class={head}>Password</div>
 						<div class="card flex gap-2 px-4 py-3">
 							<input class="w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/60" type="text" autocomplete="new-password" placeholder="New password (8 or more characters)" bind:value={newPassword} />
-							<button class="btn-ghost shrink-0 text-sm" onclick={() => (newPassword = makePassword())}>Make one</button>
+							<span class="shrink-0"><Tooltip text="New password"><button class="btn-ghost h-full px-3" aria-label="New password" onclick={() => (newPassword = makePassword())}><Icon name="refresh" class="size-4" /></button></Tooltip></span>
 							<button class="btn shrink-0 px-4 text-sm" disabled={saving || newPassword.length < 8} onclick={setPassword}>Set</button>
 						</div>
 						<p class="mt-1.5 text-xs text-gray-500">Setting a new password signs them out everywhere.</p>
