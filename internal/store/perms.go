@@ -8,7 +8,7 @@ import (
 )
 
 // Permission switches. Roles are presets that set them; changing any of their switches makes the role Custom.
-var AllPerms = []string{"admin", "manageRequests", "autoApprove", "requestMovies", "requestTv", "advanced", "reportIssues", "manageIssues", "watchlist", "redownload"}
+var AllPerms = []string{"admin", "manageRequests", "autoApprove", "requestMovies", "requestTv", "advanced", "reportIssues", "manageIssues", "watchlist", "redownload", "manageUsers"}
 
 // ManualPerms are never part of a preset: they're turned on by hand, person by person, and don't change
 // which role someone has (#146). Anyone with admin can do everything whatever their role.
@@ -21,7 +21,7 @@ var Roles = []string{"User", "Trusted", "Manager"}
 var RolePerms = map[string][]string{
 	"User":    {"requestMovies", "requestTv", "reportIssues"},
 	"Trusted": {"autoApprove", "requestMovies", "requestTv", "advanced", "reportIssues"},
-	"Manager": {"manageRequests", "autoApprove", "requestMovies", "requestTv", "advanced", "reportIssues", "manageIssues", "redownload"},
+	"Manager": {"manageRequests", "autoApprove", "requestMovies", "requestTv", "advanced", "reportIssues", "manageIssues", "redownload", "manageUsers"},
 }
 
 // Can reports whether the user has a permission. Admins can do everything.
@@ -29,19 +29,9 @@ func (u *User) Can(perm string) bool {
 	return slices.Contains(u.Perms, "admin") || slices.Contains(u.Perms, perm)
 }
 
-// CanManageUsers: admins, and Managers (everyone with all of the Manager preset's switches), see the Users
-// page; Managers change people up to Manager, never admins or the admin switch (#148).
-func (u *User) CanManageUsers() bool {
-	if u.Can("admin") {
-		return true
-	}
-	for _, p := range RolePerms["Manager"] {
-		if !slices.Contains(u.Perms, p) {
-			return false
-		}
-	}
-	return true
-}
+// CanManageUsers: admins, and people with Manage users (part of the Manager preset, #159), see the Users
+// page; without admin they change people up to Manager, never admins or the admin switch (#148).
+func (u *User) CanManageUsers() bool { return u.Can("manageUsers") }
 
 // RoleOf names a permission set: the preset its switches match (the manual ones aside), otherwise Custom.
 func RoleOf(perms []string) string {

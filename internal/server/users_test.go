@@ -34,7 +34,7 @@ func TestManagerUserUpdate(t *testing.T) {
 		s.people(s.userUpdate)(w, r, me)
 		return w.Code
 	}
-	manager := `{"perms":["manageRequests","autoApprove","requestMovies","requestTv","advanced","reportIssues","manageIssues","redownload","watchlist"],"movieLimit":0,"seasonLimit":0}`
+	manager := `{"perms":["manageRequests","autoApprove","requestMovies","requestTv","advanced","reportIssues","manageIssues","redownload","manageUsers","watchlist"],"movieLimit":0,"seasonLimit":0}`
 	if c := put(mgr, user.ID, manager); c != 200 {
 		t.Fatalf("manager makes a manager: %d", c)
 	}

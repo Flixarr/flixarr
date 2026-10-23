@@ -32,6 +32,7 @@ export const PERM_GROUPS: [string, Perm[]][] = [
 		['manageRequests', 'Manage requests', "Approve, decline, retry and remove anyone's requests."],
 		['manageIssues', 'Manage issues', "See, resolve and remove anyone's issues."],
 		['redownload', 'Fix and redownload', 'Fix missing or bad episodes and movies: search again, or delete the file, block its release and download a new copy. Also needed to delete files from the admin panel.'],
+		['manageUsers', 'Manage users', 'See everyone on the Users page and change their roles, switches and request limits, up to Manager. Never admins.'],
 		['admin', 'Admin', 'Full access to everything, including Settings and Users.']
 	]]
 ];
