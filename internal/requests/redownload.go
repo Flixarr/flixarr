@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
 	"slices"
 	"strings"
 
@@ -16,7 +15,16 @@ import (
 // blocklisted and not grabbed again), the file is deleted, and a new copy is searched for. For a series
 // it works per season (no seasons = every season with files). Requests for the title follow it again.
 // Without download history (a file added by hand) it just deletes the file and searches.
-func (s *Service) Redownload(ctx context.Context, typ string, tmdbID int, seasons []int) (string, error) {
+// For is who pressed Redownload and what the title is, so a title nobody requested gets a request
+// ("Redownload by ...") and its new download can be followed.
+type For struct {
+	UserID int64
+	Title  string
+	Year   string
+	Poster string
+}
+
+func (s *Service) Redownload(ctx context.Context, typ string, tmdbID int, seasons []int, by For) (string, error) {
 	v, ok, err := s.Store.FirstServer(kindOf(typ))
 	if err != nil {
 		return "", err
@@ -26,15 +34,29 @@ func (s *Service) Redownload(ctx context.Context, typ string, tmdbID int, season
 	}
 	c := client(v)
 	var done string
+	var arrID int
 	if typ == "movie" {
-		done, err = s.redownloadMovie(ctx, c, tmdbID)
+		done, arrID, err = s.redownloadMovie(ctx, c, tmdbID)
 	} else {
-		done, err = s.redownloadSeries(ctx, c, v, tmdbID, seasons)
+		done, arrID, err = s.redownloadSeries(ctx, c, v, tmdbID, seasons)
 	}
 	if err != nil {
 		return "", err
 	}
-	s.followAgain(ctx, typ, tmdbID, seasons)
+	if s.followAgain(ctx, typ, tmdbID, seasons) == 0 {
+		// Nobody asked for it through Flixarr: give the new download its own request so it shows.
+		mode := "all"
+		if typ == "series" && len(seasons) > 0 {
+			mode = "seasons"
+		}
+		r, err := s.Store.CreateRequest(store.Request{Type: typ, TmdbID: tmdbID, Title: by.Title, Year: by.Year, Poster: by.Poster, UserID: by.UserID,
+			Status: "sent", ServerID: v.ID, ArrID: arrID, ProfileID: v.QualityProfileID, ProfileName: v.QualityProfileName, Mode: mode, Seasons: seasons, Source: "redownload"})
+		if err != nil {
+			s.Log.Warn("redownload request", "title", by.Title, "err", err)
+		} else {
+			s.Publish(r)
+		}
+	}
 	if s.Plex != nil && s.Plex.Connected() {
 		s.Plex.Rescan(ctx, typ) // Plex notices the file is gone (and the title leaves the library)
 	}
@@ -42,31 +64,31 @@ func (s *Service) Redownload(ctx context.Context, typ string, tmdbID int, season
 	return done, nil
 }
 
-func (s *Service) redownloadMovie(ctx context.Context, c *arr.Client, tmdbID int) (string, error) {
-	var have []map[string]any
-	if err := c.Get(ctx, fmt.Sprintf("movie?tmdbId=%d", tmdbID), &have); err != nil {
-		return "", err
+func (s *Service) redownloadMovie(ctx context.Context, c *arr.Client, tmdbID int) (string, int, error) {
+	m, err := inArr(ctx, c, "movie", tmdbID)
+	if err != nil {
+		return "", 0, err
 	}
-	if len(have) == 0 {
-		return "", errors.New("it isn't in Radarr")
+	if m == nil {
+		return "", 0, errors.New("it isn't in Radarr")
 	}
-	id := num(have[0]["id"])
-	file, _ := have[0]["movieFile"].(map[string]any)
-	if b, _ := have[0]["hasFile"].(bool); !b || file == nil {
-		return "", errors.New("Radarr has no file for it")
+	id := num(m["id"])
+	file, _ := m["movieFile"].(map[string]any)
+	if b, _ := m["hasFile"].(bool); !b || file == nil {
+		return "", 0, errors.New("Radarr has no file for it")
 	}
 	var hist []map[string]any
 	c.Get(ctx, fmt.Sprintf("history/movie?movieId=%d", id), &hist) // read before the delete adds to it
 	// Order matters: delete first (a search while the old file is there finds nothing better), monitor
 	// it again (Radarr can unmonitor movies whose file was deleted), then mark the grab failed.
 	if err := c.Delete(ctx, fmt.Sprintf("moviefile/%d", num(file["id"]))); err != nil {
-		return "", fmt.Errorf("Radarr didn't delete the file: %w", err)
+		return "", 0, fmt.Errorf("Radarr didn't delete the file: %w", err)
 	}
 	var movie map[string]any
 	if err := c.Get(ctx, fmt.Sprintf("movie/%d", id), &movie); err == nil && movie["monitored"] != true {
 		movie["monitored"] = true
 		if err := c.Put(ctx, fmt.Sprintf("movie/%d", id), movie, nil); err != nil {
-			return "", fmt.Errorf("Radarr didn't turn it back on: %w", err)
+			return "", 0, fmt.Errorf("Radarr didn't turn it back on: %w", err)
 		}
 	}
 	marked := markFailed(ctx, c, hist, func(map[string]any) bool { return true })
@@ -76,24 +98,24 @@ func (s *Service) redownloadMovie(ctx context.Context, c *arr.Client, tmdbID int
 	}
 	if marked == 0 || !autoRedownload(ctx, c) {
 		if err := c.Post(ctx, "command", map[string]any{"name": "MoviesSearch", "movieIds": []int{id}}, nil); err != nil {
-			return "", fmt.Errorf("Radarr didn't start a search: %w", err)
+			return "", 0, fmt.Errorf("Radarr didn't start a search: %w", err)
 		}
 	}
-	return strings.Join(append(notes, "Radarr is looking for a new copy."), " "), nil
+	return strings.Join(append(notes, "Radarr is looking for a new copy."), " "), id, nil
 }
 
-func (s *Service) redownloadSeries(ctx context.Context, c *arr.Client, v store.Server, tmdbID int, seasons []int) (string, error) {
-	var found []map[string]any
-	if err := c.Get(ctx, "series/lookup?term="+url.QueryEscape(fmt.Sprintf("tmdb:%d", tmdbID)), &found); err != nil {
-		return "", err
+func (s *Service) redownloadSeries(ctx context.Context, c *arr.Client, v store.Server, tmdbID int, seasons []int) (string, int, error) {
+	sr, err := inArr(ctx, c, "series", tmdbID)
+	if err != nil {
+		return "", 0, err
 	}
-	if len(found) == 0 || num(found[0]["id"]) == 0 {
-		return "", errors.New("it isn't in Sonarr")
+	if sr == nil {
+		return "", 0, errors.New("it isn't in Sonarr")
 	}
-	id := num(found[0]["id"])
+	id := num(sr["id"])
 	eps, err := episodeList(ctx, c, id, false)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	want := map[int]bool{}
 	for _, n := range seasons {
@@ -118,16 +140,16 @@ func (s *Service) redownloadSeries(ctx context.Context, c *arr.Client, v store.S
 		}
 	}
 	if len(files) == 0 {
-		return "", errors.New("Sonarr has no files for that")
+		return "", 0, errors.New("Sonarr has no files for that")
 	}
 	var hist []map[string]any
 	c.Get(ctx, fmt.Sprintf("history/series?seriesId=%d", id), &hist)
 	// Delete, monitor again (Sonarr can unmonitor episodes whose files were deleted), then mark failed.
 	if err := c.Delete(ctx, "episodefile/bulk", map[string]any{"episodeFileIds": files}); err != nil {
-		return "", fmt.Errorf("Sonarr didn't delete the files: %w", err)
+		return "", 0, fmt.Errorf("Sonarr didn't delete the files: %w", err)
 	}
 	if err := c.Put(ctx, "episode/monitor", map[string]any{"episodeIds": hadFile, "monitored": true}, nil); err != nil {
-		return "", fmt.Errorf("Sonarr didn't turn the episodes back on: %w", err)
+		return "", 0, fmt.Errorf("Sonarr didn't turn the episodes back on: %w", err)
 	}
 	slices.Sort(picked)
 	set := map[int]bool{}
@@ -145,7 +167,7 @@ func (s *Service) redownloadSeries(ctx context.Context, c *arr.Client, v store.S
 			c.Post(ctx, "command", map[string]any{"name": "SeasonSearch", "seriesId": id, "seasonNumber": n}, nil)
 		}
 	}
-	return strings.Join(append(notes, "Sonarr is looking for new copies."), " "), nil
+	return strings.Join(append(notes, "Sonarr is looking for new copies."), " "), id, nil
 }
 
 // markFailed marks as failed the grabs that the current files came from (newest import per download),
@@ -183,13 +205,14 @@ func autoRedownload(ctx context.Context, c *arr.Client) bool {
 	return on
 }
 
-// followAgain puts the title's finished requests (for those seasons) back to following, so they show
+// followAgain (returns how many) puts the title's finished requests (for those seasons) back to following, so they show
 // the new download and turn Available again on their own.
-func (s *Service) followAgain(ctx context.Context, typ string, tmdbID int, seasons []int) {
+func (s *Service) followAgain(ctx context.Context, typ string, tmdbID int, seasons []int) int {
 	list, err := s.Store.OpenRequests(typ, tmdbID)
 	if err != nil {
-		return
+		return 0
 	}
+	n := 0
 	for _, r := range list {
 		if r.Status != "available" || r.ArrID == 0 {
 			continue
@@ -200,7 +223,9 @@ func (s *Service) followAgain(ctx context.Context, typ string, tmdbID int, seaso
 		r.Status, r.Progress = "sent", 0
 		s.Store.UpdateRequest(r)
 		s.Publish(r)
+		n++
 	}
+	return n
 }
 
 func overlaps(a, b []int) bool {

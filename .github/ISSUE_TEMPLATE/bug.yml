@@ -1,0 +1,46 @@
+name: Bug report
+description: Something in Flixarr isn't working right.
+type: Bug
+labels: [needs triage]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for reporting. Please search the open issues first so we don't end up with duplicates.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+        3. See ...
+  - type: input
+    id: version
+    attributes:
+      label: Flixarr version
+      description: Shown in Settings, About.
+      placeholder: 0.1.0.166
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where did it happen?
+      multiple: true
+      options:
+        - Desktop browser
+        - Phone browser
+        - Installed app (home screen)
+        - Server or logs
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Anything that helps. Remove API keys, tokens and addresses first.

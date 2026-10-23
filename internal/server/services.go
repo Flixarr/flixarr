@@ -37,6 +37,16 @@ func (s *Server) viewOf(v store.Server) serviceView {
 	}
 	sv := serviceView{Server: v, APIKeySet: v.APIKey != "", APIKeyEnd: end}
 	if snap, ok := s.Arr.Get(v.ID); ok {
+		// Stuck downloads link to their request (or to the title when nobody requested it in Flixarr).
+		// A copy (the snapshot is shared), never nil: an empty queue must reach the page as [], not null.
+		snap.Queue = append(make([]arr.QueueRow, 0, len(snap.Queue)), snap.Queue...)
+		for i, q := range snap.Queue {
+			if (q.State == "warning" || q.State == "error") && q.ArrID > 0 {
+				if list, _ := s.Store.ActiveRequestsFor(q.Type, q.ArrID); len(list) > 0 {
+					snap.Queue[i].RequestID = list[0].ID
+				}
+			}
+		}
 		sv.Status = &snap
 	}
 	sv.Profiles, _ = s.Profiles.Status(v)
@@ -280,6 +290,35 @@ func (s *Server) serviceProfileUseFlixarr(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, s.viewOf(v))
+}
+
+// serviceProfileSkip keeps a profile's current version until the next Flixarr version comes.
+func (s *Server) serviceProfileSkip(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	v, ok, err := s.Store.FirstServer(r.PathValue("kind"))
+	if err != nil || !ok {
+		writeErr(w, http.StatusNotFound, "Not connected.")
+		return
+	}
+	if err := s.Profiles.Skip(v, r.PathValue("key")); err != nil {
+		writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
+		return
+	}
+	writeJSON(w, http.StatusOK, s.viewOf(v))
+}
+
+// serviceProfileChanges says what Update would change in a profile (it only reads).
+func (s *Server) serviceProfileChanges(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	v, ok, err := s.Store.FirstServer(r.PathValue("kind"))
+	if err != nil || !ok {
+		writeErr(w, http.StatusNotFound, "Not connected.")
+		return
+	}
+	c, err := s.Profiles.Changes(r.Context(), v, r.PathValue("key"))
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		return
+	}
+	writeJSON(w, http.StatusOK, c)
 }
 
 // profilesInfo lists Flixarr's quality profiles (for the first-setup window, before anything is added).

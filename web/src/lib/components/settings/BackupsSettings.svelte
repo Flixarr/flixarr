@@ -15,11 +15,33 @@
 	let restoreOpen = $state(false);
 	let deleteOpen = $state(false);
 	let restarting = $state(false);
+	// Offsite: each backup also copied to another folder and/or S3-compatible storage.
+	type S3 = { endpoint: string; region: string; bucket: string; prefix: string; accessKey: string; secretKey?: string };
+	type Offsite = { folder: string; s3: S3; secretKeySet: boolean; last: { at: string; error?: string } };
+	let off = $state<Offsite | null>(null);
+	let offOpen = $state(false);
+	let secret = $state('');
+	const input = 'mt-1 w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/60';
 
 	async function load() {
-		const d = await api<{ backups: Backup[]; keep: number }>('/backups');
+		const d = await api<{ backups: Backup[]; keep: number; offsite: Offsite }>('/backups');
 		list = d.backups;
 		keep = d.keep;
+		off = d.offsite;
+	}
+	async function saveOffsite() {
+		busy = 'offsite';
+		try {
+			const d = await api<{ backups: Backup[]; keep: number; offsite: Offsite }>('/backups/offsite', { method: 'PUT', body: JSON.stringify({ folder: off!.folder, s3: { ...off!.s3, secretKey: secret } }) });
+			off = d.offsite;
+			secret = '';
+			notify(off.folder || off.s3.endpoint ? 'Saved. The newest backup was copied there.' : 'Offsite copies are off.', 'green');
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+			load();
+		} finally {
+			busy = '';
+		}
 	}
 	$effect(() => {
 		load();
@@ -126,6 +148,39 @@
 		{/if}
 		<p class="mt-2 text-xs text-gray-500">API keys and tokens inside a backup are encrypted with the <span class="font-mono">secret.key</span> file in the data folder. Keep that file too if you move Flixarr to another machine; without it they have to be entered again.</p>
 	</div>
+
+	{#if off}
+		<div>
+			{@render heading('Offsite copies')}
+			<div class="card divide-y divide-gray-700/40 px-4 text-sm">
+				<!-- Collapsed until opened (#108): the form is long and rarely changed. -->
+				<button class="flex w-full items-center gap-3 py-3 text-left" aria-expanded={offOpen} onclick={() => (offOpen = !offOpen)}>
+					<span class="min-w-0 flex-1">
+						<span class="block">{[off.folder && 'A folder', off.s3.endpoint && 'S3 storage'].filter(Boolean).join(' and ') || 'Off'}</span>
+						<span class="block text-xs {off.last.error ? 'text-red-300' : 'text-gray-500'}">{off.folder || off.s3.endpoint ? (off.last.at ? `Last copy ${when(off.last.at)}${off.last.error ? `: ${off.last.error}` : ', worked'}` : 'Nothing copied yet.') : 'Copy each backup to another drive or to S3-compatible storage.'}</span>
+					</span>
+					<Icon name="chevron" class="size-4 shrink-0 text-gray-500 transition {offOpen ? 'rotate-90' : ''}" />
+				</button>
+				{#if offOpen}
+				<p class="py-3 text-xs text-gray-400">A backup on the same disk doesn't help if the disk dies. Each backup can also be copied to another folder (a different drive, mounted into Flixarr's container) and to S3-compatible storage (Amazon S3, Backblaze B2, Cloudflare R2, MinIO…). Each place keeps the same number of copies as above.</p>
+				<div class="py-3"><label for="o-folder" class="block">Folder</label><input id="o-folder" class={input} bind:value={off.folder} placeholder="/offsite-backups" autocomplete="off" spellcheck="false" /><p class="mt-1 text-xs text-gray-500">A full path inside the container. Leave empty to not use one.</p></div>
+				<div class="grid gap-3 py-3 tablet:grid-cols-2">
+					<div class="tablet:col-span-2"><label for="o-ep" class="block">S3 endpoint</label><input id="o-ep" class={input} bind:value={off.s3.endpoint} placeholder="https://s3.us-east-1.amazonaws.com" autocomplete="off" spellcheck="false" /></div>
+					<div><label for="o-b" class="block">Bucket</label><input id="o-b" class={input} bind:value={off.s3.bucket} autocomplete="off" spellcheck="false" /></div>
+					<div><label for="o-r" class="block">Region</label><input id="o-r" class={input} bind:value={off.s3.region} placeholder="us-east-1 (R2: auto)" autocomplete="off" spellcheck="false" /></div>
+					<div><label for="o-p" class="block">Folder in the bucket <span class="text-gray-500">(optional)</span></label><input id="o-p" class={input} bind:value={off.s3.prefix} placeholder="flixarr" autocomplete="off" spellcheck="false" /></div>
+					<div><label for="o-a" class="block">Access key</label><input id="o-a" class={input} bind:value={off.s3.accessKey} autocomplete="off" spellcheck="false" /></div>
+					<div class="tablet:col-span-2"><label for="o-s" class="block">Secret key</label><input id="o-s" class={input} type="password" bind:value={secret} placeholder={off.secretKeySet ? 'Saved. Type a new one to replace it.' : ''} autocomplete="new-password" /></div>
+				</div>
+				<div class="flex flex-wrap items-center justify-between gap-3 py-3">
+					<span class="text-xs {off.last.error ? 'text-red-300' : 'text-gray-500'}">{off.last.at ? `Last copy ${when(off.last.at)}${off.last.error ? `: ${off.last.error}` : ', worked'}` : 'Nothing copied yet.'}</span>
+					<button class="btn px-5 py-1.5 text-sm" disabled={!!busy} onclick={saveOffsite}>{busy === 'offsite' ? 'Saving and copying…' : 'Save'}</button>
+				</div>
+				{/if}
+			</div>
+			<p class="mt-2 text-xs text-gray-500">Keep a copy of <span class="font-mono">secret.key</span> with them too; it isn't in the backups.</p>
+		</div>
+	{/if}
 {/if}
 
 <Modal bind:open={restoreOpen} title="Restore this backup?" sub={target ? when(target.created) : ''}>

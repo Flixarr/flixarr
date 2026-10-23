@@ -24,7 +24,7 @@
 	// Where each movie stands: in Plex, requested, or missing.
 	const st = (p: Card) => statusOf(`movie:${p.id}`);
 	const have = $derived(c ? c.parts.filter((p) => st(p)?.plex || st(p)?.status === 'available').length : 0);
-	const missing = $derived(c ? c.parts.filter((p) => { const s = st(p); return s !== undefined && (!s || s.status === 'failed' || s.status === 'declined' || s.status === 'expired'); }) : []);
+	const missing = $derived(c ? c.parts.filter((p) => { const s = st(p); return s !== undefined && (!s || s.status === 'failed' || s.status === 'declined' || s.status === 'expired' || s.status === 'removed'); }) : []);
 
 	async function openRequest() {
 		picked = missing.filter((p) => p.year && p.year <= String(new Date().getFullYear())).map((p) => p.id);
@@ -53,7 +53,7 @@
 		}
 		sending = false;
 		open = false;
-		if (failed) notify(`Requested ${ok} of ${ok + failed}. ${firstErr}`, 'orange');
+		if (failed) notify(`Requested ${ok} of ${ok + failed}.$' Someone who manages requests can look into the rest.'`, 'orange');
 		else notify(`Requested ${ok} ${ok === 1 ? 'movie' : 'movies'}.${opts?.approval ? ' They wait for an admin to approve them.' : ''}`);
 	}
 	$effect(() => {
@@ -106,9 +106,9 @@
 		{#if !opts}
 			<p class="text-sm text-gray-400">Loading…</p>
 		{:else if !opts.connected}
-			<p class="rounded-lg bg-yellow-500/10 px-3 py-2 text-sm text-yellow-300 ring-1 ring-yellow-500/30">{opts.server} isn't connected yet. An admin can connect it in Settings → Services.</p>
+			<p class="rounded-lg bg-yellow-500/10 px-3 py-2 text-sm text-yellow-300 ring-1 ring-yellow-500/30">Movie requests aren't set up yet (Settings, Services).</p>
 		{:else}
-			<p class="text-xs text-gray-400">Goes to <span class="text-gray-200">{opts.server}</span>{opts.approval ? ' after an admin approves it' : ''}.{#if opts.usage?.limit}{@const left = Math.max(0, opts.usage.limit - opts.usage.used)} You have {left} movie{left === 1 ? '' : 's'} left this week.{/if}</p>
+			<p class="text-xs text-gray-400">{opts.approval ? 'An admin approves them first.' : 'They start right away.'}{#if opts.usage?.limit}{@const left = Math.max(0, opts.usage.limit - opts.usage.used)} You have {left} movie{left === 1 ? '' : 's'} left this week.{/if}</p>
 			{#if opts.profiles.length}
 				<div>
 					<label for="col-quality" class="block text-sm">Quality</label>

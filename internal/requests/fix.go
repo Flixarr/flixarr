@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/Flixarr/flixarr/internal/arr"
@@ -109,8 +108,8 @@ func (s *Service) fixSeries(ctx context.Context, v store.Server, r *store.Reques
 		return nil, err
 	}
 	if err != nil {
-		var found []map[string]any
-		if err := c.Get(ctx, "series/lookup?term="+url.QueryEscape(fmt.Sprintf("tmdb:%d", r.TmdbID)), &found); err != nil {
+		found, err := seriesLookup(ctx, c, r.TmdbID)
+		if err != nil {
 			return nil, err
 		}
 		if len(found) == 0 || num(found[0]["id"]) == 0 { // not in Sonarr at all: add it again

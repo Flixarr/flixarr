@@ -89,15 +89,20 @@ func (c *Checker) installID() string {
 
 // Payload is exactly what gets sent, shown to admins next to the toggle.
 func (c *Checker) Payload() map[string]string {
-	return map[string]string{
+	p := map[string]string{
 		"install": c.installID(),
-		"version": version.Version,
-		"build":   version.Build,
+		"version": version.Full(),
 		"channel": version.Channel,
 		"os":      runtime.GOOS,
 		"arch":    runtime.GOARCH,
 		"db":      "sqlite",
 	}
+	// Builds (0.2.0-dev.245) also send their build number; a release (0.2.0) doesn't: the API reads
+	// "0.2.0" with a build as a build on its way to 0.2.0, which would offer 0.2.0 to itself.
+	if version.Pre != "" {
+		p["build"] = version.Build
+	}
+	return p
 }
 
 // Check asks the data server now and stores the answer.

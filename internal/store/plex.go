@@ -1,6 +1,9 @@
 package store
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 // PlexItem is a title in Plex.
 type PlexItem struct {
@@ -11,6 +14,8 @@ type PlexItem struct {
 	Title     string
 	AddedAt   int64
 	SeenAt    string
+	// Series: episodes Plex has of those aired so far (#137); EpsTotal 0 = not checked yet.
+	EpsHave, EpsTotal int
 }
 
 // SavePlexItem records a title seen in Plex; isNew says it wasn't known before.
@@ -20,6 +25,13 @@ func (s *Store) SavePlexItem(it PlexItem) (isNew bool, err error) {
 	_, err = s.db.Exec(`INSERT INTO plex_items (type, tmdb_id, rating_key, section, title, added_at, seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(type, tmdb_id) DO UPDATE SET rating_key = excluded.rating_key, section = excluded.section, title = excluded.title, added_at = excluded.added_at, seen_at = MAX(seen_at, excluded.seen_at)`,
 		it.Type, it.TmdbID, it.RatingKey, it.Section, it.Title, it.AddedAt, it.SeenAt)
+	if n == 0 && err == nil {
+		at := ""
+		if it.AddedAt > 0 {
+			at = time.Unix(it.AddedAt, 0).UTC().Format(time.RFC3339)
+		}
+		s.AddTitleEvent(it.Type, it.TmdbID, "plex", "", 0, at) // History: when it arrived in Plex
+	}
 	return n == 0 && err == nil, err
 }
 
@@ -101,8 +113,8 @@ func (s *Store) PlexItemsFor(keys []string) (map[string]PlexItem, error) {
 			continue
 		}
 		var it PlexItem
-		err := s.db.QueryRow(`SELECT type, tmdb_id, rating_key, section, title, added_at, seen_at FROM plex_items WHERE type = ? AND tmdb_id = ?`, typ, id).
-			Scan(&it.Type, &it.TmdbID, &it.RatingKey, &it.Section, &it.Title, &it.AddedAt, &it.SeenAt)
+		err := s.db.QueryRow(`SELECT type, tmdb_id, rating_key, section, title, added_at, seen_at, eps_have, eps_total FROM plex_items WHERE type = ? AND tmdb_id = ?`, typ, id).
+			Scan(&it.Type, &it.TmdbID, &it.RatingKey, &it.Section, &it.Title, &it.AddedAt, &it.SeenAt, &it.EpsHave, &it.EpsTotal)
 		if err == nil {
 			out[k] = it
 		}
@@ -160,4 +172,27 @@ func (s *Store) PlexItemByRatingKey(key string) (PlexItem, bool) {
 	err := s.db.QueryRow(`SELECT type, tmdb_id, rating_key, section, title, added_at, seen_at FROM plex_items WHERE rating_key = ?`, key).
 		Scan(&it.Type, &it.TmdbID, &it.RatingKey, &it.Section, &it.Title, &it.AddedAt, &it.SeenAt)
 	return it, err == nil
+}
+
+// PlexSeriesIDs lists the series in Plex (TMDB IDs).
+func (s *Store) PlexSeriesIDs() ([]int, error) {
+	rows, err := s.db.Query(`SELECT tmdb_id FROM plex_items WHERE type = 'series' ORDER BY tmdb_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []int{}
+	for rows.Next() {
+		var id int
+		if rows.Scan(&id) == nil {
+			out = append(out, id)
+		}
+	}
+	return out, rows.Err()
+}
+
+// SetSeriesEpisodes records how much of a series Plex has: episodes it has of those aired so far.
+func (s *Store) SetSeriesEpisodes(tmdbID, have, total int) error {
+	_, err := s.db.Exec(`UPDATE plex_items SET eps_have = ?, eps_total = ? WHERE type = 'series' AND tmdb_id = ?`, have, total, tmdbID)
+	return err
 }

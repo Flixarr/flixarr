@@ -13,6 +13,7 @@ import (
 
 	"github.com/Flixarr/flixarr/internal/arr"
 	"github.com/Flixarr/flixarr/internal/store"
+	"github.com/Flixarr/flixarr/internal/testinstall"
 )
 
 const keyDoc = "profiles_doc" // the last profiles document downloaded (JSON)
@@ -22,7 +23,9 @@ const keyDoc = "profiles_doc" // the last profiles document downloaded (JSON)
 // Rules it keeps:
 //   - It never changes or deletes anything it didn't create. Custom formats already on a server are
 //     reused only when they match Flixarr's exactly; otherwise Flixarr adds its own copy named "<name> (Flixarr)".
-//   - A Flixarr profile someone edited in Radarr/Sonarr is left alone; the newer version is offered instead.
+//   - Newer versions are downloaded on their own but only applied when an admin presses Update (#94);
+//     adding a profile for the first time applies it right away.
+//   - A Flixarr profile someone edited in Radarr/Sonarr is left alone until an admin replaces it.
 //   - A Flixarr profile someone deleted in Radarr/Sonarr isn't put back on its own.
 type Manager struct {
 	Store     *store.Store
@@ -113,10 +116,12 @@ type ProfileStatus struct {
 	ArrName     string `json:"arrName"`
 	Installed   bool   `json:"installed"`
 	ArrID       int    `json:"arrId,omitempty"`
-	// State: "" (not added), "ok" (up to date), "update" (a newer version will be pushed on the next sync),
+	// State: "" (not added), "ok" (up to date), "update" (a newer version is waiting for an admin),
 	// "customized" (edited in Radarr/Sonarr; a newer version is waiting if UpdateAvailable), "missing" (deleted in Radarr/Sonarr).
 	State           string `json:"state"`
 	UpdateAvailable bool   `json:"updateAvailable"`
+	Skipped         bool   `json:"skipped"` // the newer version was skipped; offered again when the next one comes
+	Rev             string `json:"rev,omitempty"`
 	UpdatedAt       string `json:"updatedAt,omitempty"`
 }
 
@@ -142,7 +147,9 @@ func (m *Manager) Status(v store.Server) ([]ProfileStatus, error) {
 		s := ProfileStatus{Key: p.ID, Name: p.Name, Label: p.Label, Description: p.Description, ArrName: ArrName(p)}
 		if l, ok := byKey[p.ID]; ok {
 			s.Installed, s.ArrID, s.State, s.UpdatedAt = l.State != "missing", l.ArrID, l.State, l.UpdatedAt
-			s.UpdateAvailable = l.Rev != p.Rev
+			s.Rev = l.Rev
+			s.Skipped = l.Rev != p.Rev && m.skipped(v.ID, p.ID) == p.Rev
+			s.UpdateAvailable = l.Rev != p.Rev && !s.Skipped
 			if s.State == "ok" && s.UpdateAvailable {
 				s.State = "update"
 			}
@@ -252,6 +259,9 @@ func (m *Manager) ensureFormats(ctx context.Context, s *server, d *Doc, b Body) 
 
 // push adds or replaces one Flixarr profile on the server and records it.
 func (m *Manager) push(ctx context.Context, s *server, d *Doc, p Profile, arrID int) error {
+	if testinstall.On {
+		return errors.New("quality profiles aren't pushed from a dev install: it shares Radarr and Sonarr with the real one")
+	}
 	ap := p.For(s.v.Kind)
 	if ap == nil {
 		return fmt.Errorf("%s has no %s version", p.Label, arr.Kinds[s.v.Kind])
@@ -331,7 +341,8 @@ func (m *Manager) Add(ctx context.Context, v store.Server, keys []string) error 
 	return nil
 }
 
-// UseFlixarrVersion replaces an edited profile with Flixarr's current version ("Sync" in Settings).
+// UseFlixarrVersion puts Flixarr's current version of a profile on a server (Update in Settings), replacing
+// any edits made there.
 func (m *Manager) UseFlixarrVersion(ctx context.Context, v store.Server, key string) error {
 	m.run.Lock()
 	defer m.run.Unlock()
@@ -359,11 +370,16 @@ func (m *Manager) UseFlixarrVersion(ctx context.Context, v store.Server, key str
 	if err != nil {
 		return err
 	}
-	return m.push(ctx, s, d, *p, id)
+	if err := m.push(ctx, s, d, *p, id); err != nil {
+		return err
+	}
+	m.Store.SetSetting(skipKey(v.ID, key), "")
+	go m.UpdateTodo()
+	return nil
 }
 
-// Sync checks every Flixarr profile on a server: untouched ones get the newest version, edited ones are
-// marked (and left alone), deleted ones are marked missing. It returns how many profiles were updated.
+// Sync checks every Flixarr profile on a server: edited ones are marked customized, deleted ones missing.
+// Nothing is changed in Radarr/Sonarr: newer versions wait for an admin (Status shows them as updates).
 func (m *Manager) Sync(ctx context.Context, v store.Server) (int, error) {
 	m.run.Lock()
 	defer m.run.Unlock()
@@ -380,32 +396,19 @@ func (m *Manager) Sync(ctx context.Context, v store.Server) (int, error) {
 	for _, p := range s.profiles {
 		live[p.ID] = p
 	}
-	byKey := map[string]Profile{}
-	for _, p := range d.Profiles {
-		byKey[p.ID] = p
-	}
-	updated := 0
 	for _, l := range links {
-		p, known := byKey[l.Key]
 		cur, still := live[l.ArrID]
 		switch {
 		case !still:
 			l.State = "missing"
 		case fingerprint(cur) != l.PushedHash:
 			l.State = "customized"
-		case known && p.Rev != l.Rev && p.For(v.Kind) != nil:
-			if err := m.push(ctx, s, d, p, l.ArrID); err != nil {
-				return updated, err
-			}
-			updated++
-			m.Log.Info("quality profile updated", "server", v.Name, "profile", p.ID, "rev", p.Rev)
-			continue
 		default:
 			l.State = "ok"
 		}
 		m.Store.SaveProfileLink(l, false)
 	}
-	return updated, nil
+	return 0, nil
 }
 
 // SyncAll downloads the profiles and syncs every server; it's the "Quality profiles: sync" job.
@@ -418,16 +421,15 @@ func (m *Manager) SyncAll(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	total, failed := 0, 0
+	failed := 0
 	for _, v := range servers {
-		n, err := m.Sync(ctx, v)
-		total += n
-		if err != nil {
+		if _, err := m.Sync(ctx, v); err != nil {
 			failed++
 			m.Log.Warn("quality profile sync", "server", v.Name, "err", err)
 		}
 	}
-	msg := fmt.Sprintf("Profiles %s, %d updated", m.Doc().Version, total)
+	waiting := m.UpdateTodo()
+	msg := fmt.Sprintf("Profiles %s, %d update%s waiting", m.Doc().Version, waiting, map[bool]string{true: "", false: "s"}[waiting == 1])
 	if changed {
 		msg += " (new version)"
 	}

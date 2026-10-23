@@ -2,8 +2,12 @@ package server
 
 import (
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/Flixarr/flixarr/internal/secret"
+	"github.com/Flixarr/flixarr/internal/store"
 )
 
 func TestSignInPause(t *testing.T) {
@@ -39,5 +43,26 @@ func TestClientIPTrustsOnlyLocalProxies(t *testing.T) {
 	r.RemoteAddr = "172.18.0.2:5000" // a reverse proxy container
 	if got := clientIP(r); got != "1.2.3.4" {
 		t.Fatalf("proxy: %s", got)
+	}
+}
+
+func TestSignInMode(t *testing.T) {
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	st, _ := store.Open(dir, box)
+	t.Cleanup(func() { st.Close() })
+	s := &Server{Store: st}
+	if s.signIn() != "both" {
+		t.Fatalf("default: %s", s.signIn())
+	}
+	st.SetSetting(KeySignIn, "plex")
+	w := httptest.NewRecorder()
+	s.localLogin(w, httptest.NewRequest("POST", "/api/auth/local", strings.NewReader(`{"username":"grandpa","password":"x"}`)))
+	if w.Code != 403 {
+		t.Fatalf("Plex only, a username sign-in: %d", w.Code)
+	}
+	st.SetSetting(KeySignIn, "nonsense")
+	if s.signIn() != "both" {
+		t.Fatal("an unknown value should mean both")
 	}
 }

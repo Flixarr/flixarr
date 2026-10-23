@@ -29,8 +29,10 @@ import (
 	"github.com/Flixarr/flixarr/internal/profiles"
 	"github.com/Flixarr/flixarr/internal/requests"
 	"github.com/Flixarr/flixarr/internal/secret"
+	"github.com/Flixarr/flixarr/internal/seerr"
 	"github.com/Flixarr/flixarr/internal/server"
 	"github.com/Flixarr/flixarr/internal/store"
+	"github.com/Flixarr/flixarr/internal/testinstall"
 	"github.com/Flixarr/flixarr/internal/update"
 	"github.com/Flixarr/flixarr/internal/version"
 	"github.com/Flixarr/flixarr/internal/watchlist"
@@ -82,7 +84,7 @@ func main() {
 	}
 
 	// Daily "is there a newer build?" check (also how installs are counted). Off with FLIXARR_UPDATE_CHECK=false.
-	checker := &update.Checker{Store: st, API: api, ForceOff: os.Getenv("FLIXARR_UPDATE_CHECK") == "false", Log: log,
+	checker := &update.Checker{Store: st, API: api, ForceOff: os.Getenv("FLIXARR_UPDATE_CHECK") == "false" || testinstall.On, Log: log,
 		HTTP: &http.Client{Timeout: 10 * time.Second}}
 	runCtx, stopChecks := context.WithCancel(context.Background())
 	defer stopChecks()
@@ -100,7 +102,7 @@ func main() {
 			return plural(n, "result") + " removed", err
 		}})
 	runner.Add(&jobs.Job{ID: "image-cleanup", Name: "Image cache cleanup", Default: "0 5 * * 0",
-		About: "Removes saved posters and backdrops nobody has viewed for a while (Settings → Cache).",
+		About: "Removes saved posters, backdrops and avatars nobody has viewed for a while (Settings → Cache).",
 		Run: func(context.Context) (string, error) {
 			n, err := ic.Cleanup()
 			return plural(int64(n), "image") + " removed", err
@@ -121,12 +123,16 @@ func main() {
 		Run:   pm.SyncAll})
 	// The daily update check also says which profiles version is current; a new one syncs right away.
 	checker.OnResult = func(r *update.Result) {
+		if r.UpdateAvailable && r.Latest != nil { // once per version, for admins
+			v := r.Latest.Version // the full version, e.g. 0.2.0 or 0.3.0-nightly.400
+			st.AddNews(store.Alert{Key: "update:" + v, Audience: "admins", Title: "Flixarr " + v + " is out", Detail: "See what's new in Settings, About", Link: "/settings#about"})
+		}
 		if r.Profiles != nil && (pm.Doc() == nil || pm.Doc().Version != r.Profiles.Version) {
 			runner.RunNow(runCtx, "profiles-sync")
 		}
 	}
 	// Plex: what's in the server's libraries, so titles show as available whoever added them.
-	lib := &plexlib.Library{Store: st, ClientID: clientID, Version: version.Full(), Log: log}
+	lib := &plexlib.Library{Store: st, ClientID: clientID, Version: version.Full(), Log: log, Meta: mc}
 	reqs.Plex = lib
 	lib.OnAdded = func(keys []string) {
 		hub.Publish(live.Event{Type: "plex", Data: keys})
@@ -164,6 +170,9 @@ func main() {
 	runner.Add(&jobs.Job{ID: "plex-recent", Name: "Plex: recently added scan", Default: "*/30 * * * *",
 		About: "Reads the newest additions to the chosen Plex libraries. A backup: Plex itself tells Flixarr about new titles the moment they're added.",
 		Run:   lib.RecentScan})
+	runner.Add(&jobs.Job{ID: "plex-episodes", Name: "Plex: whole or part of each series", Default: "30 3 * * *",
+		About: "Counts how many of each series' aired episodes are in Plex, so posters can tell a whole series from part of one.",
+		Run:   lib.EpisodeCounts})
 	wl := &watchlist.Syncer{Store: st, Requests: reqs, Meta: mc, ClientID: clientID, Log: log}
 	runner.Add(&jobs.Job{ID: "watchlist", Name: "Plex Watchlist: sync", Default: "*/15 * * * *",
 		About: "Requests what people add to their Plex Watchlist, for those who switched it on in their Profile.",
@@ -173,19 +182,8 @@ func main() {
 	maint.Changed = func(keys []string) { hub.Publish(live.Event{Type: "leaving", Data: keys}) }
 	maint.Leaving = func(r store.Request, at time.Time) {
 		notifier.Send(notifier.FromLeaving(r, at))
-		st.RaiseAlert(store.Alert{Key: fmt.Sprintf("leaving:user:%d", r.UserID), Audience: fmt.Sprintf("user:%d", r.UserID), Severity: "info",
-			Title: "Leaving soon", Detail: r.Title + " leaves Plex on " + at.Local().Format("Jan 2"), Link: fmt.Sprintf("/%s/%d", r.Type, r.TmdbID), Sig: fmt.Sprintf("r%d", r.ID)})
-	}
-	maint.AsksChanged = func(n int) {
-		if n == 0 {
-			st.ResolveAlert("keep:asks")
-			return
-		}
-		title := "1 title someone wants kept"
-		if n > 1 {
-			title = fmt.Sprintf("%d titles people want kept", n)
-		}
-		st.RaiseAlert(store.Alert{Key: "keep:asks", Audience: "admins", Severity: "info", Title: title, Detail: "Leaving Plex soon (Maintainerr)", Link: "/leaving", Sig: fmt.Sprint(n)})
+		st.AddNews(store.Alert{Audience: fmt.Sprintf("user:%d", r.UserID), Title: "Leaving Plex " + at.Local().Format("Jan 2"), Detail: r.Title + " · ask to keep it",
+			Link: fmt.Sprintf("/%s/%d", r.Type, r.TmdbID), Poster: r.Poster})
 	}
 	runner.Add(&jobs.Job{ID: "maintainerr", Name: "Maintainerr: read collections", Default: "*/15 * * * *",
 		About: "Reads which titles Maintainerr is about to remove and when, keeps new requests out of its rules for a while, and tells people a week before their request leaves Plex. Maintainerr's webhook runs it right away too.",
@@ -197,6 +195,16 @@ func main() {
 	runner.Start(runCtx)
 	runner.RunNow(runCtx, "profiles-sync")
 	runner.RunNow(runCtx, "arr-status") // fill the cards right away instead of waiting for the first minute
+
+	// Import from Seerr (Settings → Import): progress goes to admins' open pages, a few times a second at most.
+	var lastImport time.Time
+	importer := &seerr.Importer{Store: st, Meta: mc, Log: log, OnProgress: func(state seerr.State) {
+		if state.Running && time.Since(lastImport) < 250*time.Millisecond {
+			return
+		}
+		lastImport = time.Now()
+		hub.Publish(live.Event{Type: "import", Data: state, For: live.Admins})
+	}}
 
 	srv := &server.Server{
 		Store:    st,
@@ -212,6 +220,7 @@ func main() {
 		Notify:   notifier,
 		Maint:    maint,
 		Backups:  backups,
+		Seerr:    importer,
 		Live:     hub,
 		Web:      webui.FS(),
 		Log:      log,
@@ -222,6 +231,9 @@ func main() {
 	hs := &http.Server{Addr: addr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 
 	go func() {
+		if testinstall.On {
+			log.Info("dev install: no automatic notifications, Maintainerr writes, watchlist requests, quality profile or webhook pushes, or update checks")
+		}
 		log.Info("Flixarr starting", "version", version.Full(), "commit", version.Commit, "channel", version.Channel, "addr", addr, "data", dataDir)
 		if err := hs.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("server", "err", err)

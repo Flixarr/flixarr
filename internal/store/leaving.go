@@ -187,7 +187,24 @@ func (s *Store) ToldLeaving(requestID int64, leaveAt string) (already bool) {
 	return false
 }
 
-// AvailableRequestsSince lists available requests last changed after since (for fresh keeps).
+// AvailableRequestsSince lists available requests that arrived (turned available) after since, with
+// UpdatedAt set to when they arrived. Used to keep new requests out of Maintainerr's rules.
 func (s *Store) AvailableRequestsSince(since string) ([]Request, error) {
-	return s.queryRequests(`SELECT `+requestCols+` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.status = 'available' AND r.updated_at > ?`, since)
+	list, err := s.queryRequests(`SELECT ` + requestCols + ` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.status = 'available'`)
+	if err != nil {
+		return nil, err
+	}
+	out := []Request{}
+	for _, r := range list {
+		var at string
+		s.db.QueryRow(`SELECT at FROM request_events WHERE request_id = ? AND status = 'available' ORDER BY id DESC LIMIT 1`, r.ID).Scan(&at)
+		if at == "" {
+			at = r.UpdatedAt
+		}
+		if at > since {
+			r.UpdatedAt = at
+			out = append(out, r)
+		}
+	}
+	return out, nil
 }

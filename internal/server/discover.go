@@ -41,8 +41,9 @@ type titleRef struct {
 // cards fills poster rows from the Flixarr API's detail pages (cached after the first time), a few at a time.
 func (s *Server) cards(r *http.Request, refs []titleRef) []*card {
 	q := url.Values{}
-	q.Set("region", s.Store.Setting("region", "US"))
-	q.Set("language", s.Store.Setting("language", "en-US"))
+	region, language := s.locale(r)
+	q.Set("region", region)
+	q.Set("language", language)
 	out := make([]*card, len(refs))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 4) // gentle on the API's per-install throttle
@@ -98,13 +99,22 @@ func (s *Server) recentlyAdded(w http.ResponseWriter, r *http.Request, _ *store.
 // otherwise your own.
 func (s *Server) recentRequests(w http.ResponseWriter, r *http.Request, u *store.User) {
 	owner := u.ID
-	if (u.Can("viewRequests") || u.Can("manageRequests")) && r.URL.Query().Get("mine") == "" {
+	if r.URL.Query().Get("mine") == "" {
 		owner = 0
 	}
-	list, err := s.Store.Requests(owner, 20)
+	cards, err := s.requestCards(r, owner)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"page": 1, "totalPages": 1, "results": cards})
+}
+
+// requestCards are the newest 20 requests (one person's, or everyone's with owner 0) as poster cards.
+func (s *Server) requestCards(r *http.Request, owner int64) ([]*card, error) {
+	list, err := s.Store.Requests(owner, 20)
+	if err != nil {
+		return nil, err
 	}
 	refs := []titleRef{}
 	for _, q := range list {
@@ -112,15 +122,24 @@ func (s *Server) recentRequests(w http.ResponseWriter, r *http.Request, u *store
 			refs = append(refs, titleRef{Type: q.Type, ID: q.TmdbID, Fallback: card{ID: q.TmdbID, Type: q.Type, Title: q.Title, Poster: strOrNil(q.Poster), Backdrop: strOrNil(q.Backdrop), Year: q.Year, Genres: []int{}}})
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"page": 1, "totalPages": 1, "results": s.cards(r, refs)})
+	return s.cards(r, refs), nil
 }
 
 // myStats is the Profile page's tiles: your requests by where they are, and your open issues.
 func (s *Server) myStats(w http.ResponseWriter, r *http.Request, u *store.User) {
-	list, err := s.Store.Requests(u.ID, 1000)
+	out, err := s.userStats(u.ID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// userStats counts someone's requests by where they are, and their open issues.
+func (s *Server) userStats(id int64) (map[string]int, error) {
+	list, err := s.Store.Requests(id, 1_000_000)
+	if err != nil {
+		return nil, err
 	}
 	out := map[string]int{"requests": len(list), "available": 0, "waiting": 0, "inProgress": 0, "openIssues": 0}
 	for _, q := range list {
@@ -133,10 +152,10 @@ func (s *Server) myStats(w http.ResponseWriter, r *http.Request, u *store.User) 
 			out["inProgress"]++
 		}
 	}
-	if issues, err := s.Store.Issues(u.ID, "open"); err == nil {
+	if issues, err := s.Store.Issues(id, "open"); err == nil {
 		out["openIssues"] = len(issues)
 	}
-	writeJSON(w, http.StatusOK, out)
+	return out, nil
 }
 
 // library is Movies / Series → In your library: what's in Plex, newest first or A to Z, 20 at a time.

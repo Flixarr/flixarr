@@ -7,13 +7,13 @@
 	import { tilt, tiltEnabled } from '#lib/tilt.ts';
 	import Img from './Img.svelte';
 	import Icon from './Icon.svelte';
-	let { list, href, remaining = 0 }: { list: string; href: string; remaining?: number } = $props();
+	let { path, params = {}, href, remaining = 0 }: { path: string; params?: Record<string, string | number>; href: string; remaining?: number } = $props();
 
 	let later = $state<Card[]>([]);
 	$effect(() => {
 		let alive = true;
 		const show = (p: Page<Card>) => alive && (later = p.results.filter((c) => c.poster).slice(0, 8));
-		meta<Page<Card>>('lists/' + list, { page: 2 }, show).then(show).catch(() => {});
+		meta<Page<Card>>(path, { ...params, page: 2 }, show).then(show).catch(() => {});
 		return () => (alive = false);
 	});
 	// slice i shows later[i], then swaps to later[i + 4]

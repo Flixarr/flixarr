@@ -1,10 +1,13 @@
 // Package notify sends Flixarr events (requests submitted, approved, declined, available, failed) out
-// through the channels set up in Settings → Notifications: Discord and webhooks for now.
+// through the channels set up in Settings → Notifications. Each service (Discord, email, webhooks…) can
+// have any number of channels, each with its own settings and events.
 package notify
 
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,24 +15,44 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/Flixarr/flixarr/internal/requests"
 	"github.com/Flixarr/flixarr/internal/store"
+	"github.com/Flixarr/flixarr/internal/testinstall"
 )
 
 // Events, in the order Settings shows them.
 var Events = []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved", "server_problem", "request_leaving"}
 
-// Channels Flixarr can send through.
-var Channels = []string{"discord", "webhook", "email", "push"}
+// Services Flixarr can send through.
+var Services = []string{"discord", "webhook", "email", "push", "telegram", "slack", "pushover", "gotify", "ntfy", "pushbullet"}
+
+// Labels are the services' names, used to name channels made from older settings.
+var Labels = map[string]string{"discord": "Discord", "webhook": "Webhook", "email": "Email", "push": "Web Push", "telegram": "Telegram",
+	"slack": "Slack", "pushover": "Pushover", "gotify": "Gotify", "ntfy": "ntfy", "pushbullet": "Pushbullet"}
+
+// Channel is one set-up destination: a service, a name and its settings.
+type Channel struct {
+	ID      string `json:"id"`
+	Service string `json:"service"`
+	Name    string `json:"name"`
+	Config
+}
 
 // Config is one channel's settings. Secret fields (the Discord webhook URL, the webhook's address and
 // Authorization header) are stored encrypted and never sent back to the browser.
 type Config struct {
 	On     bool     `json:"on"`
 	Events []string `json:"events"`
+	// FromDev: a dev install sends this channel's notifications too (#136). Off by default, so a dev
+	// install never doubles a real install's notifications by accident; ignored on a real install.
+	FromDev bool `json:"fromDev"`
 	// Discord
 	WebhookURL  string `json:"webhookUrl,omitempty"`
 	BotName     string `json:"botName,omitempty"`
@@ -47,6 +70,10 @@ type Config struct {
 	Password string `json:"password,omitempty"`
 	From     string `json:"from,omitempty"`
 	FromName string `json:"fromName,omitempty"`
+	// Telegram, Slack, Pushover, Gotify, ntfy, Pushbullet (see services.go)
+	Token    string `json:"token,omitempty"`  // the service's token (Slack: its webhook URL)
+	Target   string `json:"target,omitempty"` // Telegram chat ID, Pushover user key, ntfy topic
+	Server   string `json:"server,omitempty"` // Gotify / ntfy address
 	TestTo   string `json:"testTo,omitempty"` // where Send test goes (not saved)
 	TestUser int64  `json:"-"`                // whose devices the Web Push test goes to
 }
@@ -56,39 +83,188 @@ var defaults = map[string]Config{
 	"webhook": {Events: []string{"request_available", "request_failed"}, Method: "POST"},
 	"push":    {Events: []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved", "server_problem", "request_leaving"}},
 	"email":   {Events: []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved", "server_problem", "request_leaving"}, Port: 587, Security: "starttls", FromName: "Flixarr"},
+	"ntfy":    {Events: adminEvents, Server: "https://ntfy.sh"},
 }
 
-// Notifier loads the channel settings and sends.
+// adminEvents are the text channels' starting events (they go to one place, like Discord).
+var adminEvents = []string{"request_submitted", "request_approved", "request_declined", "request_available", "request_failed", "issue_reported", "issue_resolved", "server_problem"}
+
+func init() {
+	for _, ch := range Simple {
+		if _, ok := defaults[ch]; !ok {
+			defaults[ch] = Config{Events: adminEvents}
+		}
+	}
+}
+
+// Notifier loads the channels and sends.
 type Notifier struct {
 	Store *store.Store
 	Log   *slog.Logger
 	HTTP  *http.Client
+	mu    sync.Mutex // channel list changes
 }
 
-func key(ch string) string { return "notify_" + ch }
+// keyChannels holds every channel (encrypted as a whole: they hold webhook addresses and tokens).
+const keyChannels = "notify_channels"
 
-// Load returns a channel's settings with secrets decrypted.
-func (n *Notifier) Load(ch string) Config {
-	c := defaults[ch]
-	if raw := n.Store.SecretSetting(key(ch), ""); raw != "" {
-		json.Unmarshal([]byte(raw), &c)
-	}
+// oldKey is where a service's single channel was kept before channels became a list.
+func oldKey(service string) string { return "notify_" + service }
+
+// Defaults are a new channel's starting settings for a service.
+func Defaults(service string) Config {
+	c := defaults[service]
+	c.Events = slices.Clone(c.Events)
 	if c.Events == nil {
 		c.Events = []string{}
 	}
 	return c
 }
 
-// Save stores a channel's settings (encrypted as a whole: they hold webhook addresses and tokens).
-func (n *Notifier) Save(ch string, c Config) error {
-	if !slices.Contains(Channels, ch) {
-		return errors.New("unknown channel")
+// Channels returns every channel, oldest first, with secrets decrypted.
+func (n *Notifier) Channels() []Channel {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.channels()
+}
+
+func (n *Notifier) channels() []Channel {
+	raw := n.Store.SecretSetting(keyChannels, "")
+	if raw == "" {
+		return n.migrate()
 	}
-	if err := c.validate(ch); err != nil {
+	out := []Channel{}
+	json.Unmarshal([]byte(raw), &out)
+	for i := range out {
+		if out[i].Events == nil {
+			out[i].Events = []string{}
+		}
+	}
+	return out
+}
+
+// migrate turns the settings saved before channels became a list into each service's first channel,
+// so nothing has to be set up again. The old settings are left where they were.
+func (n *Notifier) migrate() []Channel {
+	out := []Channel{}
+	for _, svc := range Services {
+		raw := n.Store.SecretSetting(oldKey(svc), "")
+		if raw == "" {
+			continue
+		}
+		c := Defaults(svc)
+		json.Unmarshal([]byte(raw), &c)
+		if c.Events == nil {
+			c.Events = []string{}
+		}
+		out = append(out, Channel{ID: newID(), Service: svc, Name: Labels[svc], Config: c})
+	}
+	if err := n.save(out); err != nil && n.Log != nil {
+		n.Log.Warn("notification channels not saved", "err", err)
+	}
+	return out
+}
+
+func (n *Notifier) save(list []Channel) error {
+	b, _ := json.Marshal(list)
+	return n.Store.SetSecretSetting(keyChannels, string(b))
+}
+
+func newID() string {
+	b := make([]byte, 6)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+// Get returns one channel.
+func (n *Notifier) Get(id string) (Channel, bool) {
+	for _, c := range n.Channels() {
+		if c.ID == id {
+			return c, true
+		}
+	}
+	return Channel{}, false
+}
+
+// Add saves a new channel and returns it with its ID.
+func (n *Notifier) Add(c Channel) (Channel, error) {
+	if !slices.Contains(Services, c.Service) {
+		return c, errors.New("unknown service")
+	}
+	if err := c.check(); err != nil {
+		return c, err
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	list := n.channels()
+	if c.Service == "push" && slices.ContainsFunc(list, func(x Channel) bool { return x.Service == "push" }) {
+		// Web Push has no settings of its own, so a second one would only send everything twice.
+		return c, errors.New("Web Push is already set up; change its events there")
+	}
+	c.ID = newID()
+	return c, n.save(append(list, c))
+}
+
+// Update saves a channel's new settings (its service can't change).
+func (n *Notifier) Update(c Channel) error {
+	if err := c.check(); err != nil {
 		return err
 	}
-	b, _ := json.Marshal(c)
-	return n.Store.SetSecretSetting(key(ch), string(b))
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	list := n.channels()
+	for i := range list {
+		if list[i].ID == c.ID {
+			c.Service = list[i].Service
+			list[i] = c
+			return n.save(list)
+		}
+	}
+	return errors.New("that channel is gone")
+}
+
+// Delete removes a channel.
+func (n *Notifier) Delete(id string) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	list := n.channels()
+	out := slices.DeleteFunc(slices.Clone(list), func(c Channel) bool { return c.ID == id })
+	if len(out) == len(list) {
+		return errors.New("that channel is gone")
+	}
+	return n.save(out)
+}
+
+func (c *Channel) check() error {
+	c.Name = strings.TrimSpace(c.Name)
+	if c.Name == "" {
+		c.Name = Labels[c.Service]
+	}
+	if len(c.Name) > 60 {
+		return errors.New("keep the name under 60 characters")
+	}
+	if c.Events == nil {
+		c.Events = []string{}
+	}
+	c.TestTo, c.TestUser = "", 0
+	return c.validate(c.Service)
+}
+
+// Service reports whether any channel of a service is on, and every event those channels send.
+func (n *Notifier) Service(service string) (on bool, events []string) {
+	events = []string{}
+	for _, c := range n.Channels() {
+		if c.Service != service || !c.On {
+			continue
+		}
+		on = true
+		for _, e := range c.Events {
+			if !slices.Contains(events, e) {
+				events = append(events, e)
+			}
+		}
+	}
+	return on, events
 }
 
 // recipients: news about a request or issue goes to the person who made it; new requests go to people
@@ -122,20 +298,57 @@ func (n *Notifier) people(m Message) []store.User {
 	return out
 }
 
-// PersonalChannels are the channels that reach one person (Discord and webhooks go to a shared place).
-var PersonalChannels = []string{"email", "push"}
+// PersonalChannels are the channels that reach one person: email and Web Push, and (#124) Discord,
+// Telegram, Pushover and ntfy once the person adds their own account there. Webhooks, Slack, Gotify and
+// Pushbullet only go to the shared place set up in Settings.
+var PersonalChannels = []string{"email", "push", "discord", "telegram", "pushover", "ntfy"}
 
-func offKey(userID int64) string { return fmt.Sprintf("notify_off_%d", userID) }
+// AccountServices take a person's own account (Profile → Notifications): a Discord user ID (they're
+// mentioned in the Discord message), a Telegram chat ID, a Pushover user key, an ntfy topic. Their own
+// news then also goes there, through the channel an admin set up.
+var AccountServices = []string{"discord", "telegram", "pushover", "ntfy"}
 
-// Off is what a person has switched off: channel → events. Everything is on until they change it.
-func (n *Notifier) Off(userID int64) map[string][]string {
-	out := map[string][]string{"email": {}, "push": {}}
-	json.Unmarshal([]byte(n.Store.Setting(offKey(userID), "")), &out)
-	return out
+var accountPattern = map[string]*regexp.Regexp{
+	"discord":  regexp.MustCompile(`^[0-9]{15,21}$`),
+	"telegram": regexp.MustCompile(`^-?[0-9]{3,20}$`),
+	"pushover": regexp.MustCompile(`^[A-Za-z0-9]{30}$`),
+	"ntfy":     regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`),
+}
+var accountWhat = map[string]string{"discord": "Discord user ID (numbers only)", "telegram": "Telegram chat ID (numbers)", "pushover": "Pushover user key (30 letters and numbers)", "ntfy": "ntfy topic (letters, numbers, - and _)"}
+
+func offKey(userID int64) string     { return fmt.Sprintf("notify_off_%d", userID) }
+func accountKey(userID int64) string { return fmt.Sprintf("notify_accounts_%d", userID) }
+
+// Everyone's starting choices (#110): what's off for people who haven't changed theirs, and whether
+// nobody can change them.
+const (
+	keyDefaultOff = "notify_default_off"
+	keyOffLocked  = "notify_off_locked"
+)
+
+// Defaults are the starting choices (channel → events off) and whether they're locked.
+func (n *Notifier) DefaultOff() (map[string][]string, bool) {
+	out := map[string][]string{}
+	json.Unmarshal([]byte(n.Store.Setting(keyDefaultOff, "")), &out)
+	return cleanOff(out), n.Store.Setting(keyOffLocked, "") == "true"
 }
 
-// SetOff saves what a person has switched off (unknown channels and events are dropped).
-func (n *Notifier) SetOff(userID int64, off map[string][]string) error {
+// SetDefaultOff saves the starting choices and the lock.
+func (n *Notifier) SetDefaultOff(off map[string][]string, locked bool) error {
+	b, _ := json.Marshal(cleanOff(off))
+	if err := n.Store.SetSetting(keyDefaultOff, string(b)); err != nil {
+		return err
+	}
+	return n.Store.SetSetting(keyOffLocked, strconv.FormatBool(locked))
+}
+
+// ResetEveryone drops everyone's own choices, so the starting choices apply to all.
+func (n *Notifier) ResetEveryone() error { return n.Store.DeleteSettingsLike("notify_off_") }
+
+// OffLocked: people can't change what reaches them.
+func (n *Notifier) OffLocked() bool { return n.Store.Setting(keyOffLocked, "") == "true" }
+
+func cleanOff(off map[string][]string) map[string][]string {
 	clean := map[string][]string{}
 	for _, ch := range PersonalChannels {
 		clean[ch] = []string{}
@@ -145,7 +358,68 @@ func (n *Notifier) SetOff(userID int64, off map[string][]string) error {
 			}
 		}
 	}
+	return clean
+}
+
+// Off is what a person has switched off: channel → events. Until they change it (or while an admin has
+// locked it, #110) that's the starting choices; with none set, everything is on.
+func (n *Notifier) Off(userID int64) map[string][]string {
+	def, locked := n.DefaultOff()
+	own := n.Store.Setting(offKey(userID), "")
+	if locked || own == "" {
+		return def
+	}
+	out := map[string][]string{}
+	json.Unmarshal([]byte(own), &out)
+	for _, ch := range PersonalChannels {
+		if out[ch] == nil {
+			out[ch] = []string{}
+		}
+	}
+	return out
+}
+
+// Accounts are a person's own accounts on the AccountServices (kept encrypted; "" = none).
+func (n *Notifier) Accounts(userID int64) map[string]string {
+	out := map[string]string{}
+	json.Unmarshal([]byte(n.Store.SecretSetting(accountKey(userID), "")), &out)
+	for _, s := range AccountServices {
+		out[s] = strings.TrimSpace(out[s])
+	}
+	return out
+}
+
+// SetAccounts saves a person's own accounts; each is checked against what the service uses.
+func (n *Notifier) SetAccounts(userID int64, in map[string]string) error {
+	clean := map[string]string{}
+	for _, s := range AccountServices {
+		v := strings.TrimSpace(in[s])
+		if v != "" && !accountPattern[s].MatchString(v) {
+			return fmt.Errorf("that doesn't look like a %s", accountWhat[s])
+		}
+		clean[s] = v
+	}
 	b, _ := json.Marshal(clean)
+	return n.Store.SetSecretSetting(accountKey(userID), string(b))
+}
+
+// accountsOn are the own accounts on a service that an event goes to (people who switched it off left out).
+func (n *Notifier) accountsOn(m Message, ch string) []string {
+	out := []string{}
+	for _, u := range n.peopleOn(m, ch) {
+		if a := n.Accounts(u.ID)[ch]; a != "" && !slices.Contains(out, a) {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// SetOff saves what a person has switched off (unknown channels and events are dropped).
+func (n *Notifier) SetOff(userID int64, off map[string][]string) error {
+	if n.OffLocked() {
+		return errors.New("an admin set which notifications everyone gets")
+	}
+	b, _ := json.Marshal(cleanOff(off))
 	return n.Store.SetSetting(offKey(userID), string(b))
 }
 
@@ -197,6 +471,9 @@ func (c Config) validate(ch string) error {
 			return fmt.Errorf("that %s doesn't look right", what)
 		}
 		return nil
+	}
+	if slices.Contains(Simple, ch) {
+		return c.validateSimple(ch)
 	}
 	switch ch {
 	case "discord":
@@ -303,7 +580,9 @@ func (n *Notifier) FromRequest(event string, r store.Request) Message {
 	case "request_available":
 		m.Text = "Ready to watch in Plex. Requested by " + user
 	case "request_failed":
-		m.Text = "Requested by " + user + ". " + r.Error
+		// The requester reads this (email, push): plain words. The full reason stays in m.Error for the
+		// shared Discord channel and webhooks.
+		m.Text = "Requested by " + user + ". " + requests.PlainError(r)
 	}
 	if base := n.Store.Setting("app_url", ""); base != "" {
 		m.Link = fmt.Sprintf("%s/%s/%d", base, r.Type, r.TmdbID)
@@ -353,18 +632,18 @@ func (n *Notifier) FromServer(name, detail string) Message {
 	return m
 }
 
-// Send delivers a message to every channel that's on and has the event, in the background.
+// Send delivers a message to every channel that's on and has the event, in the background. A dev install
+// sends only through channels switched to send from it (Test always works).
 func (n *Notifier) Send(m Message) {
-	for _, ch := range Channels {
-		c := n.Load(ch)
-		if !c.On || !slices.Contains(c.Events, m.Event) {
+	for _, c := range n.Channels() {
+		if !c.On || !slices.Contains(c.Events, m.Event) || (testinstall.On && !c.FromDev) {
 			continue
 		}
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
-			if err := n.deliver(ctx, ch, c, m); err != nil {
-				n.Log.Warn("notification not sent", "channel", ch, "event", m.Event, "err", err)
+			if err := n.deliver(ctx, c.Service, c.Config, m); err != nil {
+				n.Log.Warn("notification not sent", "channel", c.Name, "service", c.Service, "event", m.Event, "err", err)
 			}
 		}()
 	}
@@ -391,7 +670,11 @@ func (n *Notifier) Test(ctx context.Context, ch string, c Config) error {
 func (n *Notifier) deliver(ctx context.Context, ch string, c Config, m Message) error {
 	switch ch {
 	case "discord":
-		return n.post(ctx, http.MethodPost, c.WebhookURL, "", discordBody(c, m))
+		body := discordBody(c, m)
+		if m.Event != "test" {
+			mention(body, n.accountsOn(m, "discord"))
+		}
+		return n.post(ctx, http.MethodPost, c.WebhookURL, "", body)
 	case "webhook":
 		return n.post(ctx, c.Method, c.URL, c.Auth, webhookBody(m))
 	case "email":
@@ -413,6 +696,24 @@ func (n *Notifier) deliver(ctx context.Context, ch string, c Config, m Message) 
 		}
 		return n.push(ctx, ids, m)
 	}
+	if slices.Contains(Simple, ch) {
+		err := n.deliverSimple(ctx, ch, c, m)
+		if m.Event == "test" || !slices.Contains(AccountServices, ch) {
+			return err
+		}
+		// A copy to each person's own account on this service (#124), through this channel's token.
+		for _, a := range n.accountsOn(m, ch) {
+			if a == c.Target {
+				continue
+			}
+			own := c
+			own.Target = a
+			if e := n.deliverSimple(ctx, ch, own, m); e != nil && err == nil {
+				err = e
+			}
+		}
+		return err
+	}
 	return errors.New("unknown channel")
 }
 
@@ -431,6 +732,9 @@ func discordBody(c Config, m Message) map[string]any {
 		}
 		fields = append(fields, map[string]any{"name": name, "value": m.Seasons, "inline": true})
 	}
+	if m.Event == "request_failed" && m.Error != "" {
+		fields = append(fields, map[string]any{"name": "Details", "value": m.Error})
+	}
 	if len(fields) > 0 {
 		embed["fields"] = fields
 	}
@@ -446,6 +750,25 @@ func discordBody(c Config, m Message) map[string]any {
 		body["allowed_mentions"] = map[string]any{"parse": []string{"everyone"}}
 	}
 	return body
+}
+
+// mention adds the people's Discord accounts to a message, so Discord pings them (only them).
+func mention(body map[string]any, ids []string) {
+	if len(ids) == 0 {
+		return
+	}
+	tags := []string{}
+	for _, id := range ids {
+		tags = append(tags, "<@"+id+">")
+	}
+	content, _ := body["content"].(string)
+	body["content"] = strings.TrimSpace(content + " " + strings.Join(tags, " "))
+	am, _ := body["allowed_mentions"].(map[string]any)
+	if am == nil {
+		am = map[string]any{"parse": []string{}}
+	}
+	am["users"] = ids
+	body["allowed_mentions"] = am
 }
 
 func webhookBody(m Message) map[string]any {

@@ -8,11 +8,9 @@
 	import { can } from '#lib/session.svelte.ts';
 	import { page } from '$app/state';
 	import { remember } from '#lib/availability.svelte.ts';
-	import { TONE, NEUTRAL, text } from '#lib/requeststatus.ts';
+	import { simple } from '#lib/requeststatus.ts';
 	import { on } from '#lib/live.svelte.ts';
 	import RequestModal from './RequestModal.svelte';
-	import Modal from './Modal.svelte';
-	import { notify } from '#lib/toast.svelte.ts';
 
 	// req: undefined while loading, null when never requested and not in Plex. Bindable so the page can show "In your library".
 	let { item, req = $bindable() }: { item: Movie | Series; req?: RequestBrief | null } = $props();
@@ -55,36 +53,15 @@
 		return (item as Series).seasons.some((s) => s.n > 0 && s.episodes > 0 && (!s.air || s.air <= today) && (plexSeasons[s.n] ?? 0) < s.episodes && !(asked?.seasons ?? []).includes(s.n));
 	});
 
-	let blockOpen = $state(false);
-	async function block() {
-		blockOpen = false;
-		try {
-			await api('/blocklist', { method: 'POST', body: JSON.stringify({ type: item.type, tmdbId: item.id, title: item.title, year: item.year, poster: item.poster ?? '' }) });
-			req = { id: 0, status: 'blocked', progress: 0, blocked: true };
-			remember(key, req);
-			notify(`${item.title} is blocked.`);
-		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not block it.', 'orange');
-		}
-	}
-	async function unblock() {
-		try {
-			await api(`/blocklist/${item.type}/${item.id}`, { method: 'DELETE' });
-			req = null;
-			remember(key, null);
-			notify(`${item.title} can be requested again.`);
-		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not unblock it.', 'orange');
-		}
-	}
-
-
 </script>
 
 {#snippet pill(r: RequestBrief)}
-	<a href="/requests" class="act inline-flex items-center rounded-lg font-medium ring-1 {TONE[r.status] ?? NEUTRAL}">
-		{#if r.status === 'available'}<Icon name="check" class="size-4" />{/if}{r.status === 'pending' ? 'Requested · waiting' : text(r.status, r.progress)}
-	</a>
+	{@const st = simple(r.status, r.progress)}
+	{#if st}
+		<a href="/requests" class="act inline-flex items-center rounded-lg font-medium ring-1 {st.tone}">
+			{#if r.status === 'available'}<Icon name="check" class="size-4" />{/if}{st.label}
+		</a>
+	{/if}
 {/snippet}
 
 {#snippet more()}
@@ -99,23 +76,15 @@
 	{/if}
 {:else if req?.blocked}
 	<span class="btn-ghost act cursor-default text-gray-400">Can't be requested</span>
-	{#if can('admin')}<button class="btn-ghost act" onclick={unblock}>Unblock</button>{/if}
-{:else if req && req.status !== 'declined' && req.status !== 'failed' && req.status !== 'expired'}
+{:else if req && req.status !== 'declined' && req.status !== 'failed' && req.status !== 'expired' && req.status !== 'removed'}
 	{@render pill(req)}
 	{#if moreSeasons && can('requestTv')}{@render more()}{/if}
 {:else if req !== undefined && !can(item.type === 'series' ? 'requestTv' : 'requestMovies')}
 	<span class="btn-ghost act cursor-default text-gray-400">You can't request {item.type === 'series' ? 'series' : 'movies'}</span>
 {:else if req !== undefined}
-	<button class="btn act" onclick={() => (open = true)}><Icon name="plus" class="size-4" />{req && ['failed', 'declined', 'expired'].includes(req.status) ? 'Request again' : 'Request'}</button>
-	{#if can('admin') && req === null}<button class="btn-ghost act" onclick={() => (blockOpen = true)}>Block</button>{/if}
+	{#if req && (req.status === 'failed' || req.status === 'declined')}{@render pill(req)}{/if}
+	<button class="btn act" onclick={() => (open = true)}><Icon name="plus" class="size-4" />{req && ['failed', 'declined', 'expired', 'removed'].includes(req.status) ? 'Request again' : 'Request'}</button>
 {/if}
-<Modal bind:open={blockOpen} title="Block {item.title}?">
-	<p class="p-5 text-sm text-gray-300">Nobody can request it until it's unblocked (Settings → Blocklist).</p>
-	{#snippet footer()}
-		<button class="btn-ghost" onclick={() => (blockOpen = false)}>Cancel</button>
-		<button class="btn px-6" onclick={block}>Block</button>
-	{/snippet}
-</Modal>
 <RequestModal bind:open {item} asked={req?.asked} onrequested={(r) => {
 	// The live update brings the title's full state (all its requests) right after; this is the stopgap.
 	const seasons = r.mode === 'all' ? [] : [...(req?.asked?.seasons ?? []), ...r.seasons];

@@ -10,7 +10,8 @@ import (
 	"time"
 )
 
-const tvAPI = "https://plex.tv/api/v2"
+// tvAPI is plex.tv's address (changed in tests).
+var tvAPI = "https://plex.tv/api/v2"
 
 // Client identifies this Flixarr install to plex.tv. ClientID must stay stable for the install.
 type Client struct {

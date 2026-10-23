@@ -42,7 +42,7 @@
 {#if info?.at && !info.kept}
 	<div class="flex w-full basis-full flex-wrap items-center gap-2 rounded-lg bg-yellow-500/10 px-3 py-2 text-sm text-yellow-200 ring-1 ring-yellow-500/30">
 		<Icon name="clock" class="size-4 shrink-0" />
-		<span class="min-w-0 flex-1">{#if days < 0}Was due to leave Plex {day(info.at)}; Maintainerr hasn't removed it{:else}Leaves Plex {when} ({day(info.at)}){/if}{#if info.askedBy?.length}<span class="text-yellow-300/80"> · {info.askedBy.join(', ')} asked to keep it</span>{/if}</span>
+		<span class="min-w-0 flex-1">{#if days < 0}Leaving Plex any day now{:else}Leaves Plex {when} ({day(info.at)}){/if}{#if info.askedBy?.length}<span class="text-yellow-300/80"> · {info.askedBy.join(', ')} asked to keep it</span>{/if}</span>
 		{#if manage}
 			<button class="btn px-3 py-1 text-xs" disabled={!!busy} onclick={() => act('keep', `${title} stays: Maintainerr's rules skip it now.`)}>{busy === 'keep' ? 'Keeping…' : 'Keep'}</button>
 			<button class="btn-ghost px-3 py-1 text-xs" disabled={!!busy} onclick={() => act('postpone', `${title} gets 30 more days.`)}>{busy === 'postpone' ? 'Saving…' : '30 more days'}</button>

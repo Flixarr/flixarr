@@ -48,6 +48,8 @@ func (f *fakePlex) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		md = append(md, map[string]any{"ratingKey": "999", "title": "No TMDB"})
 		json.NewEncoder(w).Encode(map[string]any{"MediaContainer": map[string]any{"totalSize": len(md), "Metadata": md}})
+	case r.URL.Path == "/library/metadata/7/allLeaves":
+		fmt.Fprint(w, `{"MediaContainer":{"Metadata":[{"parentIndex":0,"index":1},{"parentIndex":1,"index":1},{"parentIndex":1,"index":3},{"parentIndex":2,"index":1}]}}`)
 	case r.URL.Path == "/library/sections/2/all":
 		fmt.Fprint(w, `{"MediaContainer":{"totalSize":1,"Metadata":[{"ratingKey":"7","title":"Breaking Bad","guid":"plex://show/y","Guid":[{"id":"tmdb://1396"}]}]}}`)
 	default:
@@ -101,6 +103,19 @@ func TestConnectScanLookup(t *testing.T) {
 	if len(got) != 2 || !strings.Contains(got["movie:603"].URL, "server/abc/details?key=%2Flibrary%2Fmetadata%2F100") {
 		t.Fatalf("lookup: %+v", got)
 	}
+	if eps, err := l.Episodes(ctx, 1396); err != nil || len(eps) != 2 || len(eps[1]) != 2 || eps[1][1] != 3 || eps[0] != nil {
+		t.Fatalf("episodes in Plex: %v %v", eps, err)
+	}
+	if clean, _ := l.SetWebURL("plex.example.com/web/"); clean != "https://plex.example.com" {
+		t.Fatalf("own address: %q", clean)
+	}
+	if got, _ = l.Lookup([]string{"movie:603"}); !strings.HasPrefix(got["movie:603"].URL, "https://plex.example.com/web/index.html#!/server/abc/details") {
+		t.Fatalf("own address link: %s", got["movie:603"].URL)
+	}
+	if _, err := l.SetWebURL("ftp://x"); err == nil {
+		t.Fatal("ftp accepted")
+	}
+	l.SetWebURL("")
 	// Removed from Plex: gone after the next full scan.
 	f.movies = []string{"603"}
 	if msg, _ = l.FullScan(ctx); !strings.Contains(msg, "1 removed") {
@@ -156,5 +171,31 @@ func TestFriendsAndAccess(t *testing.T) {
 	}
 	if ok, _ := l.HasAccess(ctx, "stranger"); ok {
 		t.Fatal("stranger shouldn't have access")
+	}
+}
+
+// Addresses (#114): local plex.direct ones also get their plain http://IP:port, and the fastest one that
+// answers wins, the relay only when nothing else does.
+func TestAddressCandidatesAndFastest(t *testing.T) {
+	list := candidates([]Connection{
+		{URI: "https://10-0-0-5.abc.plex.direct:32400", Local: true, Address: "10.0.0.5", Port: 32400},
+		{URI: "https://99-1-2-3.abc.plex.direct:32400", Address: "99.1.2.3", Port: 32400},
+		{URI: "https://relay.plex.direct:8443", Relay: true, Local: true, Address: "1.1.1.1", Port: 8443},
+	})
+	got := []string{}
+	for _, a := range list {
+		got = append(got, a.Kind+" "+a.URI)
+	}
+	want := []string{"local https://10-0-0-5.abc.plex.direct:32400", "local http://10.0.0.5:32400", "remote https://99-1-2-3.abc.plex.direct:32400", "relay https://relay.plex.direct:8443"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("candidates: %v", got)
+	}
+	list[0].MS, list[1].MS, list[2].MS, list[3].MS = 40, 3, 0, 1
+	if f := fastest(list); f != "http://10.0.0.5:32400" {
+		t.Fatalf("fastest: %s", f)
+	}
+	list[0].MS, list[1].MS = 0, 0
+	if f := fastest(list); f != "https://relay.plex.direct:8443" {
+		t.Fatalf("only the relay answered: %s", f)
 	}
 }

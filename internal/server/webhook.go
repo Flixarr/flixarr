@@ -13,6 +13,7 @@ import (
 
 	"github.com/Flixarr/flixarr/internal/arr"
 	"github.com/Flixarr/flixarr/internal/store"
+	"github.com/Flixarr/flixarr/internal/testinstall"
 )
 
 const keyWebhookToken = "webhook_token"
@@ -134,6 +135,10 @@ func (s *Server) webhookStatus(w http.ResponseWriter, r *http.Request, _ *store.
 // webhookAdd adds (or points again) a "Flixarr" Webhook connection in Radarr/Sonarr with the events that
 // matter for requests and health, then has Radarr/Sonarr test it.
 func (s *Server) webhookAdd(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	if testinstall.On {
+		writeErr(w, http.StatusConflict, "Instant updates aren't added from a dev install: it shares Radarr and Sonarr with the real one.")
+		return
+	}
 	v, ok, err := s.Store.FirstServer(r.PathValue("kind"))
 	if err != nil || !ok {
 		writeErr(w, http.StatusNotFound, "Not connected.")

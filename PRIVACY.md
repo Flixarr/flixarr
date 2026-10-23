@@ -23,15 +23,29 @@ The data server keeps these checks so the number of active installs, the version
 
 **Quality profiles.** Once a day (and when the update check says there's a new version), Flixarr downloads its quality profiles from the data server. That request sends nothing but the Flixarr version in the `User-Agent`. The profiles are public: they're kept at [Flixarr/flixarr-profiles](https://github.com/Flixarr/flixarr-profiles). Flixarr then adds or updates them in your own Radarr and Sonarr; nothing about your servers is sent anywhere.
 
+**Contributors.** Settings → About lists the people who worked on Flixarr on GitHub. Flixarr gets that list from the data server (which reads it from GitHub and keeps it for a few hours); the request sends nothing but the Flixarr version in the `User-Agent`.
+
 Never sent: your users, usernames or emails, your requests, your Plex server details, or your library.
 
 ### plex.tv
 
-Contacted when someone signs in with Plex, and (in later versions) to read your Plex server's libraries.
+- **Signing in with Plex:** the person approves the sign-in on `app.plex.tv`, and Flixarr reads their Plex account (username, email, picture) from `plex.tv`.
+- **Your Plex server:** the owner's Plex account is used to list the Plex servers on it, to see who the server is shared with (who may sign in, and Import Plex users), and to connect. After that, Flixarr reads your libraries from your own Plex server directly.
+- **Plex Watchlists:** for people who turn on requests from their Watchlist, Flixarr reads their Watchlist from `discover.provider.plex.tv` with their own Plex sign-in.
+
+### Your own services
+
+Radarr, Sonarr, Maintainerr and your Plex server are contacted at the addresses you enter, and nowhere else. Offsite backups, when set up in Settings, Backups, go only to the folder or S3-compatible bucket you enter.
+
+### Notifications (only what you set up)
+
+Settings → Notifications sends messages only to what an admin turns on: Discord, Slack or other webhooks at the addresses entered there, Telegram, Pushover, Pushbullet, Gotify or ntfy with the tokens entered there, email through the mail server entered there, and push notifications through each browser's own push service (for example Google's or Apple's) for people who allow them. A message names the title and the person it's about.
 
 ### Images
 
 By default, posters and backgrounds load from `image.tmdb.org` directly in each viewer's browser, so TMDB sees the viewer's IP address when an image loads. With **Settings → Cache → Cache images** on, your server downloads each image once and serves it to viewers, so TMDB only sees your server.
+
+**Trailers** play in YouTube's privacy-enhanced player (`youtube-nocookie.com`), and only when someone presses Trailer, so YouTube sees the viewer's IP address then. **Contributor pictures** on Settings → About load from GitHub (`avatars.githubusercontent.com`) in the admin's browser.
 
 Movie and series results from the data server are saved in your Flixarr database (**Settings → Cache**) and never sent anywhere else.
 

@@ -13,6 +13,7 @@ export interface Card {
 	genres: number[];
 	overview: string;
 	character?: string;
+	creditId?: string; // a person's series credit: opens the show with their episodes marked
 }
 
 export interface Page<T> {
@@ -57,7 +58,7 @@ export interface Collection { id: number; name: string; overview: string; poster
 
 export interface SearchHit extends Omit<Partial<Card>, 'type'> { id: number; type: MediaType | 'person'; title: string; poster: string | null; dept?: string | null }
 
-export interface User { id: number; plexId: number; username: string; email: string; avatar: string; role: string; perms: string[]; owner: boolean; local?: boolean; movieLimit: number; seasonLimit: number; createdAt: string }
+export interface User { id: number; plexId: number; username: string; email: string; avatar: string; role: string; perms: string[]; owner: boolean; local?: boolean; viewAs?: string; managesUsers?: boolean; lastSeen?: string; movieLimit: number; seasonLimit: number; createdAt: string }
 
 export interface UpdateStatus {
 	enabled: boolean;
@@ -69,9 +70,11 @@ export interface UpdateStatus {
 
 export interface Status {
 	setupRequired: boolean; setupWizard?: boolean;
-	version: { version: string; build: string; full: string; commit: string; channel: string };
+	version: { version: string; pre: string; build: string; full: string; commit: string; channel: string };
 	update: UpdateStatus;
 	imageCache: boolean;
+	signIn?: 'both' | 'plex' | 'local';
+	testInstall?: boolean; // a second install for trying changes (TEST badge, View as)
 }
 
 export interface CacheKind { kind: 'titles' | 'people' | 'lists' | 'searches'; count: number; bytes: number }
@@ -82,9 +85,12 @@ export interface CacheState {
 	settings: CacheConfig;
 	defaults: CacheConfig;
 	kinds: CacheKind[];
-	counters: { hits: number; misses: number; stale: number; since: string };
-	images: { enabled: boolean; days: number; defaultDays: number; count: number; bytes: number };
+	counters: { hits: number; misses: number; stale: number; since: string; byKind: Record<string, HitMiss> };
+	images: { enabled: boolean; days: number; defaultDays: number; count: number; bytes: number } & HitMiss;
+	avatars: { count: number; bytes: number } & HitMiss;
 }
+
+export interface HitMiss { hits: number; misses: number }
 
 export interface Job {
 	id: string;
@@ -100,7 +106,7 @@ export interface Job {
 
 export type ServiceKind = 'radarr' | 'sonarr';
 
-export interface ProfileStatus { key: string; name: string; label: string; description: string; arrName: string; installed: boolean; arrId?: number; state: '' | 'ok' | 'update' | 'customized' | 'missing'; updateAvailable: boolean; updatedAt?: string }
+export interface ProfileStatus { key: string; name: string; label: string; description: string; arrName: string; installed: boolean; arrId?: number; state: '' | 'ok' | 'update' | 'customized' | 'missing'; updateAvailable: boolean; skipped?: boolean; rev?: string; updatedAt?: string }
 export interface FlixarrProfile { id: string; name: string; label: string; description: string; arrName: string; apps: ServiceKind[] }
 
 export interface ServiceView {
@@ -113,7 +119,7 @@ export interface ServiceView {
 	updatesPaused: boolean;
 }
 
-export interface QueueRow { title: string; quality: string; size: number; percent: number; timeLeft: string; state: 'downloading' | 'queued' | 'paused' | 'importing' | 'warning' | 'error'; message?: string }
+export interface QueueRow { id: number; type: 'movie' | 'series' | ''; tmdbId: number; arrId: number; requestId?: number; title: string; quality: string; size: number; percent: number; timeLeft: string; state: 'downloading' | 'queued' | 'paused' | 'importing' | 'warning' | 'error'; message?: string }
 
 export interface ArrStatus {
 	connected: boolean; error?: string; version?: string; health: string[]; queue: QueueRow[]; folder: string; freeSpace: number; totalSpace: number;
@@ -128,8 +134,9 @@ export interface ArrInfo {
 
 export interface Request {
 	id: number; type: 'movie' | 'series'; tmdbId: number; title: string; year: string; poster: string; backdrop: string;
-	userId: number; userName: string; status: 'pending' | 'approved' | 'declined' | 'sent' | 'grabbed' | 'downloading' | 'importing' | 'available' | 'failed' | 'expired';
-	serverId: number; arrId: number; profileId: number; profileName: string; mode: 'all' | 'seasons' | 'episodes'; seasons: number[]; episodes: [number, number][]; progress: number; error: string; anime: boolean;
+	userId: number; userName: string; status: 'pending' | 'approved' | 'declined' | 'sent' | 'grabbed' | 'downloading' | 'importing' | 'available' | 'failed' | 'expired' | 'removed';
+	serverId: number; arrId: number; profileId: number; profileName: string; mode: 'all' | 'seasons' | 'episodes'; seasons: number[]; episodes: [number, number][]; progress: number; error: string; anime: boolean; source?: string; detail?: string; userAvatar?: string;
 	createdAt: string; updatedAt: string;
+	trouble?: boolean; // its download is stuck in Radarr / Sonarr right now
 }
-export type RequestBrief = { id: number; status: Request['status'] | 'blocked'; progress: number; plex?: string; blocked?: boolean; asked?: { whole: boolean; seasons: number[] } };
+export type RequestBrief = { id: number; status: Request['status'] | 'blocked'; progress: number; plex?: string; blocked?: boolean; episodes?: [number, number]; asked?: { whole: boolean; seasons: number[] } };

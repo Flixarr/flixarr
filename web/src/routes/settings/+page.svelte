@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { api, fmtDate } from '#lib/api.ts';
+	import { api, fmtDate, meta } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import { session, can } from '#lib/session.svelte.ts';
 	import type { UpdateStatus } from '#lib/types.ts';
@@ -19,7 +19,8 @@
 	import NotificationsSettings from '#lib/components/settings/NotificationsSettings.svelte';
 	import BackupsSettings from '#lib/components/settings/BackupsSettings.svelte';
 	import BlocklistSettings from '#lib/components/settings/BlocklistSettings.svelte';
-	import { markAlertsSeen, servicesUnread } from '#lib/alerts.svelte.ts';
+	import ImportSettings from '#lib/components/settings/ImportSettings.svelte';
+	import { tapWhere, servicesUnread } from '#lib/alerts.svelte.ts';
 
 	// Section key → label, icon, one-line description (side menu / phone list).
 	const SECTIONS: [string, string, string, string][] = [
@@ -29,12 +30,13 @@
 		['plex', 'Plex', 'play', 'Server, libraries, scans'],
 		['services', 'Services', 'plus', 'Radarr, Sonarr'],
 		['profiles', 'Quality profiles', 'flag', "Flixarr's profiles for Radarr and Sonarr"],
-		['notifications', 'Notifications', 'bell', 'Discord, webhooks, email, push'],
+		['notifications', 'Notifications', 'bell', 'Discord, Telegram, Slack, email, push and more'],
 		['discover', 'Discover', 'discover', 'Discover page rows'],
 		['blocklist', 'Blocklist', 'close', "Titles that can't be requested"],
 		['cache', 'Cache', 'refresh', 'Saved results, images'],
 		['jobs', 'Jobs', 'clock', 'Scheduled tasks'],
 		['backups', 'Backups', 'folder', 'Daily copies of your data'],
+		['import', 'Import', 'arrow', 'Bring everything over from Seerr'],
 		['about', 'About', 'info', 'Version, updates, credits']
 	];
 
@@ -43,6 +45,13 @@
 	const hash = $derived(page.url.hash.slice(1));
 	const tab = $derived(SECTIONS.some(([k]) => k === hash) ? hash : 'about');
 	const label = $derived(SECTIONS.find(([k]) => k === tab)?.[1]);
+
+	// Everyone who worked on Flixarr on GitHub (through the Flixarr API, cached there for hours).
+	type Contributor = { login: string; avatar: string; url: string; contributions: number };
+	let contributors = $state<Contributor[]>([]);
+	$effect(() => {
+		if (tab === 'about' && !contributors.length) meta<{ contributors: Contributor[] }>('contributors').then((d) => (contributors = d.contributors)).catch(() => {});
+	});
 
 	let upd = $state<UpdateStatus | null>(null);
 	let payload = $state<Record<string, string> | null>(null);
@@ -59,7 +68,7 @@
 	});
 	// Reaching Services is the end of the red-dot trail.
 	$effect(() => {
-		if (tab === 'services' && hash === 'services' && servicesUnread()) markAlertsSeen();
+		if (tab === 'services' && hash === 'services' && servicesUnread()) tapWhere('arr:');
 	});
 	$effect(() => {
 		if (isAdmin) api<{ status: UpdateStatus; payload: Record<string, string> }>('/update').then((d) => { upd = d.status; payload = d.payload; });
@@ -134,6 +143,8 @@
 					<BlocklistSettings />
 				{:else if tab === 'backups'}
 					<BackupsSettings />
+				{:else if tab === 'import'}
+					<ImportSettings />
 				{:else if tab === 'jobs'}
 					<JobsSettings />
 				{:else if tab === 'about'}
@@ -146,7 +157,7 @@
 								<span class="text-gray-400">Updates</span>
 								<span class="text-right">
 									{#if !upd?.enabled}<span class="text-gray-400">Not checking</span>
-									{:else if upd.available && upd.latest}<span class="font-medium text-primary-light">Update available: {upd.latest.version}.{upd.latest.build}</span>
+									{:else if upd.available && upd.latest}<span class="font-medium text-primary-light">Update available: {upd.latest.version}</span>
 									{:else if upd.checkedAt}<span class="text-green-400">Up to date</span>
 									{:else}<span class="text-gray-400">First check in a few minutes</span>{/if}
 									{#if upd?.checkedAt}<span class="block text-xs text-gray-500">Checked {fmtDate(upd.checkedAt, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>{/if}
@@ -162,7 +173,7 @@
 											<span class="absolute left-0.5 top-0.5 size-5 rounded-full bg-white shadow transition peer-checked:translate-x-5"></span>
 										</span>
 									</label>
-									{#if upd.locked}<p class="text-xs text-yellow-400">Turned off on the server with FLIXARR_UPDATE_CHECK=false.</p>{/if}
+									{#if upd.locked}<p class="text-xs text-yellow-400">{session.status?.testInstall ? "Off on a dev install (it isn't counted as a second install)." : 'Turned off on the server with FLIXARR_UPDATE_CHECK=false.'}</p>{/if}
 									<div class="flex flex-wrap gap-2">
 										<button class="btn-ghost px-3 py-1.5 text-xs" disabled={!upd.enabled || busy} onclick={checkNow}>{busy ? 'Checking…' : 'Check now'}</button>
 										<button class="btn-ghost px-3 py-1.5 text-xs" onclick={() => (showSent = !showSent)}>{showSent ? 'Hide' : 'Show'} exactly what's sent</button>
@@ -182,6 +193,19 @@
 								<img src="/credits/marc-hershey.png" alt="Marc Hershey" class="size-14 shrink-0 rounded-full ring-2 ring-primary/60" />
 								<span class="flex-1"><span class="block text-xs text-gray-500">Made by</span><span class="block font-semibold group-hover:text-primary-light">Marc Hershey</span><span class="block text-xs text-gray-400">github.com/marchershey</span></span>
 							</a>
+							{#if contributors.length}
+								<div class="py-4">
+									<div class="mb-3 text-xs text-gray-500">Contributors on GitHub</div>
+									<div class="flex flex-wrap gap-2">
+										{#each contributors as c (c.login)}
+											<a href={c.url} target="_blank" rel="noopener" class="flex items-center gap-2 rounded-full border border-gray-700/40 bg-gray-900/40 py-1 pl-1 pr-3 text-sm transition hover:border-gray-600">
+												<img src={c.avatar} alt="" class="size-7 rounded-full" loading="lazy" />
+												<span>{c.login}</span><span class="text-xs text-gray-500">{c.contributions} commit{c.contributions === 1 ? '' : 's'}</span>
+											</a>
+										{/each}
+									</div>
+								</div>
+							{/if}
 							<div class="py-4">
 								<div class="mb-3 text-xs text-gray-500">Built with</div>
 								<div class="grid gap-2 phone:grid-cols-2 laptop:grid-cols-3">

@@ -16,6 +16,7 @@ import (
 
 	"github.com/Flixarr/flixarr/internal/requests"
 	"github.com/Flixarr/flixarr/internal/store"
+	"github.com/Flixarr/flixarr/internal/testinstall"
 )
 
 // Meta fetches Flixarr API detail pages (meta.Client).
@@ -128,6 +129,12 @@ type detail struct {
 
 // Run is the job: for everyone with it on, request watchlist titles not handled yet.
 func (w *Syncer) Run(ctx context.Context) (string, error) {
+	if testinstall.On {
+		return "Off on a dev install", nil
+	}
+	if w.Store.Setting(store.KeyWatchlistOff, "") == "true" {
+		return "Off for everyone (Settings, Users)", nil
+	}
 	users, err := w.Store.WatchlistUsers()
 	if err != nil {
 		return "", err

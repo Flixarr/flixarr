@@ -18,6 +18,23 @@ var issueKinds = map[string][]string{
 	"Audio":     {"Too quiet", "Out of sync", "Wrong language", "No audio"},
 	"Subtitles": {"Missing", "Out of sync", "Wrong language"},
 	"Other":     {},
+	// Not about a file: a request that never arrived. The one kind allowed on titles not in the library.
+	"Didn't download": {"Never started", "Got stuck"},
+}
+
+// downloadKind is the issue kind for a request that never arrived.
+const downloadKind = "Didn't download"
+
+// waitingFor: someone asked for the title and it hasn't (all) arrived: a request that's on its way or failed.
+func (s *Server) waitingFor(typ string, id int) bool {
+	reqs, _ := s.Store.RequestsForTitle(typ, id)
+	for _, r := range reqs {
+		switch r.Status {
+		case "approved", "sent", "grabbed", "downloading", "importing", "failed":
+			return true
+		}
+	}
+	return false
 }
 
 // inLibrary: issues are about the actual file, so only titles in Plex (or with an available request).
@@ -44,9 +61,6 @@ func (s *Server) issueList(w http.ResponseWriter, r *http.Request, u *store.User
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return
 	}
-	if u.Can("manageIssues") {
-		s.syncIssueAlerts(nil) // keeps the count right for issues reported before the bell counted them
-	}
 	writeJSON(w, http.StatusOK, map[string]any{"issues": list, "kinds": issueKinds})
 }
 
@@ -67,7 +81,10 @@ func (s *Server) issueCreate(w http.ResponseWriter, r *http.Request, u *store.Us
 	case (in.Type != "movie" && in.Type != "series") || in.TmdbID <= 0 || strings.TrimSpace(in.Title) == "":
 		writeErr(w, http.StatusBadRequest, "Missing title.")
 		return
-	case !s.inLibrary(in.Type, in.TmdbID):
+	case in.Kind == downloadKind && !s.waitingFor(in.Type, in.TmdbID):
+		writeErr(w, http.StatusConflict, "Nobody is waiting for it to download.")
+		return
+	case in.Kind != downloadKind && !s.inLibrary(in.Type, in.TmdbID):
 		writeErr(w, http.StatusConflict, "Issues can only be reported on titles in the library.")
 		return
 	}
@@ -100,7 +117,7 @@ func (s *Server) issueCreate(w http.ResponseWriter, r *http.Request, u *store.Us
 		return
 	}
 	s.Notify.Send(s.Notify.FromIssue("issue_reported", is))
-	s.syncIssueAlerts(nil)
+	s.issueAlerts(is, u, "reported")
 	writeJSON(w, http.StatusCreated, is)
 }
 
@@ -148,10 +165,12 @@ func (s *Server) issueComment(w http.ResponseWriter, r *http.Request, u *store.U
 	if len(body) > 2000 {
 		body = body[:2000]
 	}
-	if err := s.Store.AddComment(is.ID, u.ID, body); err != nil {
+	cid, err := s.Store.AddComment(is.ID, u.ID, body)
+	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return
 	}
+	s.issueAlerts(is, u, fmt.Sprintf("reply c%d", cid))
 	s.issueGet(w, r, u)
 }
 
@@ -169,7 +188,7 @@ func (s *Server) issueStatus(status string) func(http.ResponseWriter, *http.Requ
 		if status == "resolved" {
 			s.Notify.Send(s.Notify.FromIssue("issue_resolved", is))
 		}
-		s.syncIssueAlerts(&is)
+		s.issueAlerts(is, u, status)
 		writeJSON(w, http.StatusOK, is)
 	}
 }
@@ -183,25 +202,45 @@ func (s *Server) issueDelete(w http.ResponseWriter, r *http.Request, u *store.Us
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return
 	}
-	s.syncIssueAlerts(nil)
+	s.issueAlerts(is, u, "deleted")
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// syncIssueAlerts keeps the bell current (grouped, Rule 19): one "N open issues" for people who manage
-// issues, and one "Your issues" for a reporter whose issue was just resolved.
-func (s *Server) syncIssueAlerts(changed *store.Issue) {
-	if n := s.Store.OpenIssueCount(); n == 0 {
-		s.Store.ResolveAlert("issues:open")
-	} else {
-		title := "1 open issue"
-		if n > 1 {
-			title = fmt.Sprintf("%d open issues", n)
-		}
-		s.Store.RaiseAlert(store.Alert{Key: "issues:open", Audience: "admins", Severity: "warning", Title: title,
-			Detail: "Reported problems on titles in your library", Link: "/issues", Sig: fmt.Sprint(n)})
+// issueAlerts updates the bell for an issue (#93): a to-do per open issue for people who manage issues,
+// and news for the person who reported it when someone else replies or resolves it; a reply from the
+// reporter is news for people who manage issues. by is who did it: it's never news to them.
+func (s *Server) issueAlerts(is store.Issue, by *store.User, what string) {
+	todo := fmt.Sprintf("issue:%d", is.ID)
+	thread := fmt.Sprintf("/issues?open=%d", is.ID)
+	kind := is.Kind
+	if is.Sub != "" {
+		kind += ": " + is.Sub
 	}
-	if changed != nil && changed.Status == "resolved" {
-		s.Store.RaiseAlert(store.Alert{Key: fmt.Sprintf("issues:user:%d", changed.UserID), Audience: fmt.Sprintf("user:%d", changed.UserID), Severity: "info",
-			Title: "Your issues", Detail: changed.Title + " was fixed", Link: "/issues", Sig: fmt.Sprint(changed.ID)})
+	name := "Someone"
+	if by != nil {
+		name = by.Username
+	}
+	switch {
+	case what == "reported" || what == "open":
+		s.Store.RaiseTodo(store.Alert{Key: todo, Audience: "can:manageIssues", Title: "New issue", Detail: is.Title + " · " + kind + ", by " + is.UserName, Link: thread, Poster: is.Poster})
+		if by != nil {
+			s.Store.TapAlertKey(by.ID, todo)
+		}
+	case what == "resolved" || what == "deleted":
+		s.Store.ResolveTodo(todo)
+		if what == "deleted" {
+			s.Store.DropAlertsTo(thread)
+		}
+		if what == "resolved" && (by == nil || by.ID != is.UserID) {
+			s.Store.AddNews(store.Alert{Audience: fmt.Sprintf("user:%d", is.UserID), Title: "Fixed", Detail: is.Title + " · " + kind, Link: thread, Poster: is.Poster})
+		}
+	case strings.HasPrefix(what, "reply"):
+		if by != nil && by.ID == is.UserID {
+			// The reporter replied: news for the people handling it.
+			s.Store.AddNews(store.Alert{Audience: "can:manageIssues", Title: name + " replied", Detail: is.Title + " · " + kind, Link: thread, Poster: is.Poster, Key: "reply:" + what, Repeat: true})
+			s.Store.HideAlertKey(by.ID, "reply:"+what)
+		} else {
+			s.Store.AddNews(store.Alert{Audience: fmt.Sprintf("user:%d", is.UserID), Title: name + " replied", Detail: is.Title + " · " + kind, Link: thread, Poster: is.Poster})
+		}
 	}
 }

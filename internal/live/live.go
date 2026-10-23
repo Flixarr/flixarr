@@ -5,7 +5,6 @@
 package live
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -98,16 +97,10 @@ func (h *Hub) Subscribe(lastID string) (ch chan Event, missed []Event, resync bo
 // Admins: people with the admin switch.
 func Admins(u *store.User) bool { return u.Can("admin") }
 
-// ForAudience turns an alert audience ("everyone", "admins", "user:<id>") into a filter.
+// ForAudience turns an alert audience ("everyone", "admins", "user:<id>", "can:<permission>") into a filter.
 func ForAudience(a string) func(u *store.User) bool {
-	switch {
-	case a == "everyone":
+	if a == "everyone" {
 		return nil
-	case a == "admins":
-		return Admins
-	case strings.HasPrefix(a, "user:"):
-		id := strings.TrimPrefix(a, "user:")
-		return func(u *store.User) bool { return fmt.Sprint(u.ID) == id }
 	}
-	return Admins
+	return func(u *store.User) bool { return store.SeenBy(a, u.ID, u.Can) }
 }

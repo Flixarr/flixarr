@@ -30,6 +30,12 @@
 	async function load() {
 		try {
 			list = (await api<{ issues: Issue[] }>('/issues')).issues;
+			// ?open=<id> (from a title's admin panel) opens that issue.
+			const want = Number(new URLSearchParams(location.search).get('open'));
+			if (want) {
+				const hit = list.find((i) => i.id === want);
+				if (hit) openIssue(hit);
+			}
 		} catch (e) {
 			notify(e instanceof Error ? e.message : 'Could not load issues.', 'orange');
 		}
@@ -121,10 +127,10 @@
 	{:else if !shown.length}
 		<div class="card mt-6 p-8 text-center text-sm text-gray-400">{filter === 'open' ? 'No open issues.' : 'Nothing here.'}</div>
 	{:else}
-		<div class="mt-5 grid gap-3 laptop:grid-cols-2">
+		<div class="mt-5 grid grid-cols-1 gap-3 laptop:grid-cols-2">
 			{#each shown as i (i.id)}
-				<button class="card flex gap-3 p-3 text-left transition hover:ring-1 hover:ring-primary/50" onclick={() => openIssue(i)}>
-					<div class="w-14 shrink-0 overflow-hidden rounded-lg ring-1 ring-gray-700/60">{#if i.poster}<Img path={i.poster} kind="poster" sizes="56px" class="aspect-[2/3] w-full" />{/if}</div>
+				<button class="card flex min-w-0 gap-3 p-3 text-left transition hover:ring-1 hover:ring-primary/50" onclick={() => openIssue(i)}>
+					<div class="w-14 shrink-0 self-start overflow-hidden rounded-lg ring-1 ring-gray-700/60">{#if i.poster}<Img path={i.poster} kind="poster" sizes="56px" class="block aspect-[2/3] w-full" />{/if}</div>
 					<div class="min-w-0 flex-1 space-y-1">
 						<div class="flex items-start justify-between gap-2">
 							<div class="min-w-0"><div class="truncate font-semibold">{i.title}</div><div class="text-xs text-gray-400">{where(i) ? where(i) + ' · ' : ''}#{i.id}</div></div>

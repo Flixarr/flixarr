@@ -7,7 +7,9 @@ import (
 	"github.com/Flixarr/flixarr/internal/secret"
 )
 
-func TestAlerts(t *testing.T) {
+// The bell (#93): one alert per thing, red = new since the bell was opened, the number = not tapped,
+// tapped news stays a day, to-dos stay until handled.
+func TestBell(t *testing.T) {
 	dir := t.TempDir()
 	box, _ := secret.Load(dir)
 	st, err := Open(dir, box)
@@ -15,76 +17,92 @@ func TestAlerts(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	st.db.Exec(`INSERT INTO users (id, plex_id, username, role, created_at) VALUES (1, 1, 'admin', 'Admin', ?), (2, 2, 'user', 'User', ?)`, now(), now())
-
-	raise := func(detail, sig string) {
-		if err := st.RaiseAlert(Alert{Key: "arr:2", Severity: "warning", Title: "Sonarr", Detail: detail, Link: "/settings#services", Sig: sig}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	raise("14 downloads need attention", "warning:downloads")
-	list, _ := st.ActiveAlerts(1, true)
-	if len(list) != 1 || !list[0].Unread || list[0].Detail != "14 downloads need attention" {
-		t.Fatalf("first raise: %+v", list)
-	}
-	if l, _ := st.ActiveAlerts(2, false); len(l) != 0 {
-		t.Fatal("non-admin sees an admin alert")
-	}
-	st.MarkAlertsSeen(1)
-	time.Sleep(1100 * time.Millisecond) // timestamps have one-second precision
-
-	raise("13 downloads need attention", "warning:downloads") // same kind of problem: stays read
-	if l, _ := st.ActiveAlerts(1, true); len(l) != 1 || l[0].Unread || l[0].Detail != "13 downloads need attention" {
-		t.Fatalf("small change: %+v", l)
-	}
-	raise("13 downloads need attention · 1 health issue", "warning:downloads,health") // new kind: unread again
-	if l, _ := st.ActiveAlerts(1, true); !l[0].Unread {
-		t.Fatal("new kind of problem should be unread")
-	}
-	st.ResolveAlert("arr:2")
-	if l, _ := st.ActiveAlerts(1, true); len(l) != 0 {
-		t.Fatal("resolved alert still active")
-	}
-	raise("1 download needs attention", "warning:downloads") // comes back unread: it was never seen
-	if l, _ := st.ActiveAlerts(1, true); len(l) != 1 || !l[0].Unread {
-		t.Fatalf("returning alert: %+v", l)
-	}
-	raise("13 downloads need attention", "warning:downloads,health")
-	st.MarkAlertsSeen(1)
-	time.Sleep(1100 * time.Millisecond)
-	// A problem clearing while another stays: quieter, stays read.
-	raise("13 downloads need attention", "warning:downloads")
-	if l, _ := st.ActiveAlerts(1, true); l[0].Unread {
-		t.Fatal("quieter alert turned unread")
-	}
-	// Clears and comes back soon after: the same alert, still read.
-	st.ResolveAlert("arr:2")
-	raise("2 downloads need attention", "warning:downloads")
-	if l, _ := st.ActiveAlerts(1, true); len(l) != 1 || l[0].Unread {
-		t.Fatalf("flapping alert turned unread: %+v", l)
-	}
-	// Counts: only a bigger one turns it unread.
-	count := func(n string) {
-		st.RaiseAlert(Alert{Key: "requests:pending", Severity: "info", Title: n + " waiting", Sig: n})
-	}
-	count("3")
-	st.MarkAlertsSeen(1)
-	time.Sleep(1100 * time.Millisecond)
-	count("2")
-	unread := func() bool {
-		l, _ := st.ActiveAlerts(1, true)
+	st.db.Exec(`INSERT INTO users (id, plex_id, username, role, created_at) VALUES (1, 1, 'admin', 'Admin', ?), (2, 2, 'eryn', 'User', ?)`, now(), now())
+	untapped := func(l []Alert) (n int, red bool) {
 		for _, a := range l {
-			if a.Key == "requests:pending" {
-				return a.Unread
+			if !a.Tapped {
+				n++
 			}
+			red = red || a.New
 		}
-		return false
+		return
 	}
-	if unread() {
-		t.Fatal("count going down turned it unread")
+
+	// Two news alerts for Eryn: each its own, both new.
+	st.AddNews(Alert{Audience: "user:2", Title: "Ready to watch", Detail: "The Odyssey"})
+	st.AddNews(Alert{Audience: "user:2", Title: "Ready to watch", Detail: "The Matrix"})
+	l, _ := st.Bell(2, CanNone)
+	if n, red := untapped(l); n != 2 || !red || l[0].Detail != "The Matrix" {
+		t.Fatalf("two news: %+v", l)
 	}
-	count("3")
-	if !unread() {
-		t.Fatal("count going up should be unread")
+	if l, _ := st.Bell(1, CanAll); len(l) != 0 {
+		t.Fatal("an admin sees a user's own alert")
+	}
+	// Opening the bell: no red, the number stays.
+	time.Sleep(1100 * time.Millisecond) // timestamps have one-second precision
+	st.OpenedBell(2)
+	l, _ = st.Bell(2, CanNone)
+	if n, red := untapped(l); n != 2 || red {
+		t.Fatalf("opened: %+v", l)
+	}
+	// Tapping one: off the number, still listed (gray).
+	st.TapAlert(2, l[0].ID)
+	l, _ = st.Bell(2, CanNone)
+	if n, _ := untapped(l); n != 1 || len(l) != 2 {
+		t.Fatalf("tapped one: %+v", l)
+	}
+	// A day later the tapped one drops off; the untapped one waits.
+	st.db.Exec(`UPDATE alert_seen SET seen_at = ? WHERE user_id = 2`, time.Now().Add(-25*time.Hour).UTC().Format(time.RFC3339))
+	if l, _ := st.Bell(2, CanNone); len(l) != 1 || l[0].Tapped {
+		t.Fatalf("a day later: %+v", l)
+	}
+
+	// A to-do for people who manage requests: updates quietly, stays when tapped, goes when handled.
+	st.RaiseTodo(Alert{Key: "approve:req:7", Audience: "can:manageRequests", Title: "eryn requested", Detail: "Fleabag"})
+	st.RaiseTodo(Alert{Key: "approve:req:7", Audience: "can:manageRequests", Title: "eryn requested", Detail: "Fleabag · waiting"})
+	l, _ = st.Bell(1, CanAll)
+	if len(l) != 1 || l[0].Kind != "todo" || l[0].Detail != "Fleabag · waiting" {
+		t.Fatalf("to-do: %+v", l)
+	}
+	st.TapAlert(1, l[0].ID)
+	st.db.Exec(`UPDATE alert_seen SET seen_at = ? WHERE user_id = 1`, time.Now().Add(-48*time.Hour).UTC().Format(time.RFC3339))
+	if l, _ := st.Bell(1, CanAll); len(l) != 1 || !l[0].Tapped {
+		t.Fatalf("tapped to-do should stay: %+v", l)
+	}
+	st.ResolveTodo("approve:req:7")
+	if l, _ := st.Bell(1, CanAll); len(l) != 0 {
+		t.Fatalf("handled to-do still there: %+v", l)
+	}
+	// A server problem that clears and comes back soon is the same alert; the person who caused a to-do
+	// has it tapped already.
+	id1, _ := st.RaiseTodo(Alert{Key: "arr:sonarr:1", Audience: "admins", Title: "Sonarr can't be reached"})
+	st.ResolveTodo("arr:sonarr:1")
+	if id2, _ := st.RaiseTodo(Alert{Key: "arr:sonarr:1", Audience: "admins", Title: "Sonarr can't be reached"}); id2 != id1 {
+		t.Fatalf("flapping made a new alert: %d vs %d", id1, id2)
+	}
+	st.RaiseTodo(Alert{Key: "issue:3", Audience: "can:manageIssues", Title: "New issue"})
+	st.TapAlertKey(1, "issue:3")
+	for _, a := range func() []Alert { l, _ := st.Bell(1, CanAll); return l }() {
+		if a.Key == "issue:3" && !a.Tapped {
+			t.Fatal("the reporter's own to-do isn't tapped")
+		}
+	}
+	// News with a key is added once (an update announcement).
+	st.AddNews(Alert{Key: "update:0.1.0.300", Audience: "admins", Title: "Flixarr 0.1.0.300 is out"})
+	st.AddNews(Alert{Key: "update:0.1.0.300", Audience: "admins", Title: "Flixarr 0.1.0.300 is out"})
+	n := 0
+	for _, a := range func() []Alert { l, _ := st.Bell(1, CanAll); return l }() {
+		if a.Key == "update:0.1.0.300" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("update news %d times", n)
+	}
+	// Mark all as read taps everything; to-dos stay listed.
+	st.TapAll(1, CanAll)
+	l, _ = st.Bell(1, CanAll)
+	if c, _ := untapped(l); c != 0 || len(l) == 0 {
+		t.Fatalf("read all: %+v", l)
 	}
 }

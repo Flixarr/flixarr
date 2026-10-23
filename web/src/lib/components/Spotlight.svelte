@@ -33,7 +33,7 @@
 			<div class="absolute inset-x-0 bottom-14 mx-auto max-w-[1600px] px-4 laptop:bottom-16 laptop:px-10">
 				<div class="max-w-lg space-y-2.5">
 					<div class="flex items-center gap-2 text-xs">
-						<span class="rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide {h.type === 'series' ? 'bg-blue-600/80' : 'bg-primary/90'}">{h.type === 'series' ? 'Series' : 'Movie'}</span>
+						<span class="rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide {h.type === 'series' ? 'bg-primary/90' : 'bg-blue-600/80'}">{h.type === 'series' ? 'Series' : 'Movie'}</span>
 						<span class="rounded-md bg-gray-900/70 px-1.5 py-0.5 text-gray-300 ring-1 ring-gray-700/60">Trending this week</span>
 					</div>
 					<h1 class="text-2xl font-bold leading-tight drop-shadow-xl laptop:text-3xl">{h.title}</h1>
@@ -41,7 +41,7 @@
 					<div class="flex items-center gap-3 pt-1">
 						{#if statusOf(`${h.type}:${h.id}`)?.plex}
 							<a href={statusOf(`${h.type}:${h.id}`)?.plex} target="_blank" rel="noopener" class="btn-plex px-4 py-1.5 text-sm"><PlexMark class="size-4" color="#111827" />Play on Plex</a>
-						{:else if statusOf(`${h.type}:${h.id}`) && !['failed', 'declined', 'expired'].includes(statusOf(`${h.type}:${h.id}`)!.status)}
+						{:else if statusOf(`${h.type}:${h.id}`) && !['failed', 'declined', 'expired', 'removed'].includes(statusOf(`${h.type}:${h.id}`)!.status)}
 							<a href="/requests" class="btn-ghost px-4 py-1.5 text-sm text-yellow-300">Requested</a>
 						{:else if can(h.type === 'series' ? 'requestTv' : 'requestMovies')}
 							<a href="{href(h)}?request=1" class="btn px-4 py-1.5 text-sm"><Icon name="plus" class="size-4" />Request</a>

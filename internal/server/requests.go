@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -16,14 +17,18 @@ import (
 // ---------- requests ----------
 
 func (s *Server) requestList(w http.ResponseWriter, r *http.Request, u *store.User) {
-	owner := u.ID
-	if u.Can("viewRequests") || u.Can("manageRequests") {
-		owner = 0 // everyone's
-	}
-	list, err := s.Store.Requests(owner, 200)
+	// Everyone's, all of them (#127): anyone signed in can see all requests, and the page filters, searches
+	// and counts them itself. A Seerr import alone brings thousands.
+	list, err := s.Store.Requests(0, 1_000_000)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return
+	}
+	admin := u.Can("manageRequests")
+	stuck := s.stuckDownloads()
+	for i := range list {
+		list[i] = requests.ForViewer(list[i], admin)
+		list[i].Trouble = stuck[fmt.Sprintf("%s:%d", list[i].Type, list[i].ArrID)] && list[i].ArrID > 0
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"requests": list, "approvalRequired": s.Requests.ApprovalRequired()})
 }
@@ -60,7 +65,7 @@ func (s *Server) requestCreate(w http.ResponseWriter, r *http.Request, u *store.
 		writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
 		return
 	}
-	writeJSON(w, http.StatusCreated, req)
+	writeJSON(w, http.StatusCreated, requests.ForViewer(req, u.Can("manageRequests")))
 }
 
 // requestStatus answers "is this requested?" for a batch of titles: ?keys=movie:603,series:1396.
@@ -86,6 +91,8 @@ type brief struct {
 	Progress int    `json:"progress"`
 	Plex     string `json:"plex,omitempty"` // opens it in Plex
 	Blocked  bool   `json:"blocked,omitempty"`
+	// Series in Plex: episodes it has of those aired so far (#137), when known.
+	Episodes *[2]int `json:"episodes,omitempty"`
 	// Series: what open requests already ask for, so the page can offer the rest.
 	Asked *store.Coverage `json:"asked,omitempty"`
 }
@@ -96,20 +103,24 @@ func (s *Server) briefs(keys []string) (map[string]brief, error) {
 	if err != nil {
 		return nil, err
 	}
+	series := []int{}
+	for _, v := range got {
+		if v.Type == "series" {
+			series = append(series, v.TmdbID)
+		}
+	}
+	cov, _ := s.Store.SeriesCoverageFor(series) // one query for the whole page
 	out := map[string]brief{}
 	for k, v := range got {
 		b := brief{ID: v.ID, Status: v.Status, Progress: v.Progress}
-		if v.Type == "series" {
-			if c, err := s.Store.SeriesCoverage(v.TmdbID); err == nil {
-				b.Asked = &c
-			}
+		if c, ok := cov[v.TmdbID]; ok && v.Type == "series" {
+			b.Asked = &c
 		}
 		out[k] = b
 	}
+	blocked := s.Store.BlockedKeys()
 	for _, k := range keys {
-		typ, id, _ := strings.Cut(k, ":")
-		n, _ := strconv.Atoi(id)
-		if _, has := out[k]; !has && s.Store.IsBlocked(typ, n) {
+		if _, has := out[k]; !has && blocked[k] {
 			out[k] = brief{Status: "blocked", Blocked: true}
 		}
 	}
@@ -122,6 +133,9 @@ func (s *Server) briefs(keys []string) (map[string]brief, error) {
 				b.Status, b.Progress = "available", 100
 			}
 			b.Plex = it.URL
+			if strings.HasPrefix(k, "series:") && it.Total > 0 {
+				b.Episodes = &[2]int{min(it.Have, it.Total), it.Total}
+			}
 			out[k] = b
 		}
 	}
@@ -153,7 +167,7 @@ func (s *Server) requestApprove(w http.ResponseWriter, r *http.Request, u *store
 	if req.Status != "failed" {
 		s.Notify.Send(s.Notify.FromRequest("request_approved", req))
 	}
-	s.Requests.Alert(req)
+	s.Requests.Decided(req, u) // Send already updated the bell for where it went
 	writeJSON(w, http.StatusOK, req)
 }
 
@@ -182,10 +196,11 @@ func (s *Server) requestDecline(w http.ResponseWriter, r *http.Request, u *store
 	s.Notify.Send(s.Notify.FromRequest("request_declined", req))
 	s.Requests.Publish(req)
 	s.Requests.Alert(req)
+	s.Requests.Decided(req, u)
 	writeJSON(w, http.StatusOK, req)
 }
 
-func (s *Server) requestRetry(w http.ResponseWriter, r *http.Request, _ *store.User) {
+func (s *Server) requestRetry(w http.ResponseWriter, r *http.Request, u *store.User) {
 	req, ok := s.requestByID(w, r)
 	if !ok {
 		return
@@ -194,21 +209,26 @@ func (s *Server) requestRetry(w http.ResponseWriter, r *http.Request, _ *store.U
 		writeErr(w, http.StatusConflict, "Only failed requests can be tried again.")
 		return
 	}
+	s.Store.AddFixSteps(req.Type, req.TmdbID, req.ID, "Tried again", u.ID)
+	s.Store.AddTitleEvent(req.Type, req.TmdbID, "fix", "Tried again", u.ID, "")
 	writeJSON(w, http.StatusOK, s.Requests.Send(r.Context(), req))
 }
 
 // requestFix repairs a stuck request (missing from Radarr/Sonarr, not monitored, never searched) and says
 // what it did.
-func (s *Server) requestFix(w http.ResponseWriter, r *http.Request, _ *store.User) {
+func (s *Server) requestFix(w http.ResponseWriter, r *http.Request, u *store.User) {
 	req, ok := s.requestByID(w, r)
 	if !ok {
 		return
 	}
+	steps := s.Store.AddFixSteps(req.Type, req.TmdbID, req.ID, "Searched again", u.ID) // before the fix: its own steps come after
 	fixed, done, err := s.Requests.Fix(r.Context(), req)
 	if err != nil {
+		s.Store.DropFixSteps(steps)
 		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
 		return
 	}
+	s.Store.AddTitleEvent(req.Type, req.TmdbID, "fix", "Searched again", u.ID, "")
 	writeJSON(w, http.StatusOK, map[string]any{"request": fixed, "done": done})
 }
 
@@ -218,17 +238,24 @@ func (s *Server) redownload(w http.ResponseWriter, r *http.Request, u *store.Use
 		Type    string `json:"type"`
 		TmdbID  int    `json:"tmdbId"`
 		Seasons []int  `json:"seasons"`
+		Title   string `json:"title"`
+		Year    string `json:"year"`
+		Poster  string `json:"poster"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil || (in.Type != "movie" && in.Type != "series") || in.TmdbID <= 0 {
 		writeErr(w, http.StatusBadRequest, "Bad request.")
 		return
 	}
-	done, err := s.Requests.Redownload(r.Context(), in.Type, in.TmdbID, in.Seasons)
+	// Before the redownload, so the request it makes doesn't get the step too.
+	steps := s.Store.AddFixSteps(in.Type, in.TmdbID, 0, withNote("Redownload asked for", store.SeasonsText(in.Seasons)), u.ID)
+	done, err := s.Requests.Redownload(r.Context(), in.Type, in.TmdbID, in.Seasons, requests.For{UserID: u.ID, Title: in.Title, Year: in.Year, Poster: in.Poster})
 	if err != nil {
+		s.Store.DropFixSteps(steps)
 		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
 		return
 	}
 	s.Log.Info("redownload asked", "by", u.Username, "type", in.Type, "tmdb", in.TmdbID)
+	s.Store.AddTitleEvent(in.Type, in.TmdbID, "redownload", store.SeasonsText(in.Seasons), u.ID, "")
 	writeJSON(w, http.StatusOK, map[string]any{"done": done})
 }
 
@@ -249,7 +276,7 @@ func (s *Server) requestDelete(w http.ResponseWriter, r *http.Request, u *store.
 	}
 	req.Status = "deleted"
 	s.Requests.Publish(req)
-	s.Requests.Forgotten()
+	s.Requests.Forget(req)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -273,7 +300,7 @@ func (s *Server) requestSettings(w http.ResponseWriter, r *http.Request, _ *stor
 			}
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"approvalRequired": s.Requests.ApprovalRequired(), "tvModes": s.Requests.Modes(), "episodesReady": requests.EpisodesReady})
+	writeJSON(w, http.StatusOK, map[string]any{"approvalRequired": s.Requests.ApprovalRequired(), "tvModes": s.Requests.Modes()})
 }
 
 // requestOptions is what the request window needs: where it goes, the qualities to pick from

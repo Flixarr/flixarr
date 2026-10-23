@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -106,31 +105,16 @@ type TVModes struct {
 	Default  string `json:"default"` // whole | seasons | episodes
 }
 
-// EpisodesReady turns on requesting single episodes. Off until whole-show and season requests are
-// finished; the code stays so it can come back without a rework.
-var EpisodesReady = false
-
-// Modes returns the series request modes (whole show and seasons on, whole show first, until changed).
+// Modes returns the series request modes (whole show and seasons on, whole show first, single
+// episodes off, until changed in Settings, Requests).
 func (s *Service) Modes() TVModes {
-	m := TVModes{Whole: true, Seasons: true, Episodes: EpisodesReady, Default: "whole"}
+	m := TVModes{Whole: true, Seasons: true, Default: "whole"}
 	json.Unmarshal([]byte(s.Store.Setting(KeyTVModes, "")), &m)
-	if !EpisodesReady {
-		m.Episodes = false
-		if !m.Whole && !m.Seasons {
-			m.Whole = true
-		}
-		if m.Default == "episodes" || (m.Default == "whole" && !m.Whole) || (m.Default == "seasons" && !m.Seasons) {
-			m.Default = map[bool]string{true: "whole", false: "seasons"}[m.Whole]
-		}
-	}
 	return m
 }
 
 // SetModes saves the series request modes; at least one stays on, and the default is one that's on.
 func (s *Service) SetModes(m TVModes) (TVModes, error) {
-	if !EpisodesReady {
-		m.Episodes = false
-	}
 	if !m.Whole && !m.Seasons && !m.Episodes {
 		return m, errors.New("keep at least one way to request series")
 	}
@@ -319,8 +303,8 @@ func (s *Service) Create(ctx context.Context, u *store.User, in New) (store.Requ
 	}
 	s.notify("request_submitted", r)
 	s.Publish(r)
-	if r.Status == "pending" || r.Status == "failed" {
-		s.Alert(r)
+	if r.Status == "pending" {
+		s.Alert(r) // sent or failed was alerted by Send
 	}
 	return r, nil
 }
@@ -357,6 +341,7 @@ func (s *Service) Send(ctx context.Context, r store.Request) store.Request {
 	}
 	s.Store.UpdateRequest(r)
 	s.Publish(r)
+	s.Alert(r)
 	return r
 }
 
@@ -405,8 +390,8 @@ func (s *Service) sendMovie(ctx context.Context, v store.Server, r *store.Reques
 
 func (s *Service) sendSeries(ctx context.Context, v store.Server, r *store.Request) error {
 	c := client(v)
-	var found []map[string]any
-	if err := c.Get(ctx, "series/lookup?term="+url.QueryEscape(fmt.Sprintf("tmdb:%d", r.TmdbID)), &found); err != nil {
+	found, err := seriesLookup(ctx, c, r.TmdbID)
+	if err != nil {
 		return fmt.Errorf("Sonarr couldn't find it: %w", err)
 	}
 	if len(found) == 0 {
@@ -708,9 +693,6 @@ func (s *Service) removedFromArr(ctx context.Context, v store.Server, r store.Re
 	return asked, nil
 }
 
-// removedNote starts the reason on a request whose title left Plex and Radarr/Sonarr.
-const removedNote = "Removed"
-
 // Recheck looks again at available requests whose title just left Plex ("movie:603" keys; episodes = some
 // show lost episodes or seasons). Files still in Radarr/Sonarr: importing again (Plex is asked to scan).
 // Gone from Radarr/Sonarr too: failed with the reason, so it can be requested again.
@@ -740,8 +722,8 @@ func (s *Service) Recheck(ctx context.Context, keys []string, episodes bool) err
 			gone = errors.Is(err, arr.ErrNotFound)
 		}
 		if gone {
-			r.Status, r.Progress = "failed", 0
-			r.Error = fmt.Sprintf("%s from Plex and %s. Request it again to get it back.", removedNote, arr.Kinds[kindOf(r.Type)])
+			r.Status, r.Progress = "removed", 0
+			r.Error = fmt.Sprintf("Removed from Plex and %s.", arr.Kinds[kindOf(r.Type)])
 			if l, ok := s.Store.WasLeaving(r.Type, r.TmdbID); ok {
 				// Maintainerr's doing: it reached the end of its time, not an error.
 				r.Status, r.Error = "expired", "Removed by Maintainerr ("+l.Collection+")."
@@ -755,7 +737,7 @@ func (s *Service) Recheck(ctx context.Context, keys []string, episodes bool) err
 		}
 		// Checked only because some show lost episodes: act only when Plex is missing what Sonarr has, not
 		// because new episodes aired since (Sonarr picks those up on its own).
-		if !named[r.Type+":"+fmt.Sprint(r.TmdbID)] && r.Status != "importing" && r.Status != "failed" {
+		if !named[r.Type+":"+fmt.Sprint(r.TmdbID)] && r.Status != "importing" && r.Status != "removed" {
 			continue
 		}
 		s.Log.Info("request no longer available", "title", r.Title, "status", r.Status)

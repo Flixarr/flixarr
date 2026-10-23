@@ -9,9 +9,9 @@
 	import Row from '#lib/components/Row.svelte';
 	import Poster from '#lib/components/Poster.svelte';
 	import SeeMore from '#lib/components/SeeMore.svelte';
-	import { LISTS, listHref, type DiscoverRow } from '#lib/lists.ts';
+	import { LISTS, listHref, rowSource, rowTitle, type DiscoverRow } from '#lib/lists.ts';
 
-	const ROWS = LISTS.map((l) => [l.key, l.title, listHref(l.key)] as const);
+	const LOCAL = ['recently-added', 'recent-requests', 'leaving-soon'];
 
 	let lists = $state<Record<string, Card[]>>({});
 	let pages = $state<Record<string, number>>({}); // total pages per list (20 titles each), for the See all count
@@ -19,19 +19,26 @@
 	let local = $state<{ added: Card[]; requests: Card[]; leaving: Card[] }>({ added: [], requests: [], leaving: [] });
 	// Row order and on/off from Settings → Discover; until it arrives, every row in the default order.
 	let order = $state<DiscoverRow[] | null>(null);
-	const shown = $derived((order ?? [{ key: 'recently-added', on: true }, { key: 'recent-requests', on: true }, { key: 'leaving-soon', on: true }, ...ROWS.map(([k]) => ({ key: k, on: true }))]).filter((r) => r.on).map((r) => r.key));
+	const shown = $derived((order ?? [...LOCAL, ...LISTS.slice(0, 5).map((l) => l.key)].map((key) => ({ key, on: true }))).filter((r) => r.on));
 
+	// A row's titles (and how many pages there are, for the See all count). Trending always loads: the
+	// spotlight shows it.
+	function fill(r: DiscoverRow, alive: () => boolean) {
+		const { path, params } = rowSource(r);
+		const got = (p: Page<Card>) => alive() && ((lists = { ...lists, [r.key]: p.results }), (pages = { ...pages, [r.key]: p.totalPages }));
+		return meta<Page<Card>>(path, params, got).then(got);
+	}
 	$effect(() => {
 		let alive = true;
-		const fresh = (k: string) => (p: Page<Card>) => alive && ((lists = { ...lists, [k]: p.results }), (pages = { ...pages, [k]: p.totalPages }));
-		Promise.all(ROWS.map(([k]) => meta<Page<Card>>('lists/' + k, {}, fresh(k)).then((p) => [k, p] as const)))
-			.then((all) => {
+		const live = () => alive;
+		fill({ key: 'trending', on: true }, live).catch((e) => (error = e.message));
+		api<DiscoverRow[]>('/discover/rows')
+			.then((rows) => {
 				if (!alive) return;
-				lists = Object.fromEntries(all.map(([k, p]) => [k, p.results]));
-				pages = Object.fromEntries(all.map(([k, p]) => [k, p.totalPages]));
+				order = rows;
+				for (const r of rows) if (r.on && !LOCAL.includes(r.key) && r.key !== 'trending') fill(r, live).catch(() => {});
 			})
-			.catch((e) => (error = e.message));
-		api<DiscoverRow[]>('/discover/rows').then((r) => alive && (order = r)).catch(() => {});
+			.catch(() => {});
 		// Flixarr's own rows: what just landed in Plex, and the newest requests.
 		api<Page<Card>>('/discover/recently-added').then((p) => alive && (local.added = p.results)).catch(() => {});
 		api<Page<Card>>('/discover/recent-requests').then((p) => alive && (local.requests = p.results)).catch(() => {});
@@ -70,7 +77,8 @@
 {:else}
 	<Spotlight items={spot} />
 	<div class="relative z-10 mx-auto -mt-5 max-w-[1600px] space-y-9 laptop:-mt-7 laptop:px-10">
-		{#each shown as k (k)}
+		{#each shown as r (r.key)}
+			{@const k = r.key}
 			{#if k === 'recently-added'}
 				<Row title="Recently Added" items={local.added}>
 					{#snippet item(c)}<Poster item={c} />{/snippet}
@@ -83,15 +91,13 @@
 				<Row title="Recent Requests" items={local.requests} more="/requests">
 					{#snippet item(c)}<Poster item={c} />{/snippet}
 				</Row>
-			{:else}
-				{@const row = ROWS.find(([x]) => x === k)}
-				{#if row}
-					{@const [, title, more] = row}
-					<Row {title} items={lists[k] ?? []} {more}>
-						{#snippet item(c)}<Poster item={c} />{/snippet}
-						{#snippet end()}<SeeMore list={k} href={more} remaining={Math.max(0, (pages[k] ?? 0) * 20 - (lists[k]?.length ?? 0))} />{/snippet}
-					</Row>
-				{/if}
+			{:else if !lists[k] || lists[k].length}
+				{@const more = listHref(k)}
+				{@const src = rowSource(r)}
+				<Row title={rowTitle(r)} items={lists[k] ?? []} {more}>
+					{#snippet item(c)}<Poster item={c} />{/snippet}
+					{#snippet end()}<SeeMore path={src.path} params={src.params} href={more} remaining={Math.max(0, (pages[k] ?? 0) * 20 - (lists[k]?.length ?? 0))} />{/snippet}
+				</Row>
 			{/if}
 		{/each}
 	</div>

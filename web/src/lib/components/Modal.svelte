@@ -1,36 +1,39 @@
 <script lang="ts">
-	// Bottom sheet on phone, centered dialog on tablet+. Freezes the page behind it (design rule 2):
-	// iOS ignores overflow:hidden on body, so the body is pinned at its scroll offset and restored on close.
+	// Bottom sheet on phone, centered dialog on tablet+. Keeps the page behind it still (design rule 2,
+	// lib/scrolllock.ts). Drawn at the app's root (use:portal), so it's never boxed in by a window it opens from.
 	import type { Snippet } from 'svelte';
 	import Icon from './Icon.svelte';
+	import { lock, locked } from '#lib/scrolllock.ts';
+	import { portal } from '#lib/portal.ts';
 
 	// `top` replaces the standard title bar (the close button stays, top right). `center` keeps it a
-	// centered dialog on phones too (the trailer: a video doesn't belong in a bottom sheet).
+	// centered dialog on phones too (the trailer: a video doesn't belong in a bottom sheet). Panels that slide in
+	// from the side are SidePanel.svelte.
 	let { open = $bindable(false), title, sub = '', wide = false, center = false, children, footer, top }: {
 		open?: boolean; title: string; sub?: string; wide?: boolean; center?: boolean; children: Snippet; footer?: Snippet; top?: Snippet;
 	} = $props();
 
+	// Opened on top of another window or the side panel: a darker backdrop and a lighter edge, so the two
+	// are easy to tell apart.
+	let stacked = $state(false);
 	$effect(() => {
 		if (!open) return;
-		const y = scrollY;
-		document.documentElement.classList.add('modal-open');
-		Object.assign(document.body.style, { position: 'fixed', top: `-${y}px`, left: '0', right: '0' });
+		stacked = locked();
+		const unlock = lock();
 		const onKey = (e: KeyboardEvent) => e.key === 'Escape' && (open = false);
 		addEventListener('keydown', onKey);
 		return () => {
 			removeEventListener('keydown', onKey);
-			document.documentElement.classList.remove('modal-open');
-			Object.assign(document.body.style, { position: '', top: '', left: '', right: '' });
-			scrollTo(0, y);
+			unlock();
 		};
 	});
 </script>
 
 {#if open}
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-	<div class="fixed inset-0 z-50 flex justify-center overscroll-none bg-gray-950/80 backdrop-blur-sm tablet:items-center tablet:p-4 {center ? 'items-center p-3' : 'items-end'}"
+	<div use:portal class="fixed inset-x-0 bottom-0 top-(--top-bar,0px) z-50 flex overscroll-none justify-center {stacked ? 'bg-black/75' : 'bg-gray-950/80'} backdrop-blur-sm tablet:top-0 tablet:items-center tablet:p-4 {center ? 'items-center p-3' : 'items-end'}"
 		onclick={(e) => e.target === e.currentTarget && (open = false)}>
-		<div class="card max-h-[90dvh] w-full overflow-y-auto overscroll-contain bg-gray-900 tablet:rounded-b-xl {center ? '' : 'rounded-b-none'} {wide ? 'tablet:max-w-3xl' : 'tablet:max-w-lg'}" role="dialog" aria-modal="true" aria-label={title}>
+		<div class="card w-full overflow-y-auto overscroll-contain bg-gray-900 {stacked ? 'shadow-[0_24px_80px_rgba(0,0,0,0.9)] ring-1 ring-gray-500/60' : ''} max-h-[calc(100dvh-var(--top-bar,0px)-1.5rem)] tablet:max-h-[90dvh] tablet:rounded-b-xl {center ? '' : 'rounded-b-none'} {wide ? 'tablet:max-w-3xl' : 'tablet:max-w-lg'}" role="dialog" aria-modal="true" aria-label={title}>
 			{#if top}
 				<div class="relative">
 					{@render top()}
@@ -44,7 +47,9 @@
 			{/if}
 			{@render children()}
 			{#if footer}
-				<div class="sticky bottom-0 flex justify-end gap-2 border-t border-gray-700/40 bg-gray-900/95 px-5 py-4 backdrop-blur">{@render footer()}</div>
+				<div class="sticky bottom-0 flex justify-end gap-2 border-t border-gray-700/40 bg-gray-900/95 px-5 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] backdrop-blur tablet:pb-4">{@render footer()}</div>
+			{:else if !center}
+				<div class="h-[calc(1.5rem+env(safe-area-inset-bottom))] tablet:hidden"></div>
 			{/if}
 		</div>
 	</div>

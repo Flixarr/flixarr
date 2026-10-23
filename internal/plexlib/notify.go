@@ -40,10 +40,19 @@ func (l *Library) Listen(ctx context.Context) {
 			continue
 		}
 		start := time.Now()
-		err := l.listenOnce(ctx, base, tok)
+		lctx, cancel := context.WithCancel(ctx)
+		l.relistenMu.Lock()
+		l.relisten = cancel
+		l.relistenMu.Unlock()
+		err := l.listenOnce(lctx, base, tok)
+		cancel()
 		l.live.Store(false)
 		if ctx.Err() != nil {
 			return
+		}
+		if lctx.Err() != nil { // the address changed: connect again now
+			wait = 5 * time.Second
+			continue
 		}
 		if time.Since(start) > time.Minute {
 			wait = 5 * time.Second // it worked for a while: retry quickly

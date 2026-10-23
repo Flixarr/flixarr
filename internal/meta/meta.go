@@ -67,7 +67,24 @@ type Counters struct {
 	Misses int64     `json:"misses"` // fetched from the API
 	Stale  int64     `json:"stale"`  // the API was down, so an expired copy was used
 	Since  time.Time `json:"since"`  // when the app started (counters reset on restart)
+	// ByKind splits hits and misses per kind of result (Settings → Cache → Storage rows).
+	ByKind map[string]HitMiss `json:"byKind"`
 }
+
+// HitMiss is one row's lookups since the app started.
+type HitMiss struct {
+	Hits   int64 `json:"hits"`
+	Misses int64 `json:"misses"`
+}
+
+// HitMissCounter counts one row's lookups.
+type HitMissCounter struct{ hits, misses atomic.Int64 }
+
+func (h *HitMissCounter) Hit()  { h.hits.Add(1) }
+func (h *HitMissCounter) Miss() { h.misses.Add(1) }
+
+// Load returns the counts so far.
+func (h *HitMissCounter) Load() HitMiss { return HitMiss{Hits: h.hits.Load(), Misses: h.misses.Load()} }
 
 // Client proxies requests to the Flixarr API through the cache.
 type Client struct {
@@ -82,11 +99,15 @@ type Client struct {
 	misses  atomic.Int64
 	stale   atomic.Int64
 	inserts atomic.Int64
+	byKind  map[string]*HitMissCounter
 }
 
 // New returns an API client. base is e.g. https://api.flixarr.app.
 func New(base, userAgent string, st *store.Store) *Client {
-	c := &Client{Base: strings.TrimRight(base, "/"), Store: st, started: time.Now().UTC()}
+	c := &Client{Base: strings.TrimRight(base, "/"), Store: st, started: time.Now().UTC(), byKind: map[string]*HitMissCounter{}}
+	for _, k := range Kinds {
+		c.byKind[k] = &HitMissCounter{}
+	}
 	c.HTTP = &http.Client{Timeout: 15 * time.Second, Transport: uaTransport{ua: userAgent}}
 	c.cfg = c.loadConfig()
 	return c
@@ -153,12 +174,16 @@ func (c *Client) SetConfig(cfg Config) error {
 
 // Counters returns hits, misses and stale answers since the app started.
 func (c *Client) Counters() Counters {
-	return Counters{Hits: c.hits.Load(), Misses: c.misses.Load(), Stale: c.stale.Load(), Since: c.started}
+	by := make(map[string]HitMiss, len(c.byKind))
+	for k, h := range c.byKind {
+		by[k] = h.Load()
+	}
+	return Counters{Hits: c.hits.Load(), Misses: c.misses.Load(), Stale: c.stale.Load(), Since: c.started, ByKind: by}
 }
 
 // allowed paths under /v1 (anything else is rejected before leaving the server)
 func allowed(p string) bool {
-	for _, pre := range []string{"lists/", "movie/", "series/", "person/", "collection/", "search", "discover/", "genres/"} {
+	for _, pre := range []string{"lists/", "movie/", "series/", "person/", "collection/", "search", "discover/", "genres/", "credit/", "contributors"} {
 		if strings.HasPrefix(p, pre) {
 			return true
 		}
@@ -168,7 +193,7 @@ func allowed(p string) bool {
 
 func kindOf(p string) string {
 	switch {
-	case strings.HasPrefix(p, "person/"):
+	case strings.HasPrefix(p, "person/"), strings.HasPrefix(p, "credit/"):
 		return KindPeople
 	case strings.HasPrefix(p, "search"):
 		return KindSearches
@@ -209,17 +234,20 @@ func (c *Client) Get(ctx context.Context, path string, q url.Values) ([]byte, in
 		key += "?" + enc
 	}
 	cfg := c.Config()
+	kind := kindOf(path)
 
 	var saved *store.CacheEntry
 	if cfg.Enabled {
 		if e, err := c.Store.CacheGet(key); err == nil {
 			if time.Now().Before(e.Expires) {
 				c.hits.Add(1)
+				c.byKind[kind].Hit()
 				return e.Body, e.Status, nil
 			}
 			saved = e
 		}
 		c.misses.Add(1)
+		c.byKind[kind].Miss()
 	}
 
 	body, status, fresh, err := c.fetch(ctx, c.Base+"/v1/"+key)
@@ -232,7 +260,6 @@ func (c *Client) Get(ctx context.Context, path string, q url.Values) ([]byte, in
 		return body, status, err
 	}
 	if cfg.Enabled && (status == http.StatusOK || status == http.StatusNotFound) {
-		kind := kindOf(path)
 		keep := cfg.keep(kind, fresh)
 		if status == http.StatusNotFound {
 			keep = time.Minute

@@ -7,14 +7,21 @@ import (
 	"time"
 )
 
-// Permission switches. Roles are presets that set them; changing any switch makes the role Custom.
-var AllPerms = []string{"admin", "manageRequests", "autoApprove", "requestMovies", "requestTv", "advanced", "viewRequests", "reportIssues", "manageIssues", "watchlist", "redownload"}
+// Permission switches. Roles are presets that set them; changing any of their switches makes the role Custom.
+var AllPerms = []string{"admin", "manageRequests", "autoApprove", "requestMovies", "requestTv", "advanced", "reportIssues", "manageIssues", "watchlist", "redownload"}
 
-// RolePerms are the presets, in the order Users shows them.
+// ManualPerms are never part of a preset: they're turned on by hand, person by person, and don't change
+// which role someone has (#146). Anyone with admin can do everything whatever their role.
+var ManualPerms = []string{"admin", "watchlist"}
+
+// Roles are the presets, in the order Users shows them.
+var Roles = []string{"User", "Trusted", "Manager"}
+
+// RolePerms are the presets' switches.
 var RolePerms = map[string][]string{
-	"Admin":   AllPerms,
-	"Trusted": {"autoApprove", "requestMovies", "requestTv", "advanced", "viewRequests", "reportIssues", "watchlist"},
-	"User":    {"requestMovies", "requestTv", "reportIssues", "watchlist"},
+	"User":    {"requestMovies", "requestTv", "reportIssues"},
+	"Trusted": {"autoApprove", "requestMovies", "requestTv", "advanced", "reportIssues"},
+	"Manager": {"manageRequests", "autoApprove", "requestMovies", "requestTv", "advanced", "reportIssues", "manageIssues", "redownload"},
 }
 
 // Can reports whether the user has a permission. Admins can do everything.
@@ -22,13 +29,25 @@ func (u *User) Can(perm string) bool {
 	return slices.Contains(u.Perms, "admin") || slices.Contains(u.Perms, perm)
 }
 
-// RoleOf names a permission set: a preset when it matches one exactly, otherwise Custom.
-func RoleOf(perms []string) string {
-	if slices.Contains(perms, "admin") {
-		return "Admin"
+// CanManageUsers: admins, and Managers (everyone with all of the Manager preset's switches), see the Users
+// page; Managers change people up to Manager, never admins or the admin switch (#148).
+func (u *User) CanManageUsers() bool {
+	if u.Can("admin") {
+		return true
 	}
-	for _, r := range []string{"Trusted", "User"} {
-		if sameSet(perms, RolePerms[r]) {
+	for _, p := range RolePerms["Manager"] {
+		if !slices.Contains(u.Perms, p) {
+			return false
+		}
+	}
+	return true
+}
+
+// RoleOf names a permission set: the preset its switches match (the manual ones aside), otherwise Custom.
+func RoleOf(perms []string) string {
+	rest := slices.DeleteFunc(slices.Clone(perms), func(p string) bool { return slices.Contains(ManualPerms, p) })
+	for _, r := range Roles {
+		if sameSet(rest, RolePerms[r]) {
 			return r
 		}
 	}
@@ -62,7 +81,7 @@ func splitPerms(s string) []string {
 	if s == "" {
 		return []string{}
 	}
-	return strings.Split(s, ",")
+	return cleanPerms(strings.Split(s, ",")) // drops retired permissions (viewRequests: everyone sees all requests now)
 }
 
 // ErrOwner is returned when a change would lock the owner out.
@@ -70,7 +89,7 @@ var ErrOwner = errors.New("the owner always stays an admin")
 
 // Users lists everyone who can sign in, owner first, with how many requests each has made.
 func (s *Store) Users() ([]UserRow, error) {
-	rows, err := s.db.Query(`SELECT ` + userCols + `, (SELECT COUNT(*) FROM requests r WHERE r.user_id = users.id) FROM users ORDER BY id`)
+	rows, err := s.db.Query(`SELECT ` + userCols + `, (SELECT COUNT(*) FROM requests r WHERE r.user_id = users.id), last_seen FROM users ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -80,10 +99,12 @@ func (s *Store) Users() ([]UserRow, error) {
 		var row UserRow
 		var perms string
 		u := &row.User
-		if err := rows.Scan(&u.ID, &u.PlexID, &u.Username, &u.Email, &u.Avatar, &u.Role, &perms, &u.CreatedAt, &u.Owner, &u.MovieLimit, &u.SeasonLimit, &row.Requests); err != nil {
+		if err := rows.Scan(&u.ID, &u.PlexID, &u.Username, &u.Email, &u.Avatar, &u.Role, &perms, &u.CreatedAt, &u.Owner, &u.MovieLimit, &u.SeasonLimit, &u.Region, &u.Language, &row.Requests, &u.LastSeen); err != nil {
 			return nil, err
 		}
 		u.Perms = splitPerms(perms)
+		u.Role = RoleOf(u.Perms)
+		u.Local = u.PlexID == 0
 		out = append(out, row)
 	}
 	return out, rows.Err()
@@ -139,6 +160,6 @@ func (s *Store) SetLimits(id int64, movies, seasons int) error {
 // Declined and failed requests don't count.
 func (s *Store) RecentUsage(userID int64) (movies, seasons int, err error) {
 	err = s.db.QueryRow(`SELECT COALESCE(SUM(type = 'movie'), 0), COALESCE(SUM(CASE WHEN type = 'series' THEN MAX(season_count, 1) ELSE 0 END), 0)
-		FROM requests WHERE user_id = ? AND status NOT IN ('declined', 'failed', 'expired') AND created_at > ?`, userID, time.Now().Add(-7*24*time.Hour).UTC().Format(time.RFC3339)).Scan(&movies, &seasons)
+		FROM requests WHERE user_id = ? AND status NOT IN ('declined', 'failed', 'expired', 'removed') AND source = '' AND created_at > ?`, userID, time.Now().Add(-7*24*time.Hour).UTC().Format(time.RFC3339)).Scan(&movies, &seasons)
 	return
 }

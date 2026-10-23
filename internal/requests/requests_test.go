@@ -11,7 +11,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/Flixarr/flixarr/internal/arr"
 	"github.com/Flixarr/flixarr/internal/secret"
 	"github.com/Flixarr/flixarr/internal/store"
 )
@@ -31,6 +33,7 @@ type fakeArr struct {
 	noFile  bool // in the library without a file
 	gone    bool // movie 42 was deleted from Radarr
 	files   int  // series 42: episodes with files in seasons 1 and 2 (when hasFile is off)
+	deleted []string
 }
 
 func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -42,6 +45,13 @@ func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		id = 77
 	}
 	switch {
+	case r.Method == http.MethodDelete && p == "episodefile/bulk":
+		b, _ := io.ReadAll(r.Body)
+		f.deleted = append(f.deleted, p+" "+string(b))
+	case p == "history/series":
+		w.Write([]byte(`[]`))
+	case r.Method == http.MethodDelete && (p == "movie/77" || p == "series/77"):
+		f.deleted = append(f.deleted, p+"?"+r.URL.RawQuery)
 	case p == "movie" && r.Method == http.MethodGet:
 		if f.inLib {
 			json.NewEncoder(w).Encode([]any{map[string]any{"id": 77, "tmdbId": 603, "hasFile": !f.noFile, "monitored": false}})
@@ -55,7 +65,7 @@ func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(`[]`))
 			return
 		}
-		json.NewEncoder(w).Encode([]any{map[string]any{"title": "Breaking Bad", "tvdbId": 81189, "id": id,
+		json.NewEncoder(w).Encode([]any{map[string]any{"title": "Breaking Bad", "tmdbId": 1396, "tvdbId": 81189, "id": id,
 			"seasons": []any{map[string]any{"seasonNumber": 0, "monitored": true}, map[string]any{"seasonNumber": 1, "monitored": true}, map[string]any{"seasonNumber": 2, "monitored": true}, map[string]any{"seasonNumber": 3, "monitored": true}}}})
 	case (p == "movie" || p == "series") && r.Method == http.MethodPost:
 		if f.reject {
@@ -86,6 +96,9 @@ func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case p == "series/77" && r.Method == http.MethodGet:
 		json.NewEncoder(w).Encode(map[string]any{"id": 77, "monitored": true, "seasons": []any{
 			map[string]any{"seasonNumber": 0, "monitored": false}, map[string]any{"seasonNumber": 1, "monitored": true}, map[string]any{"seasonNumber": 2, "monitored": false}, map[string]any{"seasonNumber": 3, "monitored": false}}})
+	case p == "movie/77" && r.Method == http.MethodGet:
+		json.NewEncoder(w).Encode(map[string]any{"id": 77, "tmdbId": 603, "hasFile": !f.noFile, "monitored": false, "titleSlug": "the-matrix-1999",
+			"movieFile": map[string]any{"size": 1000, "sceneName": "The.Matrix.1999.1080p", "quality": map[string]any{"quality": map[string]any{"name": "Bluray-1080p"}}}})
 	case p == "movie/77" && r.Method == http.MethodPut:
 		b, _ := io.ReadAll(r.Body)
 		json.Unmarshal(b, &f.put)
@@ -96,7 +109,7 @@ func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Write(b)
 	case p == "episode" && r.Method == http.MethodGet:
 		json.NewEncoder(w).Encode([]any{
-			map[string]any{"id": 501, "seasonNumber": 1, "episodeNumber": 1, "hasFile": f.epFile},
+			map[string]any{"id": 501, "seasonNumber": 1, "episodeNumber": 1, "hasFile": f.epFile, "episodeFileId": map[bool]int{true: 9001}[f.epFile]},
 			map[string]any{"id": 502, "seasonNumber": 1, "episodeNumber": 2, "hasFile": false},
 			map[string]any{"id": 503, "seasonNumber": 2, "episodeNumber": 1, "hasFile": f.epFile}})
 	case p == "episode/monitor":
@@ -402,33 +415,65 @@ func TestRequestAlerts(t *testing.T) {
 	ctx := context.Background()
 	st.SetSetting(KeyApproval, "true")
 	r, _ := s.Create(ctx, user, New{Type: "movie", TmdbID: 603, Title: "The Matrix"})
-	if a, _ := st.ActiveAlerts(admin.ID, true); len(a) != 1 || a[0].Title != "1 request waiting" {
-		t.Fatalf("admin alerts: %+v", a)
+	bell := func(id int64, can func(string) bool) []store.Alert { l, _ := st.Bell(id, can); return l }
+	if a := bell(admin.ID, store.CanAll); len(a) != 1 || a[0].Kind != "todo" || a[0].Title != "eryn requested" {
+		t.Fatalf("admin to-do: %+v", a)
 	}
+	if a := bell(user.ID, store.CanNone); len(a) != 0 {
+		t.Fatalf("nothing for the user yet: %+v", a)
+	}
+	// An admin approves: the to-do goes; the user hears Approved (and the request is sent).
+	st.DecideRequest(r.ID, admin.ID, "approved")
+	r.Status = "approved"
+	r = s.Send(ctx, r)
+	s.Decided(r, admin)
+	if a := bell(admin.ID, store.CanAll); len(a) != 0 {
+		t.Fatalf("admin to-do should be gone: %+v", a)
+	}
+	if a := bell(user.ID, store.CanNone); len(a) != 1 || a[0].Title != "Approved" {
+		t.Fatalf("user hears approved: %+v", a)
+	}
+	// In Plex: Ready to watch, its own alert. Ready again later: Ready to watch again.
 	r.Status = "available"
 	st.UpdateRequest(r)
 	s.Alert(r)
-	got, _ := st.ActiveAlerts(user.ID, false)
-	if len(got) != 1 || got[0].Detail != "The Matrix is ready to watch" || !got[0].Unread {
-		t.Fatalf("user alerts: %+v", got)
+	got := bell(user.ID, store.CanNone)
+	if len(got) != 2 || got[0].Title != "Ready to watch" || got[0].Detail != "The Matrix" || !got[0].New {
+		t.Fatalf("ready: %+v", got)
 	}
-	if a, _ := st.ActiveAlerts(admin.ID, true); len(a) != 0 {
-		t.Fatalf("admin should see nothing now: %+v", a)
+	time.Sleep(1100 * time.Millisecond)
+	s.Alert(r)
+	if got := bell(user.ID, store.CanNone); got[0].Title != "Ready to watch again" {
+		t.Fatalf("again: %+v", got[0])
 	}
-	// First look marks it seen; the next look clears it.
-	s.SeenAlerts(user.ID)
-	st.MarkAlertsSeen(user.ID)
-	s.SeenAlerts(user.ID)
-	if got, _ = st.ActiveAlerts(user.ID, false); len(got) != 0 {
-		t.Fatalf("not cleared: %+v", got)
+	// An admin approving their own request is no news to them.
+	mine, _ := s.Create(ctx, admin, New{Type: "movie", TmdbID: 604, Title: "Reloaded"})
+	s.Decided(mine, admin)
+	for _, a := range bell(admin.ID, store.CanAll) {
+		if a.Title == "Approved" {
+			t.Fatal("an admin was told they approved their own request")
+		}
+	}
+	// A failed request: the user hears it and admins get a to-do, gone when it's retried.
+	f, _ := st.CreateRequest(store.Request{Type: "movie", TmdbID: 605, Title: "Revolutions", UserID: user.ID, Status: "failed", Error: "no release"})
+	s.Alert(f)
+	if a := bell(user.ID, store.CanNone); a[0].Title != "Couldn't get it" {
+		t.Fatalf("user failed: %+v", a[0])
+	}
+	if a := bell(admin.ID, store.CanAll); len(a) != 1 || a[0].Title != "Request failed" {
+		t.Fatalf("admin failed: %+v", a)
+	}
+	f.Status = "sent"
+	s.Alert(f)
+	if a := bell(admin.ID, store.CanAll); len(a) != 0 {
+		t.Fatalf("retried, to-do should be gone: %+v", a)
 	}
 }
 
 func TestEpisodeRequests(t *testing.T) {
-	EpisodesReady = true // switched off in the app for now; the code is kept working
-	defer func() { EpisodesReady = false }()
 	s, st, _, sonarr, admin, _ := setup(t)
 	ctx := context.Background()
+	s.SetModes(TVModes{Whole: true, Seasons: true, Episodes: true, Default: "whole"})
 	r, err := s.Create(ctx, admin, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad", Episodes: [][2]int{{1, 1}, {2, 1}}})
 	if err != nil || r.Status != "sent" || r.Mode != "episodes" {
 		t.Fatalf("create: %+v %v", r, err)
@@ -494,10 +539,10 @@ func TestRecheckAfterPlexRemoval(t *testing.T) {
 	st.UpdateRequest(r)
 	radarr.gone = true
 	s.Recheck(ctx, []string{"movie:603"}, false)
-	if r, _ = st.Request(r.ID); r.Status != "failed" || !strings.HasPrefix(r.Error, "Removed from Plex and Radarr") {
+	if r, _ = st.Request(r.ID); r.Status != "removed" || !strings.HasPrefix(r.Error, "Removed from Plex and Radarr") {
 		t.Fatalf("gone everywhere: %+v", r)
 	}
-	if a, _ := st.ActiveAlerts(user.ID, false); len(a) != 1 || a[0].Detail != "The Matrix was removed from Plex" {
+	if a, _ := st.Bell(user.ID, store.CanNone); len(a) == 0 || a[0].Title != "Removed" || !strings.HasPrefix(a[0].Detail, "The Matrix") {
 		t.Fatalf("alert: %+v", a)
 	}
 	radarr.gone, radarr.hasFile = false, false
@@ -580,17 +625,17 @@ func TestWholeShowFollowsNewSeasons(t *testing.T) {
 	}
 }
 
-func TestEpisodesOffForNow(t *testing.T) {
+func TestEpisodesOffUntilTurnedOn(t *testing.T) {
 	s, _, _, _, admin, _ := setup(t)
 	if m := s.Modes(); m.Episodes {
-		t.Fatalf("episodes offered: %+v", m)
-	}
-	s.SetModes(TVModes{Seasons: true, Episodes: true, Default: "episodes"})
-	if m := s.Modes(); m.Episodes || m.Default != "seasons" {
-		t.Fatalf("saved episodes mode: %+v", m)
+		t.Fatalf("episodes offered by default: %+v", m)
 	}
 	if _, err := s.Create(context.Background(), admin, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad", Episodes: [][2]int{{1, 1}}}); err == nil {
-		t.Fatal("episode request allowed")
+		t.Fatal("episode request allowed while off")
+	}
+	s.SetModes(TVModes{Seasons: true, Episodes: true, Default: "episodes"})
+	if m := s.Modes(); !m.Episodes || m.Default != "episodes" {
+		t.Fatalf("turned on: %+v", m)
 	}
 }
 
@@ -665,12 +710,126 @@ func TestExpiredByMaintainerr(t *testing.T) {
 	if r, _ = st.Request(r.ID); r.Status != "expired" || !strings.Contains(r.Error, "Maintainer") {
 		t.Fatalf("got %+v", r)
 	}
-	if a, _ := st.ActiveAlerts(user.ID, false); len(a) != 1 || a[0].Detail != "The Matrix left Plex" {
+	if a, _ := st.Bell(user.ID, store.CanNone); len(a) == 0 || a[0].Title != "Left Plex" {
 		t.Fatalf("alert: %+v", a)
 	}
 	// Expired doesn't count against limits and can be asked for again.
 	radarr.gone = false
 	if _, err := s.Create(ctx, user, New{Type: "movie", TmdbID: 603, Title: "The Matrix"}); err != nil {
 		t.Fatalf("request again: %v", err)
+	}
+}
+
+func TestPlainWordsForUsers(t *testing.T) {
+	removed := store.Request{Status: "removed", Error: "Removed from Plex and Sonarr."}
+	if got := ForViewer(removed, false).Error; strings.Contains(got, "Sonarr") || !strings.Contains(got, "Removed from Plex") {
+		t.Fatalf("removed: %q", got)
+	}
+	if got := ForViewer(removed, true); got.Error != ForViewer(removed, false).Error || got.Detail != removed.Error {
+		t.Fatalf("admins: same words plus the detail: %+v", got)
+	}
+	failed := store.Request{Status: "failed", Error: "Radarr didn't add it: the API key was refused"}
+	if got := PlainError(failed); strings.Contains(got, "Radarr") || strings.Contains(got, "API") {
+		t.Fatalf("failed: %q", got)
+	}
+	if got := PlainError(store.Request{Status: "expired", Error: "Removed by Maintainerr (Movies leaving)."}); strings.Contains(got, "Maintainerr") {
+		t.Fatalf("expired: %q", got)
+	}
+	if got := PlainError(store.Request{Status: "declined", Error: "Not out in good quality yet"}); got != "Not out in good quality yet" {
+		t.Fatalf("declined keeps the admin's words: %q", got)
+	}
+	for _, l := range []Live{{Error: "couldn't reach it"}, {InArr: false}, {InArr: true, Monitored: false}} {
+		if h := hintFor(store.Request{Type: "movie", Status: "sent"}, l); strings.Contains(h, "Radarr") || strings.Contains(h, "Fix") {
+			t.Fatalf("hint for a user: %q", h)
+		}
+	}
+}
+
+func TestRemoveFromArr(t *testing.T) {
+	s, st, radarr, _, admin, _ := setup(t)
+	ctx := context.Background()
+	if in, err := s.RemoveFromArr(ctx, "movie", 603); err != nil || in {
+		t.Fatalf("not in Radarr: %v %v", in, err)
+	}
+	radarr.inLib = true
+	r, _ := st.CreateRequest(store.Request{Type: "movie", TmdbID: 603, Title: "The Matrix", UserID: admin.ID, Status: "available", ArrID: 77})
+	if in, err := s.RemoveFromArr(ctx, "movie", 603); err != nil || !in {
+		t.Fatalf("remove: %v %v", in, err)
+	}
+	if len(radarr.deleted) != 1 || radarr.deleted[0] != "movie/77?deleteFiles=true&addImportExclusion=false" {
+		t.Fatalf("asked Radarr: %v", radarr.deleted)
+	}
+	got, _ := st.Request(r.ID)
+	if got.Status != "removed" || !strings.HasPrefix(got.Error, "Removed from Radarr") {
+		t.Fatalf("request after: %+v", got)
+	}
+}
+
+func TestFixTitleNobodyRequested(t *testing.T) {
+	s, _, radarr, _, _, _ := setup(t)
+	ctx := context.Background()
+	if _, err := s.FixTitle(ctx, "movie", 603); err == nil || !strings.Contains(err.Error(), "isn't in Radarr") {
+		t.Fatalf("not in Radarr: %v", err)
+	}
+	radarr.inLib = true
+	done, err := s.FixTitle(ctx, "movie", 603)
+	if err != nil || radarr.put["monitored"] != true || len(radarr.cmds) == 0 {
+		t.Fatalf("fix: %q %v put %v cmds %v", done, err, radarr.put, radarr.cmds)
+	}
+}
+
+func TestLiveForHidesReleaseNamesFromUsers(t *testing.T) {
+	s, _, radarr, _, _, _ := setup(t)
+	ctx := context.Background()
+	radarr.inLib = true
+	radarr.queue = `[{"size":1000,"sizeleft":250,"status":"downloading","title":"The.Matrix.1999.2160p"}]`
+	user := s.LiveFor(ctx, "movie", 603, 77, nil, false)
+	admin := s.LiveFor(ctx, "movie", 603, 77, nil, true)
+	if !user.InArr || !user.HasFile || user.File == nil || user.File.Release != "" || user.Link != "" || len(user.Queue) != 1 || user.Queue[0].Release != "" || user.Queue[0].Percent != 75 {
+		t.Fatalf("for users: %+v", user)
+	}
+	if admin.File.Release != "The.Matrix.1999.1080p" || admin.Queue[0].Release != "The.Matrix.1999.2160p" || !strings.HasSuffix(admin.Link, "/movie/the-matrix-1999") {
+		t.Fatalf("for admins: %+v %+v", admin, admin.File)
+	}
+}
+
+func TestFixEpisodes(t *testing.T) {
+	s, st, _, sonarr, admin, _ := setup(t)
+	ctx := context.Background()
+	if _, err := s.FixEpisodes(ctx, 1396, [][2]int{{1, 1}}, For{UserID: admin.ID, Title: "Breaking Bad"}); err == nil {
+		t.Fatal("fixed a show Sonarr doesn't have")
+	}
+	sonarr.inLib, sonarr.epFile = true, true
+	eps, err := s.Episodes(ctx, 1396, map[int][]int{1: {1}})
+	if err != nil || len(eps) != 3 || !eps[0].HasFile || !eps[0].InPlex || eps[1].HasFile {
+		t.Fatalf("episodes: %+v %v", eps, err)
+	}
+	done, err := s.FixEpisodes(ctx, 1396, [][2]int{{1, 1}, {1, 2}}, For{UserID: admin.ID, Title: "Breaking Bad"})
+	if err != nil || !strings.Contains(done, "Deleted 1 file") || !strings.Contains(done, "1 missing episode") {
+		t.Fatalf("fix: %q %v", done, err)
+	}
+	if len(sonarr.deleted) != 1 || !strings.Contains(sonarr.deleted[0], "9001") {
+		t.Fatalf("deleted: %v", sonarr.deleted)
+	}
+	if ids, _ := sonarr.monitor["episodeIds"].([]any); len(ids) != 2 || sonarr.monitor["monitored"] != true {
+		t.Fatalf("monitored: %v", sonarr.monitor)
+	}
+	last := sonarr.cmds[len(sonarr.cmds)-1]
+	if last["name"] != "EpisodeSearch" || len(last["episodeIds"].([]any)) != 2 {
+		t.Fatalf("search: %v", last)
+	}
+	if list, _ := st.OpenRequests("series", 1396); len(list) != 1 || list[0].Source != "redownload" || list[0].Mode != "episodes" {
+		t.Fatalf("its own request: %+v", list)
+	}
+}
+
+func TestSeriesLookupIgnoresOtherShows(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[{"title":"Wings","tmdbId":2506,"tvdbId":71962,"id":394}]`)) // Sonarr's TVDB fallback
+	}))
+	defer srv.Close()
+	got, err := seriesLookup(context.Background(), &arr.Client{URL: srv.URL, APIKey: "k"}, 71962)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("matched another show: %v %v", got, err)
 	}
 }

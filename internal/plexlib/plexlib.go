@@ -11,9 +11,11 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -29,6 +31,8 @@ const (
 	keyToken      = "plex_server_token" // the server's access token (encrypted)
 	keyLibraries  = "plex_libraries"    // JSON list of section keys to sync
 	keyLastFull   = "plex_last_full"    // RFC3339
+	keyWebURL     = "plex_web_url"      // Play on Plex / Open in Plex go here; blank = app.plex.tv
+	keyAddrPicked = "plex_address_set"  // "true" when an admin picked or typed the address (#114); else Automatic
 )
 
 var errNotFound = errors.New("Plex answered 404 Not Found")
@@ -47,9 +51,16 @@ type Library struct {
 	// OnRemoved is told about titles that left Plex; episodes says episodes or seasons of some show did
 	// (Plex doesn't say which show).
 	OnRemoved func(keys []string, episodes bool)
-	live      atomic.Bool
-	lastFull  atomic.Int64 // unix time of the last full scan
-	fullDue   atomic.Bool  // a full read is scheduled
+	// Meta reads series pages from the Flixarr API (for whole or part of a series, #137).
+	Meta interface {
+		Get(ctx context.Context, path string, q url.Values) ([]byte, int, error)
+	}
+	live     atomic.Bool
+	lastFull atomic.Int64 // unix time of the last full scan
+	fullDue  atomic.Bool  // a full read is scheduled
+	// relisten drops the live connection so it comes back on a new address.
+	relisten   context.CancelFunc
+	relistenMu sync.Mutex
 }
 
 func (l *Library) client() *http.Client {
@@ -60,7 +71,11 @@ func (l *Library) client() *http.Client {
 }
 
 func (l *Library) get(ctx context.Context, base, path, token string, out any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base, "/")+path, nil)
+	return l.do(ctx, http.MethodGet, base, path, token, out)
+}
+
+func (l *Library) do(ctx context.Context, method, base, path, token string, out any) error {
+	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(base, "/")+path, nil)
 	if err != nil {
 		return err
 	}
@@ -93,9 +108,11 @@ func (l *Library) get(ctx context.Context, base, path, token string, out any) er
 
 // Connection is one way to reach a server.
 type Connection struct {
-	URI   string `json:"uri"`
-	Local bool   `json:"local"`
-	Relay bool   `json:"relay"`
+	URI     string `json:"uri"`
+	Local   bool   `json:"local"`
+	Relay   bool   `json:"relay"`
+	Address string `json:"address,omitempty"` // the IP (plex.tv sends it with each connection)
+	Port    int    `json:"port,omitempty"`
 }
 
 // Server is a Plex Media Server the admin's account can use.
@@ -151,7 +168,8 @@ func rank(c Connection) int {
 	return 1
 }
 
-// Connect picks a server: it tries the server's connections (local first) and keeps the first that answers.
+// Connect picks a server and the fastest of its addresses that answers (Plex's relay only when nothing
+// else does).
 func (l *Library) Connect(ctx context.Context, id string) (Status, error) {
 	servers, err := l.Servers(ctx)
 	if err != nil {
@@ -161,27 +179,172 @@ func (l *Library) Connect(ctx context.Context, id string) (Status, error) {
 		if s.ID != id {
 			continue
 		}
-		for _, c := range s.Connections {
-			cctx, cancel := context.WithTimeout(ctx, 6*time.Second)
-			var ident struct {
-				MediaContainer struct {
-					MachineIdentifier string `json:"machineIdentifier"`
-				} `json:"MediaContainer"`
-			}
-			err := l.get(cctx, c.URI, "/identity", s.token, &ident)
-			cancel()
-			if err == nil && ident.MediaContainer.MachineIdentifier == s.ID {
-				l.Store.SetSetting(keyServerID, s.ID)
-				l.Store.SetSetting(keyServerName, s.Name)
-				l.Store.SetSetting(keyServerURL, c.URI)
-				l.Store.SetSecretSetting(keyToken, s.token)
-				l.Log.Info("plex server connected", "name", s.Name, "via", c.URI)
-				return l.Status(ctx)
-			}
+		best := fastest(l.probeAll(ctx, candidates(s.Connections), s.token, s.ID))
+		if best == "" {
+			return Status{}, fmt.Errorf("couldn't reach %s from Flixarr on any of its addresses", s.Name)
 		}
-		return Status{}, fmt.Errorf("couldn't reach %s from Flixarr on any of its addresses", s.Name)
+		l.Store.SetSetting(keyServerID, s.ID)
+		l.Store.SetSetting(keyServerName, s.Name)
+		l.Store.SetSetting(keyServerURL, best)
+		l.Store.SetSetting(keyAddrPicked, "")
+		l.Store.SetSecretSetting(keyToken, s.token)
+		l.Log.Info("plex server connected", "name", s.Name, "via", best)
+		return l.Status(ctx)
 	}
 	return Status{}, errors.New("that server isn't on your Plex account")
+}
+
+// ---------- which address (#114) ----------
+
+// Address is one way to reach the connected server, as Settings lists them, with how fast it answered.
+type Address struct {
+	URI   string `json:"uri"`
+	Kind  string `json:"kind"`            // local | remote | relay | yours (typed by an admin)
+	MS    int    `json:"ms"`              // how long /identity took; 0 when it didn't answer
+	Error string `json:"error,omitempty"` // why it didn't
+}
+
+// candidates are a server's addresses: plex.tv's, plus the plain http://IP:port of each local one (plex.tv
+// only lists the https plex.direct name, which some networks can't resolve).
+func candidates(conns []Connection) []Address {
+	out := []Address{}
+	seen := map[string]bool{}
+	add := func(uri, kind string) {
+		if uri != "" && !seen[uri] {
+			seen[uri] = true
+			out = append(out, Address{URI: uri, Kind: kind})
+		}
+	}
+	for _, c := range conns {
+		kind := "remote"
+		if c.Relay {
+			kind = "relay"
+		} else if c.Local {
+			kind = "local"
+		}
+		add(c.URI, kind)
+		if c.Local && !c.Relay && c.Address != "" && c.Port > 0 {
+			add(fmt.Sprintf("http://%s:%d", c.Address, c.Port), "local")
+		}
+	}
+	return out
+}
+
+// probe times /identity on an address, checking it's the right server.
+func (l *Library) probe(ctx context.Context, uri, token, id string) (time.Duration, error) {
+	cctx, cancel := context.WithTimeout(ctx, 6*time.Second)
+	defer cancel()
+	var ident struct {
+		MediaContainer struct {
+			MachineIdentifier string `json:"machineIdentifier"`
+		} `json:"MediaContainer"`
+	}
+	start := time.Now()
+	if err := l.get(cctx, uri, "/identity", token, &ident); err != nil {
+		return 0, err
+	}
+	if ident.MediaContainer.MachineIdentifier != id {
+		return 0, errors.New("a different Plex server answered there")
+	}
+	return max(time.Since(start), time.Millisecond), nil
+}
+
+// probeAll tries every address at once.
+func (l *Library) probeAll(ctx context.Context, list []Address, token, id string) []Address {
+	var wg sync.WaitGroup
+	for i := range list {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			d, err := l.probe(ctx, list[i].URI, token, id)
+			if err != nil {
+				list[i].Error = err.Error()
+				return
+			}
+			list[i].MS = int(d.Milliseconds())
+			if list[i].MS == 0 {
+				list[i].MS = 1
+			}
+		}()
+	}
+	wg.Wait()
+	return list
+}
+
+// fastest is the quickest address that answered; the relay only when nothing else did.
+func fastest(list []Address) string {
+	best, bestMS := "", 0
+	for _, relay := range []bool{false, true} {
+		for _, a := range list {
+			if a.MS > 0 && (a.Kind == "relay") == relay && (best == "" || a.MS < bestMS) {
+				best, bestMS = a.URI, a.MS
+			}
+		}
+		if best != "" {
+			return best
+		}
+	}
+	return ""
+}
+
+// Addresses lists the connected server's addresses, each tried now, and whether Flixarr picks on its own.
+func (l *Library) Addresses(ctx context.Context) (list []Address, auto bool, err error) {
+	id := l.Store.Setting(keyServerID, "")
+	_, token, ok := l.conn()
+	if !ok {
+		return nil, false, errors.New("connect a Plex server first")
+	}
+	servers, err := l.Servers(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	for _, s := range servers {
+		if s.ID == id {
+			list = candidates(s.Connections)
+		}
+	}
+	if cur := l.Store.Setting(keyServerURL, ""); !slices.ContainsFunc(list, func(a Address) bool { return a.URI == cur }) {
+		list = append(list, Address{URI: cur, Kind: "yours"})
+	}
+	return l.probeAll(ctx, list, token, id), l.Store.Setting(keyAddrPicked, "") != "true", nil
+}
+
+// SetAddress makes Flixarr use an address ("" = Automatic: the fastest now). It has to answer as the
+// connected server.
+func (l *Library) SetAddress(ctx context.Context, uri string) (Status, error) {
+	id := l.Store.Setting(keyServerID, "")
+	_, token, ok := l.conn()
+	if !ok {
+		return Status{}, errors.New("connect a Plex server first")
+	}
+	uri = strings.TrimRight(strings.TrimSpace(uri), "/")
+	if uri == "" {
+		list, _, err := l.Addresses(ctx)
+		if err != nil {
+			return Status{}, err
+		}
+		if uri = fastest(list); uri == "" {
+			return Status{}, errors.New("none of the server's addresses answered")
+		}
+		l.Store.SetSetting(keyAddrPicked, "")
+	} else {
+		u, err := url.Parse(uri)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return Status{}, errors.New("that address doesn't look right; it should be like http://192.168.1.10:32400")
+		}
+		if _, err := l.probe(ctx, uri, token, id); err != nil {
+			return Status{}, fmt.Errorf("the server didn't answer there: %w", err)
+		}
+		l.Store.SetSetting(keyAddrPicked, "true")
+	}
+	l.Store.SetSetting(keyServerURL, uri)
+	l.Log.Info("plex address set", "via", uri)
+	l.relistenMu.Lock()
+	if l.relisten != nil {
+		l.relisten()
+	}
+	l.relistenMu.Unlock()
+	return l.Status(ctx)
 }
 
 // Disconnect forgets the server and its items.
@@ -211,6 +374,7 @@ type Status struct {
 	URL       string    `json:"url,omitempty"`
 	Sections  []Section `json:"sections"`
 	LastFull  string    `json:"lastFull,omitempty"`
+	WebURL    string    `json:"webUrl"` // blank = app.plex.tv
 	Error     string    `json:"error,omitempty"`
 }
 
@@ -273,7 +437,7 @@ func (l *Library) SetSections(keys []string) error {
 
 // Status reports the connection and libraries.
 func (l *Library) Status(ctx context.Context) (Status, error) {
-	st := Status{Sections: []Section{}}
+	st := Status{Sections: []Section{}, WebURL: l.Store.Setting(keyWebURL, "")}
 	if _, _, ok := l.conn(); !ok {
 		return st, nil
 	}
@@ -420,6 +584,8 @@ func (l *Library) RecentScan(ctx context.Context) (string, error) {
 type Item struct {
 	RatingKey string `json:"ratingKey"`
 	URL       string `json:"url"` // opens it in Plex Web
+	// Series: episodes Plex has of those aired so far (#137); Total 0 = not checked yet.
+	Have, Total int
 }
 
 // Lookup says which of the given titles ("movie:603", "series:1396") are in Plex.
@@ -429,11 +595,37 @@ func (l *Library) Lookup(keys []string) (map[string]Item, error) {
 		return nil, err
 	}
 	machine := l.Store.Setting(keyServerID, "")
+	web := "https://app.plex.tv/desktop"
+	if own := l.Store.Setting(keyWebURL, ""); own != "" {
+		web = own + "/web/index.html"
+	}
 	out := map[string]Item{}
 	for k, it := range items {
-		out[k] = Item{RatingKey: it.RatingKey, URL: fmt.Sprintf("https://app.plex.tv/desktop/#!/server/%s/details?key=%s", machine, url.QueryEscape("/library/metadata/"+it.RatingKey))}
+		out[k] = Item{RatingKey: it.RatingKey, URL: fmt.Sprintf("%s#!/server/%s/details?key=%s", web, machine, url.QueryEscape("/library/metadata/"+it.RatingKey)),
+			Have: it.EpsHave, Total: it.EpsTotal}
 	}
 	return out, nil
+}
+
+// SetWebURL sets where Play on Plex and Open in Plex go: blank for app.plex.tv, or the address Plex's
+// web app is reached on (like https://plex.example.com; a /web ending is fine).
+func (l *Library) SetWebURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", l.Store.SetSetting(keyWebURL, "")
+	}
+	if !strings.Contains(raw, "://") {
+		raw = "https://" + raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", errors.New("that address doesn't look right; it should be like https://plex.example.com")
+	}
+	p := strings.TrimRight(u.Path, "/")
+	p = strings.TrimSuffix(strings.TrimSuffix(p, "/index.html"), "/web")
+	u.Path, u.RawQuery, u.Fragment = p, "", ""
+	clean := strings.TrimRight(u.String(), "/")
+	return clean, l.Store.SetSetting(keyWebURL, clean)
 }
 
 // Seasons says how many episodes of each season of a series are in Plex (season 0 = specials).
@@ -463,6 +655,39 @@ func (l *Library) Seasons(ctx context.Context, tmdbID int) (map[int]int, error) 
 	}
 	for _, s := range res.MediaContainer.Metadata {
 		out[s.Index] = s.LeafCount
+	}
+	return out, nil
+}
+
+// Episodes lists the episodes of a series that are in Plex, by season (specials left out). Empty when
+// the series isn't in Plex.
+func (l *Library) Episodes(ctx context.Context, tmdbID int) (map[int][]int, error) {
+	out := map[int][]int{}
+	items, err := l.Store.PlexItemsFor([]string{fmt.Sprintf("series:%d", tmdbID)})
+	if err != nil || len(items) == 0 {
+		return out, err
+	}
+	base, tok, ok := l.conn()
+	if !ok {
+		return out, nil
+	}
+	for _, it := range items {
+		var res struct {
+			MediaContainer struct {
+				Metadata []struct {
+					Season  int `json:"parentIndex"`
+					Episode int `json:"index"`
+				} `json:"Metadata"`
+			} `json:"MediaContainer"`
+		}
+		if err := l.get(ctx, base, "/library/metadata/"+url.PathEscape(it.RatingKey)+"/allLeaves", tok, &res); err != nil {
+			return out, err
+		}
+		for _, e := range res.MediaContainer.Metadata {
+			if e.Season > 0 && !slices.Contains(out[e.Season], e.Episode) {
+				out[e.Season] = append(out[e.Season], e.Episode)
+			}
+		}
 	}
 	return out, nil
 }

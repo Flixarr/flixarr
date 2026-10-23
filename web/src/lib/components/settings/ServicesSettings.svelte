@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { api, fmtBytes } from '#lib/api.ts';
+	import { api, fmtBytes, ago } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import type { ArrInfo, FlixarrProfile, QueueRow, ServiceKind, ServiceView } from '#lib/types.ts';
 	import Toggle from '#lib/components/Toggle.svelte';
@@ -98,19 +98,11 @@
 		};
 	});
 
-	function ago(iso: string | null | undefined) {
-		if (!iso) return 'never';
-		const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));
-		if (s < 60) return `${s} sec ago`;
-		if (s < 3600) return `${Math.round(s / 60)} min ago`;
-		if (s < 86400) return `${Math.round(s / 3600)} hr ago`;
-		return `${Math.round(s / 86400)} days ago`;
-	}
 	// "Next update in 42 sec" normally; "Updates paused" when the job is off; "Updated X ago" in
 	// yellow when the last read is overdue (more than 3 minutes old). The other wording is the hover text.
 	function updateText(v: ServiceView): { text: string; title: string; warn: boolean } {
 		const st = v.status!;
-		const age = `Updated ${ago(st.updatedAt)}`;
+		const age = `Updated ${ago(st.updatedAt, now)}`;
 		if (v.updatesPaused) return { text: 'Updates paused', title: age, warn: false };
 		if (now - Date.parse(st.updatedAt) > 420000) return { text: age, title: 'The refresh-status job is overdue', warn: true }; // idle servers are read every 5 min
 		const secs = v.nextUpdate ? Math.round((Date.parse(v.nextUpdate) - now) / 1000) : -1;
@@ -275,6 +267,9 @@
 			style="width:{q.state === 'queued' ? 0 : Math.max(q.percent, 2)}%; background:{q.state === 'error' ? '#ef4444' : q.state === 'warning' ? '#facc15' : q.state === 'paused' ? '#6b7280' : color}"></span></span>
 		<span class="mt-1 block text-[11px] text-gray-500">{q.quality}{q.size ? ` · ${fmtBytes(q.size)}` : ''}</span>
 		{#if q.message}<span class="mt-1 block text-[11px] {STATE_TONE[q.state]}">⚠ {q.message}</span>{/if}
+		{#if (q.state === 'warning' || q.state === 'error') && (q.requestId || q.tmdbId)}
+			<a class="mt-1 inline-flex items-center gap-1 text-[11px] text-primary-light hover:underline" href={q.requestId ? `/requests?open=${q.requestId}` : `/${q.type}/${q.tmdbId}?admin=1`}>Fix it on {q.requestId ? 'its request' : 'the title'}<Icon name="chevron" class="size-3" /></a>
+		{/if}
 	</span>
 {/snippet}
 
@@ -298,12 +293,12 @@
 						<div class="flex items-center gap-3 rounded-lg bg-gray-900/50 px-3 py-2 ring-1 ring-gray-700/50">
 							<span class="min-w-0 flex-1"><span class="block text-sm">{p.label}</span>
 								<span class="block text-xs {p.state === 'ok' ? 'text-green-400' : p.state === 'customized' ? 'text-yellow-300' : 'text-gray-400'}">
-									{#if p.state === 'ok'}Added · up to date{:else if p.state === 'update'}Added · updating on the next sync{:else if p.state === 'customized'}Edited in {KINDS.find((x) => x.kind === kind)?.name}{p.updateAvailable ? ' · a newer Flixarr version is available' : ''}{:else if p.state === 'missing'}Deleted in {KINDS.find((x) => x.kind === kind)?.name}{:else}Not added{/if}
+									{#if p.state === 'ok'}Added · up to date{:else if p.state === 'update'}Added · a newer version is ready{:else if p.state === 'customized'}Edited in {KINDS.find((x) => x.kind === kind)?.name}{p.updateAvailable ? ' · a newer Flixarr version is available' : ''}{:else if p.state === 'missing'}Deleted in {KINDS.find((x) => x.kind === kind)?.name}{:else}Not added{/if}
 								</span></span>
 							{#if !p.installed}
 								<button class="btn-ghost shrink-0 px-3 py-1 text-xs" disabled={profileBusy !== ''} onclick={() => profileAction(p.key, 'add')}>{profileBusy === p.key ? 'Adding…' : p.state === 'missing' ? 'Add again' : 'Add'}</button>
-							{:else if p.state === 'customized' && p.updateAvailable}
-								<button class="btn-ghost shrink-0 px-3 py-1 text-xs" disabled={profileBusy !== ''} onclick={() => profileAction(p.key, 'use-flixarr')}>{profileBusy === p.key ? 'Updating…' : "Use Flixarr's version"}</button>
+							{:else if p.updateAvailable}
+								<button class="btn-ghost shrink-0 px-3 py-1 text-xs" disabled={profileBusy !== ''} onclick={() => profileAction(p.key, 'use-flixarr')}>{profileBusy === p.key ? 'Updating…' : p.state === 'customized' ? "Use Flixarr's version" : 'Update'}</button>
 							{/if}
 						</div>
 					{/each}
@@ -319,12 +314,14 @@
 
 
 {#if saved}
+	<!-- Radarr and Sonarr side by side on wide screens (#115), until there can be more than one of each (#34). -->
+	<div class="grid gap-6 laptop:grid-cols-2">
 	{#each KINDS as s (s.kind)}
 		{@const v = saved[s.kind]}
 		<div>
 			<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{s.name}</div>
 			<p class="-mt-1 mb-3 text-xs text-gray-500">{s.about}</p>
-			<div class="grid gap-3 tablet:grid-cols-2">
+			<div class="grid gap-3">
 				{#if v}
 					{@const st = v.status}
 					{@const issues = st?.health.length ?? 0}
@@ -354,7 +351,7 @@
 
 						{#if st && !st.connected}
 							<span class="mt-4 flex items-center gap-2 rounded-lg bg-red-500/10 px-2.5 py-1.5 text-[11px] text-red-300 ring-1 ring-red-500/30">✕ {st.error}</span>
-							<span class="mt-3 flex justify-between text-[11px] text-gray-500"><span>Last connected {ago(st.lastConnected)}</span><span>Updated {ago(st.updatedAt)}</span></span>
+							<span class="mt-3 flex justify-between text-[11px] text-gray-500"><span>Last connected {ago(st.lastConnected, now)}</span><span>Updated {ago(st.updatedAt, now)}</span></span>
 						{:else if st}
 							{#if !st.queue.length}
 								<span class="mt-4 flex items-center justify-between rounded-lg bg-gray-900/50 px-3 py-2 text-xs ring-1 ring-gray-700/40"><span class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Queue</span><span class="text-gray-500">Nothing downloading</span></span>
@@ -377,6 +374,7 @@
 
 							{@const fp = v.profiles.filter((p) => p.installed)}
 							{@const edited = fp.filter((p) => p.state === 'customized').length}
+							{@const ready = fp.filter((p) => p.updateAvailable).length}
 							{#if v.profiles.length}
 								<span class="mt-3 flex items-center gap-2 text-[11px]">
 									<span class="text-primary-light">◆</span>
@@ -385,6 +383,8 @@
 										<button class="text-primary-light hover:underline" onclick={() => edit(s.kind)}>Add them</button>
 									{:else if edited}
 										<span class="text-gray-300">{fp.length} Flixarr profile{fp.length === 1 ? '' : 's'}</span><span class="text-yellow-300">· {edited} edited in {s.name}</span>
+									{:else if ready}
+										<span class="text-gray-300">{fp.length} Flixarr profile{fp.length === 1 ? '' : 's'}</span><a href="#profiles" class="text-primary-light hover:underline">· {ready === 1 ? 'an update is' : `${ready} updates are`} ready</a>
 									{:else}
 										<span class="text-gray-300">{fp.length} Flixarr profile{fp.length === 1 ? '' : 's'}</span><span class="text-gray-500">· up to date</span>
 									{/if}
@@ -429,6 +429,7 @@
 			</div>
 		</div>
 	{/each}
+	</div>
 	<WebhooksCard kinds={KINDS.filter((k) => saved?.[k.kind])} />
 	<MaintainerrSettings />
 

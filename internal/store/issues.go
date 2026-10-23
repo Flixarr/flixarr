@@ -131,18 +131,32 @@ func (s *Store) Comments(issueID int64) ([]Comment, error) {
 }
 
 // AddComment adds a comment and bumps the issue's updated time.
-func (s *Store) AddComment(issueID, userID int64, body string) error {
+func (s *Store) AddComment(issueID, userID int64, body string) (int64, error) {
 	t := now()
-	if _, err := s.db.Exec(`INSERT INTO issue_comments (issue_id, user_id, body, created_at) VALUES (?, ?, ?, ?)`, issueID, userID, body, t); err != nil {
-		return err
+	res, err := s.db.Exec(`INSERT INTO issue_comments (issue_id, user_id, body, created_at) VALUES (?, ?, ?, ?)`, issueID, userID, body, t)
+	if err != nil {
+		return 0, err
 	}
-	_, err := s.db.Exec(`UPDATE issues SET updated_at = ? WHERE id = ?`, t, issueID)
-	return err
+	id, _ := res.LastInsertId()
+	_, err = s.db.Exec(`UPDATE issues SET updated_at = ? WHERE id = ?`, t, issueID)
+	return id, err
 }
 
-// OpenIssueCount is how many issues are open (the nav badge for people who manage issues).
-func (s *Store) OpenIssueCount() int {
-	var n int
-	s.db.QueryRow(`SELECT COUNT(*) FROM issues WHERE status = 'open'`).Scan(&n)
-	return n
+// OpenIssuesForTitle lists a title's open issues, newest first.
+func (s *Store) OpenIssuesForTitle(typ string, tmdbID int) ([]Issue, error) {
+	rows, err := s.db.Query(`SELECT `+issueCols+` FROM issues i LEFT JOIN users u ON u.id = i.user_id
+		WHERE i.type = ? AND i.tmdb_id = ? AND i.status = 'open' ORDER BY i.id DESC`, typ, tmdbID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Issue{}
+	for rows.Next() {
+		i, err := scanIssue(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, i)
+	}
+	return out, rows.Err()
 }

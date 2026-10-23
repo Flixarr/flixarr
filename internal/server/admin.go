@@ -20,6 +20,13 @@ type cacheState struct {
 	Kinds    []store.CacheKind `json:"kinds"`
 	Counters meta.Counters     `json:"counters"`
 	Images   imageState        `json:"images"`
+	Avatars  rowState          `json:"avatars"`
+}
+
+// rowState is a Storage row that isn't a kind of saved result: what's saved and its lookups.
+type rowState struct {
+	images.Stats
+	meta.HitMiss
 }
 
 type imageState struct {
@@ -27,6 +34,7 @@ type imageState struct {
 	Days        int  `json:"days"`
 	DefaultDays int  `json:"defaultDays"`
 	images.Stats
+	meta.HitMiss
 }
 
 func (s *Server) cacheState() (cacheState, error) {
@@ -47,7 +55,8 @@ func (s *Server) cacheState() (cacheState, error) {
 		Defaults: meta.DefaultConfig,
 		Kinds:    kinds,
 		Counters: s.Meta.Counters(),
-		Images:   imageState{Enabled: s.Images.Enabled(), Days: s.Images.Days(), DefaultDays: images.DefaultDays, Stats: s.Images.Stats()},
+		Images:   imageState{Enabled: s.Images.Enabled(), Days: s.Images.Days(), DefaultDays: images.DefaultDays, Stats: s.Images.Stats(), HitMiss: s.Images.Images.Load()},
+		Avatars:  rowState{Stats: s.Images.AvatarStats(), HitMiss: s.Images.Avatars.Load()},
 	}, nil
 }
 
@@ -85,16 +94,21 @@ func (s *Server) cacheSettings(w http.ResponseWriter, r *http.Request, _ *store.
 	s.writeCache(w)
 }
 
-// cacheFlush clears one kind of saved results, "images", or "all" (every saved result and image).
+// cacheFlush clears one kind of saved results, "images", "avatars", or "all" (every saved result, image and avatar).
 func (s *Server) cacheFlush(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	kind := r.PathValue("kind")
 	var err error
 	switch {
 	case kind == "images":
 		_, err = s.Images.Flush()
+	case kind == "avatars":
+		_, err = s.Images.FlushAvatars()
 	case kind == "all":
 		if _, err = s.Store.CacheFlush(""); err == nil {
 			_, err = s.Images.Flush()
+		}
+		if err == nil {
+			_, err = s.Images.FlushAvatars()
 		}
 	case contains(meta.Kinds, kind):
 		_, err = s.Store.CacheFlush(kind)
@@ -127,6 +141,28 @@ func (s *Server) image(w http.ResponseWriter, r *http.Request, _ *store.User) {
 		return
 	}
 	w.Header().Set("Cache-Control", "private, max-age=2592000, immutable") // TMDB image paths never change content
+	http.ServeFile(w, r, p)
+}
+
+// avatar serves someone's Plex avatar from the avatar cache (?u=<plex.tv address>), downloading it the
+// first time. plex.tv answers avatars with an uncached redirect, so browsers would ask it on every view.
+func (s *Server) avatar(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	u := r.URL.Query().Get("u")
+	if !images.AvatarValid(u) {
+		writeErr(w, http.StatusNotFound, "Not found.")
+		return
+	}
+	if !s.Store.AvatarKnown(u) { // only people's own pictures are saved, so nobody can fill the disk with other addresses
+		http.Redirect(w, r, u, http.StatusFound)
+		return
+	}
+	p, err := s.Images.AvatarPath(r.Context(), u)
+	if err != nil {
+		s.Log.Warn("avatar cache", "err", err)
+		http.Redirect(w, r, u, http.StatusFound)
+		return
+	}
+	w.Header().Set("Cache-Control", "private, max-age=2592000, immutable") // a new picture has a new address
 	http.ServeFile(w, r, p)
 }
 

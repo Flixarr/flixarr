@@ -98,6 +98,16 @@
 	.act { @apply h-9 gap-1.5 px-3.5 py-0 text-sm laptop:h-10 laptop:gap-2 laptop:px-4 laptop:text-[15px]; }
 	.plex-badge { @apply grid shrink-0 place-items-center rounded-xl bg-[#1f2326] ring-1 ring-white/10; }
 	.text-link { @apply text-white underline decoration-primary underline-offset-2 hover:text-primary-light; }
+	/* Scrollbars (#109): thin and dark everywhere (pages, windows, side panels, sideways rows), faint until
+	   the pointer is over what scrolls. Browsers without scrollbar-color (older Safari) get the same look. */
+	* { scrollbar-width: thin; scrollbar-color: rgb(255 255 255 / 0.12) transparent; }
+	*:hover { scrollbar-color: rgb(255 255 255 / 0.28) transparent; }
+	@supports not (scrollbar-color: auto) {
+		::-webkit-scrollbar { width: 8px; height: 8px; }
+		::-webkit-scrollbar-track { background: transparent; }
+		::-webkit-scrollbar-thumb { border-radius: 9999px; background: rgb(255 255 255 / 0.12); }
+		:hover::-webkit-scrollbar-thumb { background: rgb(255 255 255 / 0.28); }
+	}
 	.no-scrollbar { scrollbar-width: none; }
 	.no-scrollbar::-webkit-scrollbar { display: none; }
 }
@@ -110,9 +120,11 @@
 @keyframes board-swap { 0%, 40% { opacity: 0; } 50%, 90% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .board-swap { animation: none; } }
 
-/* Modal scroll lock (design rule 2). */
+/* While a window is open (lib/scrolllock.ts keeps the page still; no pinning, no overflow: hidden). */
 html.modal-open,
-html.modal-open body { overflow: hidden; overscroll-behavior: none; }
+html.modal-open body { overscroll-behavior: none; }
+/* The top bar stays in view above windows on phones, but can't be tapped while one is open. */
+html.modal-open header { pointer-events: none; }
 
 /* Services card: a moving stripe on queue items that are being imported. */
 .arr-stripes { background-image: linear-gradient(45deg, rgb(255 255 255 / 0.25) 25%, transparent 25%, transparent 50%, rgb(255 255 255 / 0.25) 50%, rgb(255 255 255 / 0.25) 75%, transparent 75%); background-size: 12px 12px; animation: arr-stripes 1s linear infinite; }
@@ -146,3 +158,4 @@ html.modal-open body { overflow: hidden; overscroll-behavior: none; }
 @media (display-mode: standalone) and (max-width: 1023px) {
 	.pt-20 { padding-top: calc(5rem + max(0px, env(safe-area-inset-top) - 0.75rem)); } /* the header's own top padding overlaps the inset */
 }
+

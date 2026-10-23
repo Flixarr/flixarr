@@ -5,19 +5,21 @@
 	import type { Series, Season } from '#lib/types.ts';
 	import Icon from './Icon.svelte';
 
-	let { series, picked = $bindable([]), wholeSeason = false, done = {} }: {
+	let { series, picked = $bindable([]), wholeSeason = false, done = {}, only = null }: {
 		series: Series; picked?: [number, number][]; wholeSeason?: boolean; done?: Record<number, number>; // done: episodes in Plex per season
+		only?: Record<number, number[]> | null; // only these episodes are offered (what's in Plex, for issue reports)
 	} = $props();
 
 	let open = $state<Record<number, boolean>>({});
 	let eps = $state<Record<number, Season['episodes'] | 'loading'>>({});
-	const seasons = $derived(series.seasons.filter((s) => s.n > 0));
+	const seasons = $derived(series.seasons.filter((s) => s.n > 0 && (!only || only[s.n]?.length)));
+	const total = (s: { n: number; episodes: number }) => (only ? (only[s.n]?.length ?? 0) : s.episodes);
 
 	async function load(n: number) {
 		if (eps[n]) return;
 		eps[n] = 'loading';
 		const s = await meta<Season>(`series/${series.id}/season/${n}`);
-		eps[n] = s.episodes;
+		eps[n] = only ? s.episodes.filter((e) => only[n]?.includes(e.n)) : s.episodes;
 	}
 	function expand(n: number) {
 		open[n] = !open[n];
@@ -49,13 +51,13 @@
 
 <div class="max-h-[45dvh] overflow-y-auto rounded-lg border border-gray-700/50 bg-gray-900/40">
 	{#each seasons as s (s.n)}
-		{@const st = seasonState(s.n, s.episodes)}
+		{@const st = seasonState(s.n, total(s))}
 		<div class="border-b border-gray-700/40 last:border-0">
 			<div class="sticky top-0 z-10 flex items-center gap-3 bg-gray-900/95 px-3 py-2 text-sm backdrop-blur">
-				<input type="checkbox" class="accent-[var(--color-primary)]" aria-label="All of {s.name}" checked={st === 'all'} indeterminate={st === 'some'} onchange={() => toggleSeason(s.n, s.episodes)} />
+				<input type="checkbox" class="accent-[var(--color-primary)]" aria-label="All of {s.name}" checked={st === 'all'} indeterminate={st === 'some'} onchange={() => toggleSeason(s.n, total(s))} />
 				<button class="flex flex-1 items-center gap-2 text-left" onclick={() => expand(s.n)}>
 					<span class="flex-1 font-medium">{s.name}</span>
-					<span class="text-xs text-gray-500">{#if done[s.n]}{done[s.n] >= s.episodes ? 'In Plex' : `${done[s.n]} of ${s.episodes} in Plex`}{:else}{s.episodes} episodes{/if}{countIn(s.n) ? ` · ${countIn(s.n)} picked` : ''}</span>
+					<span class="text-xs text-gray-500">{#if only}{total(s)} in Plex{:else if done[s.n]}{done[s.n] >= s.episodes ? 'In Plex' : `${done[s.n]} of ${s.episodes} in Plex`}{:else}{s.episodes} episodes{/if}{countIn(s.n) ? ` · ${countIn(s.n)} picked` : ''}</span>
 					<span class="text-gray-500 transition {open[s.n] ? 'rotate-90' : ''}"><Icon name="chevron" class="size-4" /></span>
 				</button>
 			</div>

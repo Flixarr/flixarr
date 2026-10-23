@@ -62,24 +62,52 @@ func (s *Server) maintainerrSet(w http.ResponseWriter, r *http.Request, _ *store
 		s.Store.SetSetting(maintainerr.KeyProtect, strconv.Itoa(*in.ProtectDays))
 	}
 	if in.URL != "" {
-		u := strings.TrimRight(strings.TrimSpace(in.URL), "/")
-		if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
-			u = "http://" + u
-		}
-		key := in.APIKey
-		if key == "" && !in.ClearKey {
-			key = s.Store.SecretSetting(maintainerr.KeyAPIKey, "")
-		}
-		c := &maintainerr.Client{URL: u, APIKey: key}
+		c := s.maintainerrClient(in.URL, in.APIKey, in.ClearKey)
 		if _, err := c.Status(r.Context()); err != nil {
 			writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
 			return
 		}
+		u, key := c.URL, c.APIKey
 		s.Store.SetSetting(maintainerr.KeyURL, u)
 		s.Store.SetSecretSetting(maintainerr.KeyAPIKey, key)
 		go s.Maint.Sync(s.BaseCtx)
 	}
 	s.maintainerrGet(w, r, nil)
+}
+
+// maintainerrClient is a Maintainerr at this address; a blank key keeps the saved one (unless clearKey).
+func (s *Server) maintainerrClient(raw, key string, clearKey bool) *maintainerr.Client {
+	u := strings.TrimRight(strings.TrimSpace(raw), "/")
+	if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+		u = "http://" + u
+	}
+	if key == "" && !clearKey {
+		key = s.Store.SecretSetting(maintainerr.KeyAPIKey, "")
+	}
+	return &maintainerr.Client{URL: u, APIKey: key}
+}
+
+// maintainerrTest checks an address (and key) without saving anything: {url, apiKey} → {version}.
+func (s *Server) maintainerrTest(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	var in struct {
+		URL    string `json:"url"`
+		APIKey string `json:"apiKey"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil || strings.TrimSpace(in.URL) == "" {
+		writeErr(w, http.StatusBadRequest, "Enter the address.")
+		return
+	}
+	st, err := s.maintainerrClient(in.URL, in.APIKey, false).Status(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
+}
+
+// maintainerrOn says whether Maintainerr is set up.
+func (s *Server) maintainerrOn() bool {
+	return s.Store.Setting(maintainerr.KeyURL, "") != ""
 }
 
 // maintainerrRemove disconnects Maintainerr. Titles Flixarr kept stay kept in Maintainerr.

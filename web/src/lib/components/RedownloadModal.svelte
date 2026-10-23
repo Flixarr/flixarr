@@ -28,7 +28,7 @@
 	async function send() {
 		sending = true;
 		try {
-			const d = await api<{ done: string }>('/redownload', { method: 'POST', body: JSON.stringify({ type: item.type, tmdbId: item.id, seasons: series ? picked : [] }) });
+			const d = await api<{ done: string }>('/redownload', { method: 'POST', body: JSON.stringify({ type: item.type, tmdbId: item.id, seasons: series ? picked : [], title: item.title, year: item.year, poster: item.poster ?? '' }) });
 			open = false;
 			notify(d.done);
 		} catch (e) {
@@ -43,8 +43,8 @@
 <Modal bind:open title="Redownload {item.title}">
 	<div class="space-y-4 p-5 text-sm">
 		<p class="text-gray-300">
-			{series ? 'The files for the seasons you pick are deleted' : 'The current file is deleted'} and {series ? 'Sonarr looks for new copies' : 'Radarr looks for a new copy'}.
-			The release {series ? 'they' : 'it'} came from won't be grabbed again. Until {series ? 'they arrive, those seasons are' : 'it arrives, it is'} not in Plex.
+			{series ? 'The files for the seasons you pick are deleted' : 'The current file is deleted'} and {series ? 'new copies are downloaded' : 'a new copy is downloaded'}.
+			{series ? 'Those releases are' : 'That release is'} blocked so {series ? "they aren't" : "it isn't"} downloaded again. Until {series ? 'they arrive, those seasons are' : 'it arrives, it is'} not in Plex.
 		</p>
 		{#if series}
 			{#if list.length}

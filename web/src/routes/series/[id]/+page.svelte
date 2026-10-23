@@ -12,7 +12,9 @@
 	import Icon from '#lib/components/Icon.svelte';
 	import RequestButton from '#lib/components/RequestButton.svelte';
 	import IssueModal from '#lib/components/IssueModal.svelte';
-	import RedownloadModal from '#lib/components/RedownloadModal.svelte';
+	import FixEpisodesModal from '#lib/components/FixEpisodesModal.svelte';
+	import FixMenu from '#lib/components/FixMenu.svelte';
+	import AdminPanel from '#lib/components/AdminPanel.svelte';
 	import LeavingActions from '#lib/components/LeavingActions.svelte';
 	import { can } from '#lib/session.svelte.ts';
 	import type { RequestBrief } from '#lib/types.ts';
@@ -42,6 +44,18 @@
 		api<Record<number, number>>(`/plex/seasons/${tid}`).then((d) => tid === page.params.id && (inPlex = d)).catch(() => {});
 	});
 
+	// Opened from a person's page (?credit=…): which seasons and episodes they're in, marked below.
+	type Credit = { person: string; character: string; seasons: number[]; episodes: [number, number][] };
+	let credit = $state<Credit | null>(null);
+	$effect(() => {
+		const c = page.url.searchParams.get('credit');
+		credit = null;
+		if (c && /^[0-9a-f]{24}$/.test(c)) meta<Credit>(`credit/${c}`).then((d) => (credit = d)).catch(() => {});
+	});
+	const creditIn = (n: number) => (credit ? credit.episodes.filter(([s]) => s === n).length : 0);
+	const creditEp = (n: number, e: number) => !!credit?.episodes.some(([s, x]) => s === n && x === e);
+	const creditSeason = (n: number) => !!credit && (creditIn(n) > 0 || (!credit.episodes.length && credit.seasons.includes(n)));
+
 	function openSeason(n: number, isOpen: boolean) {
 		if (!isOpen || !t || episodes[n]) return;
 		episodes[n] = 'loading';
@@ -49,8 +63,16 @@
 		meta<Season>(`series/${t.id}/season/${n}`, {}, show).then(show).catch(() => (episodes[n] = 'error'));
 	}
 	let brief = $state<RequestBrief | null | undefined>(undefined);
+	// Report issue: on what's in the library, or on a request that hasn't arrived ("Didn't download").
+	const inLib = $derived(!!brief?.plex || brief?.status === 'available');
+	const waiting = $derived(!!brief && ['approved', 'sent', 'grabbed', 'downloading', 'importing', 'failed'].includes(brief.status));
 	let issueOpen = $state(false);
-	let redownloadOpen = $state(false);
+	let fixOpen = $state(false);
+	let adminOpen = $state(false);
+	// ?admin=1 (from a stuck download on Settings, Services) opens the admin panel.
+	$effect(() => {
+		if (page.url.searchParams.get('admin') === '1' && can('manageRequests')) adminOpen = true;
+	});
 </script>
 
 {#if error}
@@ -58,23 +80,26 @@
 {:else if t}
 	<DetailHeader item={t}>
 		{#snippet chip()}
-			{#if brief?.plex}<span class="rounded-md bg-green-500/15 px-1.5 py-0.5 text-green-400 ring-1 ring-green-500/40">✓ In your library</span>
+			{#if brief?.plex}<span class="rounded-md bg-green-500/15 px-1.5 py-0.5 text-green-400 ring-1 ring-green-500/40">{brief.episodes && brief.episodes[0] < brief.episodes[1] ? `◐ ${brief.episodes[0]} of ${brief.episodes[1]} episodes in your library` : '✓ In your library'}</span>
 			{:else if brief !== undefined}<span class="rounded-md bg-gray-900/70 px-1.5 py-0.5 text-gray-300 ring-1 ring-gray-700/60">Not in your library</span>{/if}
 		{/snippet}
 		{#snippet actions()}
 			{#if t}<RequestButton item={t} bind:req={brief} />{/if}
-			{#if t && (brief?.plex || brief?.status === 'available') && can('reportIssues')}<button class="btn-ghost act" onclick={() => (issueOpen = true)}><Icon name="issues" class="size-4" />Report issue</button>{/if}
-			{#if t && brief?.plex && can('redownload')}<button class="btn-ghost act" onclick={() => (redownloadOpen = true)}><Icon name="refresh" class="size-4" />Redownload</button>{/if}
+			{#if t && (inLib || waiting) && can('reportIssues')}<button class="btn-ghost act" onclick={() => (issueOpen = true)}><Icon name="issues" class="size-4" />Report issue</button>{/if}
+			{#if t && (inLib || waiting) && can('redownload') && !can('manageRequests')}<FixMenu title={t.title} series={true} redownload={() => (fixOpen = true)} class="btn-ghost act" />{/if}
 			{#if t?.trailer}<button class="btn-ghost act" onclick={() => (trailer = true)}><Icon name="play" class="size-4" />Trailer</button>{/if}
 			{#if t && brief?.plex}<LeavingActions type="series" id={t.id} title={t.title} />{/if}
+			{#if t && can('manageRequests')}<button class="btn-ghost act" onclick={() => (adminOpen = true)}><Icon name="settings" class="size-4" />Admin</button>{/if}
 		{/snippet}
 	</DetailHeader>
-	<IssueModal bind:open={issueOpen} item={t} />
-	{#if t}<RedownloadModal bind:open={redownloadOpen} item={t} />{/if}
+	<IssueModal bind:open={issueOpen} item={t} inLibrary={inLib} {waiting} />
+	{#if can('redownload')}<FixEpisodesModal bind:open={fixOpen} item={t} />{/if}
+	{#if t && can('manageRequests')}<AdminPanel bind:open={adminOpen} item={t} />{/if}
 
 	<main class="relative z-10 mx-auto max-w-[1600px] space-y-9 pt-9 laptop:px-10">
 		<div class="grid gap-9 laptop:grid-cols-[1fr_340px]">
-			<div class="space-y-9">
+			<!-- min-w-0: a grid column otherwise grows to its longest line (episode names), wider than a phone -->
+			<div class="min-w-0 space-y-9">
 				<section class="space-y-3 px-4 laptop:px-0">
 					<h2 class="text-base font-semibold">Overview</h2>
 					{#if t.tagline}<p class="italic text-gray-400">“{t.tagline}”</p>{/if}
@@ -85,15 +110,19 @@
 					</div>
 				</section>
 				<section class="space-y-3 px-4 laptop:px-0">
+					{#if credit?.person}
+						<p class="rounded-lg bg-primary/10 px-3 py-2 text-sm text-gray-200 ring-1 ring-primary/30">{credit.episodes.length ? `${credit.person} is in ${credit.episodes.length} episode${credit.episodes.length === 1 ? '' : 's'}` : `${credit.person} is in the marked seasons`}{credit.character ? ` (as ${credit.character})` : ''}. They're marked below.</p>
+					{/if}
 					<div class="flex items-center justify-between"><h2 class="text-base font-semibold">Seasons</h2>
 						<span class="text-xs text-gray-400">{t.next ? 'Next episode ' + fmtDate(t.next) : t.status === 'Ended' ? 'Series ended' : ''}</span></div>
 					<div class="space-y-2">
 						{#each t.seasons as s (s.n)}
-							<details class="group card overflow-hidden" ontoggle={(e) => openSeason(s.n, (e.currentTarget as HTMLDetailsElement).open)}>
+							<details class="group card overflow-hidden {creditSeason(s.n) ? 'ring-1 ring-primary/50' : ''}" ontoggle={(e) => openSeason(s.n, (e.currentTarget as HTMLDetailsElement).open)}>
 								<summary class="flex cursor-pointer list-none items-center gap-3 p-3 hover:bg-white/5">
 									{#if s.poster}<Img path={s.poster} kind="poster" sizes="40px" class="aspect-[2/3] w-10 shrink-0 rounded-md bg-gray-800 ring-1 ring-gray-700/60" />
 									{:else}<div class="grid h-15 w-10 place-items-center rounded-md bg-gray-800 text-xs text-gray-500">S{s.n}</div>{/if}
 									<div class="min-w-0 flex-1"><div class="truncate text-sm font-medium">{s.name}</div><div class="text-xs text-gray-400">{s.episodes} episodes{s.air ? ' · ' + s.air.slice(0, 4) : ''}</div></div>
+									{#if creditSeason(s.n)}<span class="shrink-0 rounded-md bg-primary/15 px-1.5 py-0.5 text-[11px] text-primary-light ring-1 ring-primary/40">{creditIn(s.n) ? `${creditIn(s.n)} with ${credit?.person.split(' ')[0]}` : `With ${credit?.person.split(' ')[0]}`}</span>{/if}
 									{#if inPlex[s.n]}
 										<span class="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] ring-1 {inPlex[s.n] >= s.episodes ? 'bg-green-500/15 text-green-400 ring-green-500/40' : 'bg-green-500/10 text-green-300 ring-green-500/30'}">{inPlex[s.n] >= s.episodes ? 'In Plex' : `${inPlex[s.n]} of ${s.episodes} in Plex`}</span>
 									{/if}
@@ -106,10 +135,10 @@
 										<div class="p-3 text-xs text-red-400">Couldn't load episodes.</div>
 									{:else}
 										{#each (episodes[s.n] as Season).episodes as e (e.n)}
-											<div class="flex gap-3 border-b border-gray-700/30 p-3 last:border-0">
+											<div class="flex gap-3 border-b border-gray-700/30 p-3 last:border-0 {creditEp(s.n, e.n) ? 'bg-primary/10' : ''}">
 												<div class="aspect-video w-28 shrink-0 overflow-hidden rounded-md bg-gray-800 tablet:w-36">{#if e.still}<Img path={e.still} kind="still" sizes="(min-width: 640px) 144px, 112px" class="h-full w-full" />{/if}</div>
 												<div class="min-w-0 flex-1">
-													<div class="flex items-center gap-2 text-sm"><span class="text-xs text-gray-500">E{e.n}</span><span class="truncate font-medium">{e.name}</span></div>
+													<div class="flex items-center gap-2 text-sm"><span class="text-xs text-gray-500">E{e.n}</span><span class="truncate font-medium">{e.name}</span>{#if creditEp(s.n, e.n)}<span class="shrink-0 rounded bg-primary/20 px-1.5 py-0.5 text-[10px] font-semibold text-primary-light">{credit?.person.split(' ')[0]}</span>{/if}</div>
 													<div class="text-xs text-gray-500">{fmtDate(e.air)}{e.runtime ? ' · ' + e.runtime + 'm' : ''}</div>
 													<p class="mt-1 line-clamp-2 text-xs text-gray-400">{e.overview}</p>
 												</div>

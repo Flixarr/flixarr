@@ -33,6 +33,12 @@
 		};
 	});
 
+	// The service worker from the first visit (not only when push is turned on): some phone browsers, such as
+	// Samsung Internet, only offer to install Flixarr as an app once one is running.
+	$effect(() => {
+		navigator.serviceWorker?.register('/sw.js', { scope: '/' }).catch(() => {});
+	});
+
 	// The live connection while signed in.
 	$effect(() => {
 		if (session.me) return startLive();
@@ -59,7 +65,7 @@
 		{@render children()}
 	{:else if session.me}
 		<TopNav {transparent} />
-		<div class="pb-24 tablet:pb-12">{@render children()}</div>
+		<div class="pb-[calc(8rem+env(safe-area-inset-bottom))] tablet:pb-16">{@render children()}</div>
 		<TabBar />
 		<PullRefresh />
 	{/if}

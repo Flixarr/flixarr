@@ -1,0 +1,53 @@
+name: Check
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    name: Server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Formatting
+        run: |
+          files=$(gofmt -l cmd internal)
+          if [ -n "$files" ]; then echo "Not gofmt formatted:"; echo "$files"; exit 1; fi
+      - name: Vet
+        run: go vet ./...
+      - name: Tests
+        run: go test ./...
+      - name: Build
+        run: CGO_ENABLED=0 go build -o /dev/null ./cmd/flixarr
+
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Type check
+        run: npm run check
+      - name: Build
+        run: npm run build

@@ -2,6 +2,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -25,7 +26,9 @@ import (
 	"github.com/Flixarr/flixarr/internal/plexlib"
 	"github.com/Flixarr/flixarr/internal/profiles"
 	"github.com/Flixarr/flixarr/internal/requests"
+	"github.com/Flixarr/flixarr/internal/seerr"
 	"github.com/Flixarr/flixarr/internal/store"
+	"github.com/Flixarr/flixarr/internal/testinstall"
 	"github.com/Flixarr/flixarr/internal/update"
 	"github.com/Flixarr/flixarr/internal/version"
 )
@@ -47,6 +50,7 @@ type Server struct {
 	Notify   *notify.Notifier
 	Maint    *maintainerr.Watcher
 	Backups  *backup.Manager
+	Seerr    *seerr.Importer
 	Live     *live.Hub
 	Web      fs.FS // built web app (index + assets)
 	Log      *slog.Logger
@@ -69,11 +73,15 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/maintainerr", s.auth(s.admin(s.maintainerrSet)))
 	mux.HandleFunc("DELETE /api/maintainerr", s.auth(s.admin(s.maintainerrRemove)))
 	mux.HandleFunc("POST /api/maintainerr/find", s.auth(s.admin(s.maintainerrFind)))
+	mux.HandleFunc("POST /api/maintainerr/test", s.auth(s.admin(s.maintainerrTest)))
 	mux.HandleFunc("POST /api/maintainerr/webhook", s.auth(s.admin(s.maintainerrWebhook)))
 	mux.HandleFunc("GET /api/leaving", s.auth(s.leaving))
 	mux.HandleFunc("POST /api/leaving/{type}/{id}/{act}", s.auth(s.leavingAct))
 	mux.HandleFunc("GET /api/webhook", s.auth(s.admin(s.webhookInfo)))
 	mux.HandleFunc("GET /api/me", s.auth(s.me))
+	mux.HandleFunc("POST /api/test/view-as", s.auth(s.viewAsSet))
+	mux.HandleFunc("GET /api/me/locale", s.auth(s.myLocale))
+	mux.HandleFunc("PUT /api/me/locale", s.auth(s.myLocale))
 	mux.HandleFunc("POST /api/setup/done", s.auth(s.admin(func(w http.ResponseWriter, r *http.Request, _ *store.User) {
 		s.Store.SetSetting("setup_done", "true")
 		w.WriteHeader(http.StatusNoContent)
@@ -83,6 +91,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/me/notifications", s.auth(s.myNotifications))
 	mux.HandleFunc("PUT /api/me/notifications", s.auth(s.myNotifications))
 	mux.HandleFunc("PUT /api/me/watchlist", s.auth(s.myWatchlist))
+	mux.HandleFunc("GET /api/me/devices", s.auth(s.myDevices))
 	mux.HandleFunc("POST /api/auth/plex/pin", s.plexPin)
 	mux.HandleFunc("POST /api/auth/plex/check", s.plexCheck)
 	mux.HandleFunc("POST /api/auth/logout", s.logout)
@@ -93,6 +102,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/update/check", s.auth(s.admin(s.updateCheck)))
 	mux.HandleFunc("PUT /api/update/settings", s.auth(s.admin(s.updateSettings)))
 	mux.HandleFunc("GET /api/image/{size}/{file}", s.auth(s.image))
+	mux.HandleFunc("GET /api/avatar", s.auth(s.avatar))
 	mux.HandleFunc("GET /api/cache", s.auth(s.admin(s.cacheInfo)))
 	mux.HandleFunc("PUT /api/cache/settings", s.auth(s.admin(s.cacheSettings)))
 	mux.HandleFunc("DELETE /api/cache/{kind}", s.auth(s.admin(s.cacheFlush)))
@@ -101,11 +111,18 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/requests", s.auth(s.requestList))
 	mux.HandleFunc("POST /api/requests", s.auth(s.requestCreate))
 	mux.HandleFunc("GET /api/requests/status", s.auth(s.requestStatus))
+	mux.HandleFunc("GET /api/requests/attention", s.auth(s.requestAttention))
 	mux.HandleFunc("GET /api/requests/options", s.auth(s.requestOptions))
 	mux.HandleFunc("POST /api/requests/{id}/approve", s.auth(s.allow("manageRequests", s.requestApprove)))
 	mux.HandleFunc("POST /api/requests/{id}/decline", s.auth(s.allow("manageRequests", s.requestDecline)))
 	mux.HandleFunc("POST /api/requests/{id}/retry", s.auth(s.allow("manageRequests", s.requestRetry)))
 	mux.HandleFunc("POST /api/requests/{id}/fix", s.auth(s.allow("manageRequests", s.requestFix)))
+	mux.HandleFunc("GET /api/requests/{id}/detail", s.auth(s.requestDetail))
+	mux.HandleFunc("GET /api/titles/{type}/{id}/admin", s.auth(s.allow("manageRequests", s.titleAdmin)))
+	mux.HandleFunc("POST /api/titles/{type}/{id}/fix", s.auth(s.allow("manageRequests", s.titleFix)))
+	mux.HandleFunc("POST /api/titles/{type}/{id}/delete", s.auth(s.allow("manageRequests", s.titleDelete)))
+	mux.HandleFunc("GET /api/titles/{type}/{id}/episodes", s.auth(s.allow("redownload", s.titleEpisodes)))
+	mux.HandleFunc("POST /api/titles/{type}/{id}/episodes/fix", s.auth(s.allow("redownload", s.titleFixEpisodes)))
 	mux.HandleFunc("POST /api/redownload", s.auth(s.allow("redownload", s.redownload)))
 	mux.HandleFunc("DELETE /api/requests/{id}", s.auth(s.requestDelete))
 	mux.HandleFunc("GET /api/settings/requests", s.auth(s.admin(s.requestSettings)))
@@ -123,7 +140,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/issues/{id}/reopen", s.auth(s.allow("manageIssues", s.issueStatus("open"))))
 	mux.HandleFunc("DELETE /api/issues/{id}", s.auth(s.allow("manageIssues", s.issueDelete)))
 	mux.HandleFunc("GET /api/alerts", s.auth(s.alerts))
-	mux.HandleFunc("POST /api/alerts/seen", s.auth(s.alertsSeen))
+	mux.HandleFunc("POST /api/alerts/opened", s.auth(s.alertsOpened))
+	mux.HandleFunc("POST /api/alerts/read-all", s.auth(s.alertsReadAll))
+	mux.HandleFunc("POST /api/alerts/{id}/tap", s.auth(s.alertTap))
 	mux.HandleFunc("GET /api/services", s.auth(s.admin(s.services)))
 	mux.HandleFunc("POST /api/services/{kind}/test", s.auth(s.admin(s.serviceTest)))
 	mux.HandleFunc("POST /api/services/{kind}/discover", s.auth(s.admin(s.serviceDiscover)))
@@ -132,18 +151,29 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/services/{kind}/refresh", s.auth(s.admin(s.serviceRefresh)))
 	mux.HandleFunc("POST /api/services/{kind}/profiles", s.auth(s.admin(s.serviceProfilesAdd)))
 	mux.HandleFunc("POST /api/services/{kind}/profiles/{key}/use-flixarr", s.auth(s.admin(s.serviceProfileUseFlixarr)))
+	mux.HandleFunc("POST /api/services/{kind}/profiles/{key}/skip", s.auth(s.admin(s.serviceProfileSkip)))
+	mux.HandleFunc("GET /api/services/{kind}/profiles/{key}/changes", s.auth(s.admin(s.serviceProfileChanges)))
 	mux.HandleFunc("GET /api/profiles", s.auth(s.admin(s.profilesInfo)))
 	mux.HandleFunc("PUT /api/services/{kind}", s.auth(s.admin(s.serviceSave)))
 	mux.HandleFunc("DELETE /api/services/{kind}", s.auth(s.admin(s.serviceDelete)))
 	mux.HandleFunc("GET /api/plex", s.auth(s.admin(s.plexStatus)))
 	mux.HandleFunc("GET /api/plex/seasons/{tmdbId}", s.auth(s.plexSeasons))
+	mux.HandleFunc("GET /api/plex/episodes/{tmdbId}", s.auth(s.plexEpisodes))
 	mux.HandleFunc("GET /api/plex/servers", s.auth(s.admin(s.plexServers)))
 	mux.HandleFunc("POST /api/plex/connect", s.auth(s.admin(s.plexConnect)))
+	mux.HandleFunc("GET /api/plex/addresses", s.auth(s.admin(s.plexAddresses)))
+	mux.HandleFunc("PUT /api/plex/address", s.auth(s.admin(s.plexAddress)))
 	mux.HandleFunc("DELETE /api/plex", s.auth(s.admin(s.plexDisconnect)))
 	mux.HandleFunc("PUT /api/plex/libraries", s.auth(s.admin(s.plexLibraries)))
+	mux.HandleFunc("PUT /api/plex/web", s.auth(s.admin(s.plexWeb)))
 	mux.HandleFunc("POST /api/plex/scan", s.auth(s.admin(s.plexScan)))
-	mux.HandleFunc("GET /api/users", s.auth(s.admin(s.userList)))
-	mux.HandleFunc("PUT /api/users/{id}", s.auth(s.admin(s.userUpdate)))
+	mux.HandleFunc("GET /api/users", s.auth(s.people(s.userList)))
+	mux.HandleFunc("PUT /api/users/{id}", s.auth(s.people(s.userUpdate)))
+	mux.HandleFunc("GET /api/users/{id}", s.auth(s.people(s.userProfile)))
+	mux.HandleFunc("POST /api/users/bulk", s.auth(s.people(s.userBulk)))
+	mux.HandleFunc("GET /api/users/everyone", s.auth(s.admin(s.everyoneSettings)))
+	mux.HandleFunc("PUT /api/users/everyone", s.auth(s.admin(s.everyoneSettings)))
+	mux.HandleFunc("POST /api/users/everyone/apply", s.auth(s.admin(s.everyoneApply)))
 	mux.HandleFunc("DELETE /api/users/{id}", s.auth(s.admin(s.userDelete)))
 	mux.HandleFunc("POST /api/users/local", s.auth(s.admin(s.userAddLocal)))
 	mux.HandleFunc("PUT /api/users/{id}/password", s.auth(s.admin(s.userSetPassword)))
@@ -157,15 +187,26 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/push", s.auth(s.pushSubscribe))
 	mux.HandleFunc("DELETE /api/push", s.auth(s.pushSubscribe))
 	mux.HandleFunc("GET /api/notifications", s.auth(s.admin(s.notifyList)))
-	mux.HandleFunc("PUT /api/notifications/{channel}", s.auth(s.admin(s.notifySave)))
-	mux.HandleFunc("POST /api/notifications/{channel}/test", s.auth(s.admin(s.notifyTest)))
+	mux.HandleFunc("GET /api/import/seerr", s.auth(s.admin(s.seerrState)))
+	mux.HandleFunc("POST /api/import/seerr/preview", s.auth(s.admin(s.seerrPreview)))
+	mux.HandleFunc("POST /api/import/seerr", s.auth(s.admin(s.seerrImport)))
+	mux.HandleFunc("POST /api/import/seerr/file/preview", s.auth(s.admin(s.seerrFilePreview)))
+	mux.HandleFunc("POST /api/import/seerr/file", s.auth(s.admin(s.seerrFileImport)))
+	mux.HandleFunc("POST /api/queue/{kind}/{id}/fix", s.auth(s.queueFix))
+	mux.HandleFunc("POST /api/notifications", s.auth(s.admin(s.notifyAdd)))
+	mux.HandleFunc("POST /api/notifications/test", s.auth(s.admin(s.notifyTest)))
+	mux.HandleFunc("PUT /api/notifications/{id}", s.auth(s.admin(s.notifySave)))
+	mux.HandleFunc("DELETE /api/notifications/{id}", s.auth(s.admin(s.notifyDelete)))
 	mux.HandleFunc("GET /api/backups", s.auth(s.admin(s.backupList)))
 	mux.HandleFunc("POST /api/backups", s.auth(s.admin(s.backupCreate)))
 	mux.HandleFunc("PUT /api/backups/settings", s.auth(s.admin(s.backupSettings)))
+	mux.HandleFunc("PUT /api/backups/offsite", s.auth(s.admin(s.backupOffsite)))
 	mux.HandleFunc("GET /api/backups/{name}", s.auth(s.admin(s.backupDownload)))
 	mux.HandleFunc("DELETE /api/backups/{name}", s.auth(s.admin(s.backupDelete)))
 	mux.HandleFunc("POST /api/backups/{name}/restore", s.auth(s.admin(s.backupRestore)))
 	mux.HandleFunc("GET /api/blocklist", s.auth(s.admin(s.blockList)))
+	mux.HandleFunc("GET /api/settings/blocklist", s.auth(s.admin(s.blockSettings)))
+	mux.HandleFunc("PUT /api/settings/blocklist", s.auth(s.admin(s.blockSettings)))
 	mux.HandleFunc("POST /api/blocklist", s.auth(s.admin(s.blockAdd)))
 	mux.HandleFunc("DELETE /api/blocklist/{type}/{id}", s.auth(s.admin(s.blockRemove)))
 	mux.HandleFunc("GET /api/jobs", s.auth(s.admin(s.jobList)))
@@ -214,6 +255,10 @@ func (s *Server) auth(h func(http.ResponseWriter, *http.Request, *store.User)) h
 			writeErr(w, http.StatusUnauthorized, "Your session has ended. Sign in again.")
 			return
 		}
+		if u, err = viewAs(r, u); err != nil {
+			writeErr(w, http.StatusForbidden, capitalize(err.Error())+".")
+			return
+		}
 		h(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, u)), u)
 	}
 }
@@ -223,6 +268,17 @@ func (s *Server) admin(h func(http.ResponseWriter, *http.Request, *store.User)) 
 	return func(w http.ResponseWriter, r *http.Request, u *store.User) {
 		if !u.Can("admin") {
 			writeErr(w, http.StatusForbidden, "Only admins can do that.")
+			return
+		}
+		h(w, r, u)
+	}
+}
+
+// people wraps a handler for the Users page: admins and Managers (#148).
+func (s *Server) people(h func(http.ResponseWriter, *http.Request, *store.User)) func(http.ResponseWriter, *http.Request, *store.User) {
+	return func(w http.ResponseWriter, r *http.Request, u *store.User) {
+		if !u.CanManageUsers() {
+			writeErr(w, http.StatusForbidden, "Only admins and Managers can do that.")
 			return
 		}
 		h(w, r, u)
@@ -250,13 +306,16 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		"setupRequired": n == 0,
 		// After the first sign-in: the rest of setup (Plex server, libraries, Radarr/Sonarr) until finished or skipped.
 		"setupWizard": n > 0 && s.Store.Setting("setup_done", "") != "true",
-		"version":     map[string]string{"version": version.Version, "build": version.Build, "full": version.Full(), "commit": version.Commit, "channel": version.Channel},
+		"version":     map[string]string{"version": version.Version, "pre": version.Pre, "build": version.Build, "full": version.Full(), "commit": version.Commit, "channel": version.Channel},
 		"update":      s.Update.Last(),
 		"imageCache":  s.Images.Enabled(),
+		"signIn":      s.signIn(),
+		"testInstall": testinstall.On,
 	})
 }
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request, u *store.User) {
+	u.ManagesUsers = u.CanManageUsers()
 	writeJSON(w, http.StatusOK, u)
 }
 
@@ -319,7 +378,7 @@ func (s *Server) plexCheck(w http.ResponseWriter, r *http.Request) {
 	var u *store.User
 	if n == 0 {
 		// First run: the first person to sign in owns this Flixarr and becomes the admin.
-		u, err = s.Store.CreateUser(store.User{PlexID: acct.ID, Username: name, Email: acct.Email, Avatar: acct.Thumb, Role: "Admin"})
+		u, err = s.Store.CreateUser(store.User{PlexID: acct.ID, Username: name, Email: acct.Email, Avatar: acct.Thumb, Perms: store.AllPerms})
 		if err == nil {
 			err = s.Store.SetSecretSetting("plex_admin_token", pin.AuthToken)
 		}
@@ -328,6 +387,10 @@ func (s *Server) plexCheck(w http.ResponseWriter, r *http.Request) {
 		u, err = s.Store.UserByPlexID(acct.ID)
 		if errors.Is(err, store.ErrNotFound) {
 			// Someone new: let them in if the Plex server is shared with them (and that's switched on).
+			if s.signIn() == "local" {
+				writeErr(w, http.StatusForbidden, "Sign in with the username and password the admin gave you.")
+				return
+			}
 			if ok, aerr := s.Library.HasAccess(r.Context(), pin.AuthToken); s.plexSignInOpen() && aerr == nil && ok {
 				u, err = s.Store.CreateUser(store.User{PlexID: acct.ID, Username: name, Email: acct.Email, Avatar: acct.Thumb, Role: s.defaultRole()})
 				s.Log.Info("new user signed in", "user", name)
@@ -335,6 +398,9 @@ func (s *Server) plexCheck(w http.ResponseWriter, r *http.Request) {
 				writeErr(w, http.StatusForbidden, "Your Plex account doesn't have access to this Flixarr yet. Ask the admin to add you.")
 				return
 			}
+		} else if err == nil && s.signIn() == "local" && !u.Can("admin") && !u.Owner {
+			writeErr(w, http.StatusForbidden, "Sign in with the username and password the admin gave you.")
+			return
 		} else if err == nil {
 			err = s.Store.UpdatePlexProfile(u.ID, name, acct.Email, acct.Thumb)
 			u.Username, u.Email, u.Avatar = name, acct.Email, acct.Thumb
@@ -401,15 +467,16 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 // metaProxy forwards /api/meta/<path> to the Flixarr API (through the cache) with this install's region and language.
-func (s *Server) metaProxy(w http.ResponseWriter, r *http.Request, _ *store.User) {
+func (s *Server) metaProxy(w http.ResponseWriter, r *http.Request, u *store.User) {
 	q := url.Values{}
 	for _, k := range []string{"q", "page", "genre", "sort"} {
 		if v := r.URL.Query().Get(k); v != "" {
 			q.Set(k, v)
 		}
 	}
-	q.Set("region", s.Store.Setting("region", "US"))
-	q.Set("language", s.Store.Setting("language", "en-US"))
+	region, language := s.locale(r)
+	q.Set("region", region)
+	q.Set("language", language)
 	body, status, err := s.Meta.Get(r.Context(), r.PathValue("path"), q)
 	if err != nil {
 		s.Log.Warn("Flixarr API", "err", err)
@@ -424,7 +491,7 @@ func (s *Server) metaProxy(w http.ResponseWriter, r *http.Request, _ *store.User
 	// no-store: the browser must not keep its own copy, or repeat visits never reach the cache (or its counters).
 	// A cache hit here takes under a millisecond, so nothing is lost.
 	w.Header().Set("Cache-Control", "no-store")
-	w.Write(body)
+	w.Write(s.hideBlocked(body, u))
 }
 
 // spa serves the built web app: real files when they exist, otherwise the app shell (200.html).
@@ -432,6 +499,19 @@ func (s *Server) spa() http.Handler {
 	files := http.FileServer(http.FS(s.Web))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := strings.TrimPrefix(r.URL.Path, "/")
+		// The dev install and nightly builds have their own app name and icons (#135, #144), so they can't
+		// be mistaken for a stable install next to them on a home screen.
+		if b := buildBadge(); b != "" {
+			if p == "manifest.webmanifest" {
+				s.badgeManifest(w, b)
+				return
+			}
+			if badgeIcons[p] {
+				r = r.Clone(r.Context())
+				r.URL.Path = "/" + strings.TrimSuffix(p, ".png") + "-" + strings.ToLower(b) + ".png"
+				p = strings.TrimPrefix(r.URL.Path, "/")
+			}
+		}
 		if p != "" {
 			if f, err := s.Web.Open(p); err == nil {
 				st, _ := f.Stat()
@@ -456,9 +536,42 @@ func (s *Server) spa() http.Handler {
 			http.Error(w, "Web app not built.", http.StatusServiceUnavailable)
 			return
 		}
+		if b := buildBadge(); b != "" {
+			name := "Flixarr " + b
+			shell = bytes.Replace(shell, []byte("<title>Flixarr</title>"), []byte(`<meta name="apple-mobile-web-app-title" content="`+name+`" /><title>`+name+`</title>`), 1)
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		// no-transform: proxies and CDNs must not inject scripts (analytics beacons and the like) into the app.
 		w.Header().Set("Cache-Control", "no-cache, no-transform")
 		w.Write(shell)
 	})
+}
+
+// buildBadge is the word on the app icons and after the app's name: DEV on the dev install, BETA on nightly
+// builds, nothing on a stable release.
+func buildBadge() string {
+	switch {
+	case testinstall.On:
+		return "DEV"
+	case version.Pre == "nightly":
+		return "BETA"
+	}
+	return ""
+}
+
+// badgeIcons are the app icons swapped for their DEV or BETA versions (icon-192-dev.png, icon-192-beta.png).
+var badgeIcons = map[string]bool{"apple-touch-icon.png": true, "icon-192.png": true, "icon-512.png": true, "icon-maskable-512.png": true}
+
+// badgeManifest is the app manifest with the name for a dev install or nightly build.
+func (s *Server) badgeManifest(w http.ResponseWriter, badge string) {
+	b, err := fs.ReadFile(s.Web, "manifest.webmanifest")
+	var m map[string]any
+	if err != nil || json.Unmarshal(b, &m) != nil {
+		http.Error(w, "Not found.", http.StatusNotFound)
+		return
+	}
+	m["name"], m["short_name"] = "Flixarr "+badge, "Flixarr "+badge
+	w.Header().Set("Content-Type", "application/manifest+json")
+	w.Header().Set("Cache-Control", "no-cache")
+	json.NewEncoder(w).Encode(m)
 }

@@ -126,6 +126,18 @@ func (s *Store) SetSetting(key, value string) error {
 	return err
 }
 
+// Everyone's own settings, set by an admin in Settings → Users (#110).
+const (
+	KeyWatchlistOff = "users_watchlist_off" // "true": Plex Watchlist requests off for everyone
+	KeyLocaleLocked = "users_locale_locked" // "true": everyone uses the server's region and language
+)
+
+// DeleteSettingsLike removes every setting whose key starts with prefix (everyone's own choices).
+func (s *Store) DeleteSettingsLike(prefix string) error {
+	_, err := s.db.Exec(`DELETE FROM settings WHERE substr(key, 1, ?) = ?`, len(prefix), prefix)
+	return err
+}
+
 // ---------- users ----------
 
 // User is a person who can sign in.
@@ -135,14 +147,24 @@ type User struct {
 	Username string   `json:"username"`
 	Email    string   `json:"email"`
 	Avatar   string   `json:"avatar"`
-	Role     string   `json:"role"`  // Admin, Trusted, User or Custom: a label worked out from Perms
+	Role     string   `json:"role"`  // User, Trusted, Manager or Custom: worked out from Perms (admin aside)
 	Perms    []string `json:"perms"` // see perms.go
 	Owner    bool     `json:"owner"` // the first admin; can't be removed or lose admin
 	Local    bool     `json:"local"` // a username-and-password account (no Plex)
+	// ViewAs is the role a test install's admin is viewing the app as ("" = as themselves); RealAdmin says
+	// the person behind it is an admin, whatever they're viewing as.
+	ViewAs    string `json:"viewAs,omitempty"`
+	RealAdmin bool   `json:"-"`
+	// ManagesUsers is CanManageUsers, filled in for the signed-in person (/api/me).
+	ManagesUsers bool `json:"managesUsers,omitempty"`
+	// Their own region and language for titles, dates and "upcoming" ("" = the server's).
+	Region   string `json:"region"`
+	Language string `json:"language"`
 	// Request limits per 7 days (0 = unlimited; admins have none).
 	MovieLimit  int    `json:"movieLimit"`
 	SeasonLimit int    `json:"seasonLimit"`
 	CreatedAt   string `json:"createdAt"`
+	LastSeen    string `json:"lastSeen,omitempty"` // Users list and profiles only
 }
 
 // UserCount returns how many users exist (0 means first-run setup is needed).
@@ -152,18 +174,19 @@ func (s *Store) UserCount() (int, error) {
 	return n, err
 }
 
-const userCols = `id, plex_id, username, email, avatar, role, perms, created_at, id = (SELECT MIN(id) FROM users), movie_limit, season_limit`
+const userCols = `id, plex_id, username, email, avatar, role, perms, created_at, id = (SELECT MIN(id) FROM users), movie_limit, season_limit, region, language`
 
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	u := &User{}
 	var perms string
-	if err := row.Scan(&u.ID, &u.PlexID, &u.Username, &u.Email, &u.Avatar, &u.Role, &perms, &u.CreatedAt, &u.Owner, &u.MovieLimit, &u.SeasonLimit); err != nil {
+	if err := row.Scan(&u.ID, &u.PlexID, &u.Username, &u.Email, &u.Avatar, &u.Role, &perms, &u.CreatedAt, &u.Owner, &u.MovieLimit, &u.SeasonLimit, &u.Region, &u.Language); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		return nil, err
 	}
 	u.Perms = splitPerms(perms)
+	u.Role = RoleOf(u.Perms) // worked out from the switches: the stored label can be from older presets
 	u.Local = u.PlexID == 0
 	return u, nil
 }
@@ -173,10 +196,20 @@ func (s *Store) UserByPlexID(plexID int64) (*User, error) {
 	return scanUser(s.db.QueryRow(`SELECT `+userCols+` FROM users WHERE plex_id = ?`, plexID))
 }
 
+// AvatarKnown reports whether u is someone's saved avatar address.
+func (s *Store) AvatarKnown(u string) bool {
+	var n int
+	s.db.QueryRow(`SELECT COUNT(*) FROM users WHERE avatar = ?`, u).Scan(&n)
+	return n > 0
+}
+
 // CreateUser inserts a user and returns it.
 func (s *Store) CreateUser(u User) (*User, error) {
 	if u.Perms == nil {
 		u.Perms = RolePerms[u.Role]
+		if u.Role == "Admin" {
+			u.Perms = AllPerms // shorthand: an admin can do everything
+		}
 	}
 	u.Perms = cleanPerms(u.Perms)
 	res, err := s.db.Exec(`INSERT INTO users (plex_id, username, email, avatar, role, perms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -236,6 +269,12 @@ func (s *Store) SetPassword(id int64, hash string) error {
 	return err
 }
 
+// SetUserLocale saves a person's own region and language ("" = the server's).
+func (s *Store) SetUserLocale(id int64, region, language string) error {
+	_, err := s.db.Exec(`UPDATE users SET region = ?, language = ? WHERE id = ?`, region, language, id)
+	return err
+}
+
 // UpdatePlexProfile refreshes the name, email and avatar from plex.tv on each sign-in.
 func (s *Store) UpdatePlexProfile(id int64, username, email, avatar string) error {
 	_, err := s.db.Exec(`UPDATE users SET username = ?, email = ?, avatar = ? WHERE id = ?`, username, email, avatar, id)
@@ -263,9 +302,21 @@ func (s *Store) CreateSession(userID int64) (string, error) {
 
 // SessionUser returns the user for a session token, if the session is still valid.
 func (s *Store) SessionUser(token string) (*User, error) {
-	row := s.db.QueryRow(`SELECT u.id, u.plex_id, u.username, u.email, u.avatar, u.role, u.perms, u.created_at, u.id = (SELECT MIN(id) FROM users), u.movie_limit, u.season_limit
+	row := s.db.QueryRow(`SELECT u.id, u.plex_id, u.username, u.email, u.avatar, u.role, u.perms, u.created_at, u.id = (SELECT MIN(id) FROM users), u.movie_limit, u.season_limit, u.region, u.language
 		FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ?`, hashToken(token), now())
-	return scanUser(row)
+	u, err := scanUser(row)
+	if err == nil {
+		t := time.Now().UTC()
+		s.db.Exec(`UPDATE users SET last_seen = ? WHERE id = ? AND last_seen < ?`, t.Format(time.RFC3339), u.ID, t.Add(-5*time.Minute).Format(time.RFC3339))
+	}
+	return u, err
+}
+
+// LastSeen is when someone last used Flixarr ("" = never since it was tracked).
+func (s *Store) LastSeen(id int64) string {
+	var t string
+	s.db.QueryRow(`SELECT last_seen FROM users WHERE id = ?`, id).Scan(&t)
+	return t
 }
 
 // DeleteSession signs a session out.

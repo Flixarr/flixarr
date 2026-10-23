@@ -29,6 +29,10 @@ type Snapshot struct {
 
 // QueueRow is one download.
 type QueueRow struct {
+	ID       int    `json:"id"`     // the queue item in Radarr/Sonarr (for Fix)
+	Type     string `json:"type"`   // movie | series
+	TmdbID   int    `json:"tmdbId"` // the title, for a link to it
+	ArrID    int    `json:"arrId"`  // the movie/series in Radarr/Sonarr
 	Title    string `json:"title"`
 	Quality  string `json:"quality"`
 	Size     int64  `json:"size"`
@@ -36,9 +40,14 @@ type QueueRow struct {
 	TimeLeft string `json:"timeLeft"` // e.g. "4 min"; empty when not downloading
 	State    string `json:"state"`    // downloading, queued, paused, importing, warning, error
 	Message  string `json:"message,omitempty"`
+	// RequestID is the Flixarr request a stuck download belongs to (filled in for Settings, Services).
+	RequestID int64 `json:"requestId,omitempty"`
 }
 
 type queueRecord struct {
+	ID                    int     `json:"id"`
+	MovieID               int     `json:"movieId"`
+	SeriesID              int     `json:"seriesId"`
 	Title                 string  `json:"title"`
 	Size                  float64 `json:"size"`
 	SizeLeft              float64 `json:"sizeleft"`
@@ -56,11 +65,13 @@ type queueRecord struct {
 		} `json:"quality"`
 	} `json:"quality"`
 	Movie *struct {
-		Title string `json:"title"`
-		Year  int    `json:"year"`
+		Title  string `json:"title"`
+		Year   int    `json:"year"`
+		TmdbID int    `json:"tmdbId"`
 	} `json:"movie"`
 	Series *struct {
-		Title string `json:"title"`
+		Title  string `json:"title"`
+		TmdbID int    `json:"tmdbId"`
 	} `json:"series"`
 	Episode *struct {
 		SeasonNumber  int `json:"seasonNumber"`
@@ -202,7 +213,18 @@ func within(path, root string) bool {
 }
 
 func row(r queueRecord) QueueRow {
-	q := QueueRow{Title: r.Title, Quality: r.Quality.Quality.Name, Size: int64(r.Size)}
+	q := QueueRow{ID: r.ID, Title: r.Title, Quality: r.Quality.Quality.Name, Size: int64(r.Size)}
+	if r.MovieID > 0 {
+		q.Type, q.ArrID = "movie", r.MovieID
+		if r.Movie != nil {
+			q.TmdbID = r.Movie.TmdbID
+		}
+	} else if r.SeriesID > 0 {
+		q.Type, q.ArrID = "series", r.SeriesID
+		if r.Series != nil {
+			q.TmdbID = r.Series.TmdbID
+		}
+	}
 	switch {
 	case r.Movie != nil && r.Movie.Title != "":
 		q.Title = r.Movie.Title
