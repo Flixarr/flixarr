@@ -15,6 +15,7 @@
 	import Chips from '#lib/components/Chips.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import Img from '#lib/components/Img.svelte';
+	import { releaseKeyboard } from '#lib/keyboard.ts';
 
 	// From the address bar: on Back, page.url can still describe the page we're leaving while this one is built.
 	let q = $state(new URLSearchParams(location.search).get('q') ?? '');
@@ -37,6 +38,7 @@
 		if (!input || focused) return;
 		focused = true;
 		if (!cameBack()) input.focus();
+		releaseKeyboard(); // the stand-in from the Search tap hands the keyboard over (#162)
 	});
 	$effect(() => {
 		const f = () => input?.focus();

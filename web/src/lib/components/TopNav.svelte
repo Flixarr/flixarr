@@ -9,6 +9,7 @@
 	import { ago, api, img } from '#lib/api.ts';
 	import { attention, watchAttention } from '#lib/attention.svelte.ts';
 	import { roleLabel } from '#lib/roles.ts';
+	import { primeKeyboard } from '#lib/keyboard.ts';
 
 	let { transparent = false }: { transparent?: boolean } = $props();
 	let scrolled = $state(false);
@@ -69,7 +70,7 @@
 
 	// Already on the search page: just put the cursor back in its box.
 	function focusIfHere(e: MouseEvent) {
-		if (page.url.pathname !== '/search') return;
+		if (page.url.pathname !== '/search') return primeKeyboard(); // iPhone keyboard (#162)
 		e.preventDefault();
 		dispatchEvent(new CustomEvent('flixarr:focus-search'));
 	}
