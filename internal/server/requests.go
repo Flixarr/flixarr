@@ -91,8 +91,6 @@ type brief struct {
 	Progress int    `json:"progress"`
 	Plex     string `json:"plex,omitempty"` // opens it in Plex
 	Blocked  bool   `json:"blocked,omitempty"`
-	// Not out yet: when it comes out, "kind:date" (#151).
-	Release string `json:"release,omitempty"`
 	// Series in Plex: episodes it has of those aired so far (#137), when known.
 	Episodes *[2]int `json:"episodes,omitempty"`
 	// Series: what open requests already ask for, so the page can offer the rest.
@@ -114,7 +112,7 @@ func (s *Server) briefs(keys []string) (map[string]brief, error) {
 	cov, _ := s.Store.SeriesCoverageFor(series) // one query for the whole page
 	out := map[string]brief{}
 	for k, v := range got {
-		b := brief{ID: v.ID, Status: v.Status, Progress: v.Progress, Release: v.Release}
+		b := brief{ID: v.ID, Status: v.Status, Progress: v.Progress}
 		if c, ok := cov[v.TmdbID]; ok && v.Type == "series" {
 			b.Asked = &c
 		}

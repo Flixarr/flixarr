@@ -833,38 +833,3 @@ func TestSeriesLookupIgnoresOtherShows(t *testing.T) {
 		t.Fatalf("matched another show: %v %v", got, err)
 	}
 }
-
-// Not out yet (#151): the digital date when there is one, else disc, else theaters, else none; nothing
-// once Radarr counts the movie as available. A download in the queue always wins.
-func TestNotOut(t *testing.T) {
-	now := time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)
-	for _, c := range []struct {
-		m    map[string]any
-		want string
-	}{
-		{map[string]any{"isAvailable": true, "digitalRelease": "2026-11-12T00:00:00Z"}, ""},
-		{map[string]any{"isAvailable": false, "digitalRelease": "2026-11-12T00:00:00Z", "inCinemas": "2026-10-03T00:00:00Z"}, "digital:2026-11-12"},
-		{map[string]any{"isAvailable": false, "physicalRelease": "2026-12-01T00:00:00Z", "inCinemas": "2026-10-03T00:00:00Z"}, "disc:2026-12-01"},
-		{map[string]any{"isAvailable": false, "digitalRelease": "2026-10-01T00:00:00Z", "inCinemas": "2026-09-01T00:00:00Z"}, "theaters:2026-09-01"},
-		{map[string]any{"isAvailable": false, "inCinemas": "2026-12-19T00:00:00Z"}, "theaters:2026-12-19"},
-		{map[string]any{"isAvailable": false}, "none:"},
-	} {
-		if got := movieRelease(c.m, now); got != c.want {
-			t.Errorf("%v: got %q, want %q", c.m, got, c.want)
-		}
-	}
-	r := store.Request{Status: "sent"}
-	notOut(&r, "digital:2026-11-12")
-	if r.Status != "notout" || r.Release != "digital:2026-11-12" {
-		t.Fatalf("not out: %+v", r)
-	}
-	notOut(&r, "")
-	if r.Status != "sent" || r.Release != "" {
-		t.Fatalf("out now: %+v", r)
-	}
-	r = store.Request{Status: "downloading"}
-	notOut(&r, "digital:2026-11-12")
-	if r.Status != "downloading" {
-		t.Fatalf("a download lost to a release date: %+v", r)
-	}
-}

@@ -1,3 +1,3 @@
--- Not out yet (#151): when an unreleased request comes out, as "kind:date" (digital:2026-11-12,
--- theaters:2026-10-03, disc:…, air:2027-01-08, or "none:" with no date yet).
+-- Added for a Not out yet status that was taken back out; 0030 drops the column again. Kept so every
+-- install goes through the same steps.
 ALTER TABLE requests ADD COLUMN release TEXT NOT NULL DEFAULT '';

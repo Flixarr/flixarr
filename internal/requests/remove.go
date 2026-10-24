@@ -73,7 +73,7 @@ func (s *Service) RemoveFromArr(ctx context.Context, typ string, tmdbID int) (fo
 	reqs, _ := s.Store.RequestsForTitle(typ, tmdbID)
 	for _, r := range reqs {
 		switch r.Status {
-		case "sent", "notout", "grabbed", "downloading", "importing", "available":
+		case "sent", "grabbed", "downloading", "importing", "available":
 			r.Status, r.Progress = "removed", 0
 			r.Error = fmt.Sprintf("Removed from %s.", ArrName(typ))
 			s.Store.UpdateRequest(r)

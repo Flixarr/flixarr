@@ -8,16 +8,8 @@
 	import Select from './Select.svelte';
 	import Img from './Img.svelte';
 	import EpisodePicker from './EpisodePicker.svelte';
-	import { upcomingText } from '#lib/requeststatus.ts';
 
 	let { open = $bindable(false), item, asked, onrequested }: { open?: boolean; item: Movie | Series; asked?: { whole: boolean; seasons: number[] }; onrequested?: (r: Request) => void } = $props();
-	// Not out yet (#151): say when it comes out before anyone asks, so nobody wonders why it isn't downloading.
-	const upcoming = $derived.by(() => {
-		if (item.type === 'movie') return upcomingText((item as Movie).dates);
-		const first = (item as Series).first;
-		const today = new Date().toISOString().slice(0, 10);
-		return first && first > today ? `Starts ${new Date(first + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}. Episodes download as they air.` : '';
-	});
 
 	type Options = { connected: boolean; server: string; approval: boolean; usage: { limit: number; used: number }; defaultProfileId?: number; defaultProfileName?: string; profiles: { id: number; name: string }[];
 		tvModes: { whole: boolean; seasons: boolean; episodes: boolean; default: Mode } };
@@ -109,7 +101,6 @@
 		{:else if !opts.connected}
 			<p class="rounded-lg bg-yellow-500/10 px-3 py-2 text-sm text-yellow-300 ring-1 ring-yellow-500/30">{item.type === 'series' ? 'Series' : 'Movie'} requests aren't set up yet (Settings, Services).</p>
 		{:else}
-			{#if upcoming}<p class="rounded-lg bg-sky-500/10 px-3 py-2 text-sm text-sky-200 ring-1 ring-sky-500/30">{upcoming}</p>{/if}
 			<p class="text-xs text-gray-400">{opts.approval ? 'An admin approves it first.' : 'It starts right away.'}{#if opts.usage?.limit}{@const left = Math.max(0, opts.usage.limit - opts.usage.used)} You have {left} {series ? 'season' : 'movie'}{left === 1 ? '' : 's'} left this week (of {opts.usage.limit}).{/if}</p>
 			{#if opts.profiles.length}
 				<div>
