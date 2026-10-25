@@ -56,6 +56,14 @@ type Live struct {
 	Link      string        `json:"link,omitempty"` // opens it in Radarr / Sonarr (admins only)
 	Server    string        `json:"server"`
 	Error     string        `json:"error,omitempty"` // couldn't ask Radarr / Sonarr
+	// PlexMatch: Plex holds the file but matched it to another movie (#171).
+	PlexMatch *PlexMatch `json:"plexMatch,omitempty"`
+}
+
+// PlexMatch is the movie Plex wrongly matched a file to.
+type PlexMatch struct {
+	Title string `json:"title"`
+	Year  int    `json:"year,omitempty"`
 }
 
 // Detail is a request's details window.
@@ -135,6 +143,11 @@ func (s *Service) LiveFor(ctx context.Context, typ string, tmdbID, arrID int, se
 					l.File.Release, _ = f["sceneName"].(string)
 				}
 				l.File.Path, _ = m["path"].(string)
+			}
+			if file, _ := f["path"].(string); file != "" {
+				if it, ok := s.wrongMatch(file, tmdbID); ok {
+					l.PlexMatch = &PlexMatch{Title: it.Title, Year: it.Year}
+				}
 			}
 		}
 		if admin {
@@ -317,6 +330,13 @@ func hintFor(r store.Request, l Live) string {
 	}
 	if l.Error != "" {
 		return "Can't check on it right now. It updates on its own."
+	}
+	if m := l.PlexMatch; m != nil {
+		name := m.Title
+		if m.Year > 0 {
+			name += fmt.Sprintf(" (%d)", m.Year)
+		}
+		return "Plex matched the file to the wrong movie: " + name + "."
 	}
 	for _, d := range l.Queue {
 		if d.Problem != "" {

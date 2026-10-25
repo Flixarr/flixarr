@@ -20,7 +20,7 @@
 	import FixEpisodesModal from './FixEpisodesModal.svelte';
 
 	type Download = { queueId?: number; season?: number; episode?: number; percent: number; timeLeft?: string; state: string; size: number; release?: string; problem?: string; detail?: string };
-	type Live = { inArr: boolean; monitored: boolean; hasFile: boolean; file?: { quality?: string; size: number; release?: string; path?: string }; queue: Download[]; seasons?: { number: number; have: number; total: number; inPlex: number }[]; link?: string; server: string; error?: string };
+	type Live = { inArr: boolean; monitored: boolean; hasFile: boolean; file?: { quality?: string; size: number; release?: string; path?: string }; queue: Download[]; seasons?: { number: number; have: number; total: number; inPlex: number }[]; link?: string; server: string; error?: string; plexMatch?: { title: string; year?: number } };
 	type Detail = { request: Request; events: { status: string; note: string; at: string }[]; live: Live; hint?: string };
 	type Title = { genres?: string[]; runtime?: number; cert?: string };
 
@@ -85,10 +85,13 @@
 	const person = (name: string, avatar = '') => ({ username: name || '?', avatar }) as User;
 	const facts = $derived(r ? [r.year, series ? 'Series' : 'Movie', ...(title?.genres?.slice(0, 2) ?? []), !series && title?.runtime ? `${Math.floor(title.runtime / 60) ? Math.floor(title.runtime / 60) + 'h ' : ''}${title.runtime % 60}m` : ''].filter(Boolean) : []);
 
-	async function act(what: 'approve' | 'decline' | 'retry' | 'fix', body: object = {}) {
+	async function act(what: 'approve' | 'decline' | 'retry' | 'fix' | 'plexmatch', body: object = {}) {
 		busy = what;
 		try {
-			if (what === 'fix') {
+			if (what === 'plexmatch') {
+				await api(`/requests/${id}/plexmatch`, { method: 'POST' });
+				notify('Fixed the match in Plex. It shows as available in a moment.');
+			} else if (what === 'fix') {
 				const x = await api<{ request: Request; done: string }>(`/requests/${id}/fix`, { method: 'POST' });
 				notify(x.done || 'Asked for a search.');
 				onchanged?.(x.request);
@@ -249,6 +252,7 @@
 			{:else if r.status === 'failed'}
 				<button class="btn px-4 py-1.5 text-xs" disabled={!!busy} onclick={() => act('retry')}>{busy === 'retry' ? 'Trying…' : 'Try again'}</button>
 			{:else if fixable && d}
+				{#if d.live.plexMatch}<button class="btn px-4 py-1.5 text-xs" disabled={!!busy} onclick={() => act('plexmatch')}>{busy === 'plexmatch' ? 'Fixing…' : 'Fix match'}</button>{/if}
 				<FixMenu title={r.title} {series} live={d.live} search={() => act('fix')} redownload={() => (redoOpen = true)} ondone={load} />
 			{/if}
 		{:else if r && r.status === 'pending' && r.userId === session.me?.id}

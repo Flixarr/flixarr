@@ -61,6 +61,9 @@ type Library struct {
 	// relisten drops the live connection so it comes back on a new address.
 	relisten   context.CancelFunc
 	relistenMu sync.Mutex
+	// files: which Plex movie holds each file, from the last full scan (#171).
+	files   map[string]FileItem
+	filesMu sync.Mutex
 }
 
 func (l *Library) client() *http.Client {
@@ -460,7 +463,15 @@ type metadata struct {
 	AddedAt   int64  `json:"addedAt"`
 	DeletedAt int64  `json:"deletedAt"` // in Plex's trash: its files are gone, so it isn't playable
 	PlexGUID  string `json:"guid"`      // Plex's own ID; declared so it isn't mistaken for Guid below (json matches names case-insensitively)
-	Guid      []struct {
+	Year      int    `json:"year"`
+	// LibrarySectionID: which library it's in (only on single items).
+	LibrarySectionID int `json:"librarySectionID"`
+	Media            []struct {
+		Part []struct {
+			File string `json:"file"`
+		} `json:"Part"`
+	} `json:"Media"`
+	Guid []struct {
 		ID string `json:"id"`
 	} `json:"Guid"`
 }
@@ -498,6 +509,7 @@ func (l *Library) FullScan(ctx context.Context) (string, error) {
 	}
 	started := stamp()
 	total := 0
+	files := map[string]FileItem{}
 	for _, sec := range secs {
 		if !sec.Enabled {
 			continue
@@ -514,6 +526,13 @@ func (l *Library) FullScan(ctx context.Context) (string, error) {
 				return "", fmt.Errorf("%s: %w", sec.Title, err)
 			}
 			for _, m := range res.MediaContainer.Metadata {
+				if sec.Type == "movie" && m.DeletedAt == 0 {
+					for _, md := range m.Media {
+						for _, p := range md.Part {
+							files[fileKey(p.File)] = FileItem{RatingKey: m.RatingKey, Title: m.Title, Year: m.Year, TmdbID: m.tmdb()}
+						}
+					}
+				}
 				if id := m.tmdb(); id > 0 && m.DeletedAt == 0 {
 					l.Store.SavePlexItem(store.PlexItem{Type: kindOf(sec.Type), TmdbID: id, RatingKey: m.RatingKey, Section: sec.Key, Title: m.Title, AddedAt: m.AddedAt, SeenAt: started})
 					total++
@@ -524,6 +543,7 @@ func (l *Library) FullScan(ctx context.Context) (string, error) {
 			}
 		}
 	}
+	l.rememberFiles(files)
 	// Anything not seen in this scan was removed from Plex, is in its trash, or its library was switched off.
 	removed, err := l.Store.PrunePlexItems(started)
 	if err != nil {

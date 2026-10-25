@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Flixarr/flixarr/internal/arr"
+	"github.com/Flixarr/flixarr/internal/plexlib"
 	"github.com/Flixarr/flixarr/internal/store"
 )
 
@@ -551,7 +552,9 @@ type Plex interface {
 	Seasons(ctx context.Context, tmdbID int) (map[int]int, error)
 	Rescan(ctx context.Context, typ string) error // ask Plex to scan its movie or TV libraries
 	RecentScan(ctx context.Context) (string, error)
-	Live() bool // Plex's own "added to the library" messages are coming in (no need to keep reading)
+	Live() bool                                                       // Plex's own "added to the library" messages are coming in (no need to keep reading)
+	FileItem(file string) (plexlib.FileItem, bool)                    // the Plex movie that holds a file (#171)
+	FixMatch(ctx context.Context, ratingKey string, tmdbID int) error // tell Plex which movie an item really is
 }
 
 // Refresh moves active requests along: grabbed → downloading (with progress) → importing → available.

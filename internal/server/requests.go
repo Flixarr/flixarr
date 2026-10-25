@@ -233,6 +233,21 @@ func (s *Server) requestFix(w http.ResponseWriter, r *http.Request, u *store.Use
 	writeJSON(w, http.StatusOK, map[string]any{"request": fixed, "done": done})
 }
 
+// requestPlexMatch fixes a movie Plex matched to the wrong title (#171).
+func (s *Server) requestPlexMatch(w http.ResponseWriter, r *http.Request, u *store.User) {
+	req, ok := s.requestByID(w, r)
+	if !ok {
+		return
+	}
+	if err := s.Requests.FixMatch(r.Context(), req); err != nil {
+		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
+		return
+	}
+	s.Store.AddTitleEvent(req.Type, req.TmdbID, "fix", "Fixed the match in Plex", u.ID, "")
+	s.Store.AddFixSteps(req.Type, req.TmdbID, req.ID, "Fixed the match in Plex", u.ID)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 // redownload replaces a bad file (needs the Redownload permission): {type, tmdbId, seasons}.
 func (s *Server) redownload(w http.ResponseWriter, r *http.Request, u *store.User) {
 	var in struct {
