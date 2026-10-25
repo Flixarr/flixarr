@@ -56,6 +56,10 @@ export const EVENT_TEXT: Record<string, string> = {
 	failed: 'Failed', expired: 'Removed from Plex', removed: 'Removed', pending: 'Waiting for approval'
 };
 
+// The warning on a request for something that isn't out yet (#151).
+export const NOT_RELEASED = "Not released yet. It won't download until it's out.";
+export const waitingRelease = (r: { status: string; unreleased?: boolean }) => !!r.unreleased && (r.status === 'sent' || r.status === 'approved');
+
 // What a request asked for: "Whole show", "Season 2", "Seasons 1, 3", "4 episodes" ('' for movies).
 export const askedFor = (r: Pick<Request, 'type' | 'mode' | 'seasons' | 'episodes'>) =>
 	r.type !== 'series' ? '' : r.mode === 'all' ? 'Whole show' : r.mode === 'episodes' ? `${r.episodes.length} episodes` : r.seasons.length === 1 ? `Season ${r.seasons[0]}` : `Seasons ${r.seasons.join(', ')}`;

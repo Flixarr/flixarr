@@ -297,6 +297,9 @@ func statusMessages(it map[string]any) string {
 	return strings.Join(parts, " ")
 }
 
+// NotReleased is the warning on a request for something that isn't out yet (#151).
+const NotReleased = "Not released yet. It won't download until it's out."
+
 // hintFor says what's going on with a request, in plain words (the same for everyone).
 func hintFor(r store.Request, l Live) string {
 	switch r.Status {
@@ -323,6 +326,8 @@ func hintFor(r store.Request, l Live) string {
 	switch {
 	case !l.InArr || !l.Monitored && len(l.Queue) == 0 && (r.Status == "sent" || r.Status == "approved"):
 		return "Something went wrong with this request. Someone who manages requests can sort it out."
+	case len(l.Queue) == 0 && r.Unreleased && (r.Status == "sent" || r.Status == "approved"):
+		return NotReleased
 	case len(l.Queue) == 0 && (r.Status == "sent" || r.Status == "approved"):
 		return "Still looking for a download. It starts as soon as one turns up."
 	case r.Status == "grabbed":

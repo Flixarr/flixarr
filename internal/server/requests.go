@@ -86,11 +86,12 @@ func (s *Server) requestStatus(w http.ResponseWriter, r *http.Request, _ *store.
 
 // brief is where a title stands, for buttons and poster dots.
 type brief struct {
-	ID       int64  `json:"id"`
-	Status   string `json:"status"`
-	Progress int    `json:"progress"`
-	Plex     string `json:"plex,omitempty"` // opens it in Plex
-	Blocked  bool   `json:"blocked,omitempty"`
+	ID         int64  `json:"id"`
+	Status     string `json:"status"`
+	Progress   int    `json:"progress"`
+	Plex       string `json:"plex,omitempty"` // opens it in Plex
+	Blocked    bool   `json:"blocked,omitempty"`
+	Unreleased bool   `json:"unreleased,omitempty"` // not out yet, so it can't download (#151)
 	// Series in Plex: episodes it has of those aired so far (#137), when known.
 	Episodes *[2]int `json:"episodes,omitempty"`
 	// Series: what open requests already ask for, so the page can offer the rest.
@@ -112,7 +113,7 @@ func (s *Server) briefs(keys []string) (map[string]brief, error) {
 	cov, _ := s.Store.SeriesCoverageFor(series) // one query for the whole page
 	out := map[string]brief{}
 	for k, v := range got {
-		b := brief{ID: v.ID, Status: v.Status, Progress: v.Progress}
+		b := brief{ID: v.ID, Status: v.Status, Progress: v.Progress, Unreleased: v.Unreleased}
 		if c, ok := cov[v.TmdbID]; ok && v.Type == "series" {
 			b.Asked = &c
 		}

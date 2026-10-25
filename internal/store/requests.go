@@ -34,20 +34,21 @@ type Request struct {
 	SeasonCount int      `json:"seasonCount"` // seasons asked for (series), for request limits
 	CreatedAt   string   `json:"createdAt"`
 	UpdatedAt   string   `json:"updatedAt"`
-	Source      string   `json:"source"`            // "" (someone asked) or "redownload"
-	Detail      string   `json:"detail,omitempty"`  // the stored reason as Radarr / Sonarr gave it (people who manage requests); not a column
-	Trouble     bool     `json:"trouble,omitempty"` // its download is stuck in Radarr / Sonarr right now (#129); not a column
+	Source      string   `json:"source"`               // "" (someone asked) or "redownload"
+	Detail      string   `json:"detail,omitempty"`     // the stored reason as Radarr / Sonarr gave it (people who manage requests); not a column
+	Trouble     bool     `json:"trouble,omitempty"`    // its download is stuck in Radarr / Sonarr right now (#129); not a column
+	Unreleased  bool     `json:"unreleased,omitempty"` // what was asked for isn't out yet, so it can't download (#151)
 }
 
 // OpenStatuses are the statuses of a request still in play (one per title at a time).
 var OpenStatuses = []string{"pending", "approved", "sent", "grabbed", "downloading", "importing", "available"}
 
-const requestCols = `r.id, r.type, r.tmdb_id, r.title, r.year, r.poster, r.backdrop, r.user_id, COALESCE(u.username, ''), r.status, COALESCE(r.server_id, 0), r.arr_id, r.profile_id, r.profile_name, r.mode, r.seasons, r.progress, r.error, r.anime, r.created_at, r.updated_at, r.episodes, r.source, COALESCE(u.avatar, '')`
+const requestCols = `r.id, r.type, r.tmdb_id, r.title, r.year, r.poster, r.backdrop, r.user_id, COALESCE(u.username, ''), r.status, COALESCE(r.server_id, 0), r.arr_id, r.profile_id, r.profile_name, r.mode, r.seasons, r.progress, r.error, r.anime, r.created_at, r.updated_at, r.episodes, r.source, COALESCE(u.avatar, ''), r.unreleased`
 
 func scanRequest(row interface{ Scan(...any) error }) (Request, error) {
 	var r Request
 	var seasons, episodes string
-	err := row.Scan(&r.ID, &r.Type, &r.TmdbID, &r.Title, &r.Year, &r.Poster, &r.Backdrop, &r.UserID, &r.UserName, &r.Status, &r.ServerID, &r.ArrID, &r.ProfileID, &r.ProfileName, &r.Mode, &seasons, &r.Progress, &r.Error, &r.Anime, &r.CreatedAt, &r.UpdatedAt, &episodes, &r.Source, &r.UserAvatar)
+	err := row.Scan(&r.ID, &r.Type, &r.TmdbID, &r.Title, &r.Year, &r.Poster, &r.Backdrop, &r.UserID, &r.UserName, &r.Status, &r.ServerID, &r.ArrID, &r.ProfileID, &r.ProfileName, &r.Mode, &seasons, &r.Progress, &r.Error, &r.Anime, &r.CreatedAt, &r.UpdatedAt, &episodes, &r.Source, &r.UserAvatar, &r.Unreleased)
 	if err == nil {
 		r.Seasons, r.Episodes = []int{}, [][2]int{}
 		json.Unmarshal([]byte(seasons), &r.Seasons)
@@ -273,8 +274,8 @@ func (s *Store) UpdateRequest(r Request) error {
 	var was string
 	s.db.QueryRow(`SELECT status FROM requests WHERE id = ?`, r.ID).Scan(&was)
 	t := now()
-	_, err := s.db.Exec(`UPDATE requests SET status = ?, server_id = ?, arr_id = ?, profile_id = ?, profile_name = ?, progress = ?, error = ?, updated_at = ? WHERE id = ?`,
-		r.Status, server, r.ArrID, r.ProfileID, r.ProfileName, r.Progress, r.Error, t, r.ID)
+	_, err := s.db.Exec(`UPDATE requests SET status = ?, server_id = ?, arr_id = ?, profile_id = ?, profile_name = ?, progress = ?, error = ?, unreleased = ?, updated_at = ? WHERE id = ?`,
+		r.Status, server, r.ArrID, r.ProfileID, r.ProfileName, r.Progress, r.Error, r.Unreleased, t, r.ID)
 	if err == nil && was != "" && was != r.Status {
 		s.addEvent(r.ID, r.Status, r.Error, t)
 	}

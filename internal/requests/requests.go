@@ -640,7 +640,7 @@ func (s *Service) refresh(ctx context.Context, reqs []store.Request) error {
 		if r.Status != before.Status {
 			s.Alert(r)
 		}
-		if r.Status != before.Status || r.Progress != before.Progress {
+		if r.Status != before.Status || r.Progress != before.Progress || r.Unreleased != before.Unreleased {
 			s.Store.UpdateRequest(r)
 			s.Publish(r)
 		}
@@ -806,6 +806,8 @@ func (s *Service) follow(ctx context.Context, v store.Server, r *store.Request) 
 			s.filesDone(ctx, r, nil)
 			return nil
 		}
+		out, _ := m["isAvailable"].(bool)
+		r.Unreleased = !out
 		return s.queueProgress(ctx, c, fmt.Sprintf("queue/details?movieId=%d", r.ArrID), r, nil, 0, 0)
 	}
 	if r.Mode == "episodes" {
@@ -876,6 +878,7 @@ func (s *Service) follow(ctx context.Context, v store.Server, r *store.Request) 
 	if r.Mode == "seasons" {
 		only = want
 	}
+	r.Unreleased = wanted == 0 // nothing asked for has aired yet
 	return s.queueProgress(ctx, c, fmt.Sprintf("queue/details?seriesId=%d", r.ArrID), r, only, sum(have), wanted)
 }
 

@@ -8,7 +8,7 @@
 	import { can } from '#lib/session.svelte.ts';
 	import { page } from '$app/state';
 	import { remember } from '#lib/availability.svelte.ts';
-	import { simple } from '#lib/requeststatus.ts';
+	import { simple, waitingRelease } from '#lib/requeststatus.ts';
 	import { on } from '#lib/live.svelte.ts';
 	import RequestModal from './RequestModal.svelte';
 
@@ -59,7 +59,7 @@
 	{@const st = simple(r.status, r.progress)}
 	{#if st}
 		<a href="/requests" class="act inline-flex items-center rounded-lg font-medium ring-1 {st.tone}">
-			{#if r.status === 'available'}<Icon name="check" class="size-4" />{/if}{st.label}
+			{#if r.status === 'available'}<Icon name="check" class="size-4" />{/if}{st.label}{#if waitingRelease(r)} · not released yet{/if}
 		</a>
 	{/if}
 {/snippet}

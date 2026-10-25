@@ -138,5 +138,6 @@ export interface Request {
 	serverId: number; arrId: number; profileId: number; profileName: string; mode: 'all' | 'seasons' | 'episodes'; seasons: number[]; episodes: [number, number][]; progress: number; error: string; anime: boolean; source?: string; detail?: string; userAvatar?: string;
 	createdAt: string; updatedAt: string;
 	trouble?: boolean; // its download is stuck in Radarr / Sonarr right now
+	unreleased?: boolean; // not out yet, so it can't download
 }
-export type RequestBrief = { id: number; status: Request['status'] | 'blocked'; progress: number; plex?: string; blocked?: boolean; episodes?: [number, number]; asked?: { whole: boolean; seasons: number[] } };
+export type RequestBrief = { id: number; status: Request['status'] | 'blocked'; progress: number; plex?: string; blocked?: boolean; episodes?: [number, number]; unreleased?: boolean; asked?: { whole: boolean; seasons: number[] } };

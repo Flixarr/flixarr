@@ -12,7 +12,7 @@
 	import PlexMark from '#lib/components/PlexMark.svelte';
 	import RequestDetail from '#lib/components/RequestDetail.svelte';
 	import { statusOf } from '#lib/availability.svelte.ts';
-	import { simple, askedFor } from '#lib/requeststatus.ts';
+	import { simple, askedFor, NOT_RELEASED, waitingRelease } from '#lib/requeststatus.ts';
 	import { on } from '#lib/live.svelte.ts';
 	import { page } from '$app/state';
 	import { infinite } from '#lib/infinite.ts';
@@ -172,6 +172,7 @@
 								<span>{ago(r.createdAt)}</span>
 							</div>
 							{#if st && st.step >= 0 && r.status !== 'available'}<StepBar status={r.status} progress={r.progress} class="mt-1.5 max-w-xs" />{/if}
+							{#if waitingRelease(r)}<p class="mt-1 text-xs text-yellow-200">{NOT_RELEASED}</p>{/if}
 							{#if r.trouble && r.status !== 'failed'}<p class="mt-1 text-xs text-yellow-200">{admin ? 'The download is stuck. Open it to fix it.' : 'The download hit a problem. Someone who manages requests can sort it out.'}</p>{/if}
 							{#if r.error && (r.status === 'failed' || r.status === 'declined' || r.status === 'removed')}<p class="mt-1 line-clamp-2 text-xs {r.status === 'failed' ? 'text-red-300' : 'text-gray-400'}">{r.status === 'declined' ? 'Reason: ' : ''}{r.error}</p>{/if}
 							{#if (r.status === 'available' && statusOf(`${r.type}:${r.tmdbId}`)?.plex) || (admin && r.status === 'pending')}
