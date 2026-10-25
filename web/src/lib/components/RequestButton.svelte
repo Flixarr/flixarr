@@ -11,6 +11,7 @@
 	import { simple, waitingRelease } from '#lib/requeststatus.ts';
 	import { on } from '#lib/live.svelte.ts';
 	import RequestModal from './RequestModal.svelte';
+	import RequestDetail from './RequestDetail.svelte';
 
 	// req: undefined while loading, null when never requested and not in Plex. Bindable so the page can show "In your library".
 	let { item, req = $bindable() }: { item: Movie | Series; req?: RequestBrief | null } = $props();
@@ -23,6 +24,7 @@
 		}
 	});
 	let open = $state(false);
+	let detailOpen = $state(false); // the request's own window, opened from the status button
 	const key = $derived(`${item.type}:${item.id}`);
 
 	$effect(() => {
@@ -58,9 +60,9 @@
 {#snippet pill(r: RequestBrief)}
 	{@const st = simple(r.status, r.progress)}
 	{#if st}
-		<a href="/requests" class="act inline-flex items-center rounded-lg font-medium ring-1 {st.tone}">
+		<button class="act inline-flex items-center rounded-lg font-medium ring-1 {st.tone}" onclick={() => (detailOpen = true)}>
 			{#if r.status === 'available'}<Icon name="check" class="size-4" />{/if}{st.label}{#if waitingRelease(r)} · not released yet{/if}
-		</a>
+		</button>
 	{/if}
 {/snippet}
 
@@ -91,3 +93,4 @@
 	req = { id: r.id, status: r.status, progress: r.progress, plex: req?.plex, asked: item.type === 'series' ? { whole: r.mode === 'all' || !!req?.asked?.whole, seasons } : undefined };
 	remember(key, req);
 }} />
+{#if req?.id}<RequestDetail bind:open={detailOpen} id={req.id} />{/if}
