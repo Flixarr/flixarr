@@ -331,12 +331,8 @@ func hintFor(r store.Request, l Live) string {
 	if l.Error != "" {
 		return "Can't check on it right now. It updates on its own."
 	}
-	if m := l.PlexMatch; m != nil {
-		name := m.Title
-		if m.Year > 0 {
-			name += fmt.Sprintf(" (%d)", m.Year)
-		}
-		return "Plex matched the file to the wrong movie: " + name + "."
+	if l.PlexMatch != nil {
+		return "Plex matched the file to the wrong movie."
 	}
 	for _, d := range l.Queue {
 		if d.Problem != "" {
