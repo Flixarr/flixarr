@@ -760,8 +760,10 @@ func (s *Service) plexHas(ctx context.Context, r *store.Request, sonarrHave map[
 	if err != nil {
 		return false, true
 	}
+	// Each season only has to be in Plex: Sonarr and Plex often number episodes differently (cartoons with
+	// two short segments per episode), so their counts can't be compared.
 	for n, have := range sonarrHave {
-		if counts[n] < have {
+		if have > 0 && counts[n] == 0 {
 			return false, true
 		}
 	}
