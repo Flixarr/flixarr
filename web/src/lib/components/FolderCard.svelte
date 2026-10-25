@@ -1,6 +1,6 @@
 <script lang="ts">
 	// Where a title's files are: the folder's own name big, the path above it small, the size and quality on
-	// the right, and (for people who manage requests) the release it came from.
+	// the right, and (for people who manage requests) the file name.
 	import { fmtBytes } from '#lib/api.ts';
 	import Icon from './Icon.svelte';
 	let { path = '', size, quality = '', release = '', sub = '' }: { path?: string; size: number; quality?: string; release?: string; sub?: string } = $props();

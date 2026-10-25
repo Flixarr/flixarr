@@ -41,7 +41,7 @@ type SeasonState struct {
 type File struct {
 	Quality string `json:"quality,omitempty"`
 	Size    int64  `json:"size"`
-	Release string `json:"release,omitempty"` // admins only
+	Release string `json:"release,omitempty"` // the file name (admins only)
 	Path    string `json:"path,omitempty"`    // admins only
 }
 
@@ -130,9 +130,9 @@ func (s *Service) LiveFor(ctx context.Context, typ string, tmdbID, arrID int, se
 		if f, ok := m["movieFile"].(map[string]any); ok && l.HasFile {
 			l.File = &File{Quality: qualityName(f), Size: int64(numf(f["size"]))}
 			if admin {
-				l.File.Release, _ = f["sceneName"].(string)
+				l.File.Release, _ = f["relativePath"].(string) // the file's name now, after Radarr renamed it
 				if l.File.Release == "" {
-					l.File.Release, _ = f["relativePath"].(string)
+					l.File.Release, _ = f["sceneName"].(string)
 				}
 				l.File.Path, _ = m["path"].(string)
 			}
