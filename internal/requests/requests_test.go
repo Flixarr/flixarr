@@ -366,12 +366,14 @@ type fakePlex struct {
 	st      *store.Store
 }
 
-func (f *fakePlex) Connected() bool                                   { return true }
-func (f *fakePlex) Live() bool                                        { return false }
-func (f *fakePlex) Seasons(context.Context, int) (map[int]int, error) { return map[int]int{}, nil }
-func (f *fakePlex) Rescan(context.Context, string) error              { f.rescans++; return nil }
-func (f *fakePlex) FileItem(string) (plexlib.FileItem, bool)          { return plexlib.FileItem{}, false }
-func (f *fakePlex) FixMatch(context.Context, string, int) error       { return nil }
+func (f *fakePlex) Connected() bool                                      { return true }
+func (f *fakePlex) Live() bool                                           { return false }
+func (f *fakePlex) Seasons(context.Context, int) (map[int]int, error)    { return map[int]int{}, nil }
+func (f *fakePlex) Rescan(context.Context, string) error                 { f.rescans++; return nil }
+func (f *fakePlex) FileItem(string) (plexlib.FileItem, bool)             { return plexlib.FileItem{}, false }
+func (f *fakePlex) FixMatch(context.Context, string, int) error          { return nil }
+func (f *fakePlex) OrderMismatch(context.Context, int, map[int]int) bool { return false }
+func (f *fakePlex) UseSonarrOrder(context.Context, int) error            { return nil }
 func (f *fakePlex) RecentScan(context.Context) (string, error) {
 	if f.has {
 		f.st.SavePlexItem(store.PlexItem{Type: "movie", TmdbID: 603, RatingKey: "9", Section: "1", SeenAt: "x"})

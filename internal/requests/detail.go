@@ -58,6 +58,8 @@ type Live struct {
 	Error     string        `json:"error,omitempty"` // couldn't ask Radarr / Sonarr
 	// PlexMatch: Plex holds the file but matched it to another movie (#171).
 	PlexMatch *PlexMatch `json:"plexMatch,omitempty"`
+	// OrderMismatch: Plex orders the series by TMDB, which numbers some seasons unlike Sonarr (#174).
+	OrderMismatch bool `json:"orderMismatch,omitempty"`
 }
 
 // PlexMatch is the movie Plex wrongly matched a file to.
@@ -181,6 +183,16 @@ func (s *Service) LiveFor(ctx context.Context, typ string, tmdbID, arrID int, se
 	inPlex := map[int]int{}
 	if s.Plex != nil && s.Plex.Connected() {
 		inPlex, _ = s.Plex.Seasons(ctx, tmdbID)
+	}
+	if s.Plex != nil && s.Plex.Connected() {
+		counts := map[int]int{} // every season's episodes in Sonarr, for Episodes mismatch
+		list, _ := sr["seasons"].([]any)
+		for _, x := range list {
+			m, _ := x.(map[string]any)
+			st, _ := m["statistics"].(map[string]any)
+			counts[num(m["seasonNumber"])] = num(st["totalEpisodeCount"])
+		}
+		l.OrderMismatch = s.Plex.OrderMismatch(ctx, tmdbID, counts)
 	}
 	var size int64
 	if list, ok := sr["seasons"].([]any); ok {

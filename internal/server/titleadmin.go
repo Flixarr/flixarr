@@ -91,6 +91,22 @@ func (s *Server) titleFix(w http.ResponseWriter, r *http.Request, u *store.User)
 	writeJSON(w, http.StatusOK, map[string]any{"done": done})
 }
 
+// titlePlexOrder is Episodes mismatch's Fix: Plex numbers the series' episodes like Sonarr (#174).
+func (s *Server) titlePlexOrder(w http.ResponseWriter, r *http.Request, u *store.User) {
+	typ, id, ok := titleParams(r)
+	if !ok || typ != "series" {
+		writeErr(w, http.StatusBadRequest, "Bad request.")
+		return
+	}
+	if err := s.Requests.UseSonarrOrder(r.Context(), id); err != nil {
+		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
+		return
+	}
+	s.Store.AddTitleEvent(typ, id, "fix", "Fixed the episode numbering in Plex", u.ID, "")
+	s.Store.AddFixSteps(typ, id, 0, "Fixed the episode numbering in Plex", u.ID)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 // titleDelete is the admin panel's Delete: {files, data}. files: Radarr / Sonarr delete the title with
 // its files (Maintainerr lets go of it first if it kept it; Plex is asked to scan and drops it). data:
 // Flixarr forgets its requests and issues. Files go first, so nothing is cleared if that fails.

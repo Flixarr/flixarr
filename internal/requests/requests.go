@@ -553,8 +553,10 @@ type Plex interface {
 	Seasons(ctx context.Context, tmdbID int) (map[int]int, error)
 	Rescan(ctx context.Context, typ string) error // ask Plex to scan its movie or TV libraries
 	RecentScan(ctx context.Context) (string, error)
-	Live() bool                                                       // Plex's own "added to the library" messages are coming in (no need to keep reading)
-	FileItem(file string) (plexlib.FileItem, bool)                    // the Plex movie that holds a file (#171)
+	Live() bool                                                             // Plex's own "added to the library" messages are coming in (no need to keep reading)
+	FileItem(file string) (plexlib.FileItem, bool)                          // the Plex movie that holds a file (#171)
+	OrderMismatch(ctx context.Context, tmdbID int, sonarr map[int]int) bool // Plex numbers a show unlike Sonarr (#174)
+	UseSonarrOrder(ctx context.Context, tmdbID int) error
 	FixMatch(ctx context.Context, ratingKey string, tmdbID int) error // tell Plex which movie an item really is
 }
 

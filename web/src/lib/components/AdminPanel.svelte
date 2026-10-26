@@ -3,6 +3,7 @@
 	// Radarr / Sonarr and Plex, open issues, and the actions. Opens from the side; full screen on phones.
 	import { api, fmtDate, fmtBytes, ago, timeLeft } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
+	import EpisodesMismatch from './EpisodesMismatch.svelte';
 	import { can } from '#lib/session.svelte.ts';
 	import { on } from '#lib/live.svelte.ts';
 	import { remember } from '#lib/availability.svelte.ts';
@@ -22,7 +23,7 @@
 	import LeavingActions from './LeavingActions.svelte';
 
 	type Download = { queueId?: number; season?: number; episode?: number; percent: number; timeLeft?: string; state: string; size: number; release?: string; problem?: string; detail?: string };
-	type Live = { inArr: boolean; monitored: boolean; hasFile: boolean; file?: { quality?: string; size: number; release?: string; path?: string }; queue: Download[]; seasons?: { number: number; have: number; total: number; inPlex: number }[]; link?: string; server: string; error?: string };
+	type Live = { inArr: boolean; monitored: boolean; hasFile: boolean; file?: { quality?: string; size: number; release?: string; path?: string }; queue: Download[]; seasons?: { number: number; have: number; total: number; inPlex: number }[]; link?: string; server: string; error?: string; orderMismatch?: boolean };
 	type Comment = { userName: string; userAvatar: string; body: string; createdAt: string };
 	type Issue = { id: number; kind: string; sub: string; note: string; season: number; episode: number; parts?: [number, number][]; userName: string; userAvatar: string; createdAt: string; comments: number; last?: Comment };
 	type Info = { live: Live; requests: Request[]; blocked: boolean; plex: string; issues: Issue[]; kept: boolean; history: History[] };
@@ -185,6 +186,7 @@
 				</div>
 			{/if}
 			{#if info.live.error}<p class="-mt-4 text-xs text-red-300">{info.live.error}</p>{/if}
+			{#if info.live.orderMismatch}<EpisodesMismatch tmdbId={item.id} ondone={load} />{/if}
 
 			<!-- Requests -->
 			<section>

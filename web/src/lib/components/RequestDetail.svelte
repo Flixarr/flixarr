@@ -5,6 +5,7 @@
 	// Radarr / Sonarr, remove).
 	import { api, fmtDate, ago, meta, timeLeft, fmtBytes } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
+	import EpisodesMismatch from './EpisodesMismatch.svelte';
 	import { can, session } from '#lib/session.svelte.ts';
 	import { on } from '#lib/live.svelte.ts';
 	import type { Movie, Request, Series, User } from '#lib/types.ts';
@@ -20,7 +21,7 @@
 	import FixEpisodesModal from './FixEpisodesModal.svelte';
 
 	type Download = { queueId?: number; season?: number; episode?: number; percent: number; timeLeft?: string; state: string; size: number; release?: string; problem?: string; detail?: string };
-	type Live = { inArr: boolean; monitored: boolean; hasFile: boolean; file?: { quality?: string; size: number; release?: string; path?: string }; queue: Download[]; seasons?: { number: number; have: number; total: number; inPlex: number }[]; link?: string; server: string; error?: string; plexMatch?: { title: string; year?: number } };
+	type Live = { inArr: boolean; monitored: boolean; hasFile: boolean; file?: { quality?: string; size: number; release?: string; path?: string }; queue: Download[]; seasons?: { number: number; have: number; total: number; inPlex: number }[]; link?: string; server: string; error?: string; orderMismatch?: boolean; plexMatch?: { title: string; year?: number } };
 	type Detail = { request: Request; events: { status: string; note: string; at: string }[]; live: Live; hint?: string };
 	type Title = { genres?: string[]; runtime?: number; cert?: string };
 
@@ -148,6 +149,7 @@
 	{/snippet}
 	{#if d && r}
 		<div class="space-y-5 p-5 text-sm">
+			{#if d.live.orderMismatch}<EpisodesMismatch tmdbId={r.tmdbId} ondone={load} />{/if}
 			{#if d.hint}<p class="rounded-lg px-3 py-2 ring-1 {r.status === 'failed' ? 'bg-red-500/10 text-red-200 ring-red-500/30' : 'bg-gray-800/60 text-gray-300 ring-gray-700/60'}">{d.hint}</p>{/if}
 			{#if admin && r.detail}<p class="-mt-3 text-[11px] text-gray-500">{d.live.server || 'Radarr / Sonarr'} said: {r.detail}</p>{/if}
 
