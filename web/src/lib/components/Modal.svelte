@@ -31,9 +31,9 @@
 
 {#if open}
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-	<div use:portal class="fixed inset-x-0 bottom-0 top-(--top-bar,0px) z-50 flex overscroll-none justify-center {stacked ? 'bg-black/75' : 'bg-gray-950/80'} backdrop-blur-sm tablet:top-0 tablet:items-center tablet:p-4 {center ? 'items-center p-3' : 'items-end'}"
+	<div use:portal class="fixed inset-0 z-50 flex overscroll-none justify-center {stacked ? 'bg-black/75' : 'bg-gray-950/80'} backdrop-blur-sm tablet:items-center tablet:p-4 {center ? 'items-center p-3' : 'items-end'}"
 		onclick={(e) => e.target === e.currentTarget && (open = false)}>
-		<div class="card w-full overflow-y-auto overscroll-contain bg-gray-900 {stacked ? 'shadow-[0_24px_80px_rgba(0,0,0,0.9)] ring-1 ring-gray-500/60' : ''} max-h-[calc(100dvh-var(--top-bar,0px)-1.5rem)] tablet:max-h-[90dvh] tablet:rounded-b-xl {center ? '' : 'rounded-b-none'} {wide ? 'tablet:max-w-3xl' : 'tablet:max-w-lg'}" role="dialog" aria-modal="true" aria-label={title}>
+		<div class="card w-full overflow-y-auto overscroll-contain bg-gray-900 {stacked ? 'shadow-[0_24px_80px_rgba(0,0,0,0.9)] ring-1 ring-gray-500/60' : ''} max-h-[90dvh] tablet:rounded-b-xl {center ? '' : 'rounded-b-none'} {wide ? 'tablet:max-w-3xl' : 'tablet:max-w-lg'}" role="dialog" aria-modal="true" aria-label={title}>
 			{#if top}
 				<div class="relative">
 					{@render top()}

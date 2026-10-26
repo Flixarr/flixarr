@@ -23,12 +23,6 @@
 		await api('/test/view-as', { method: 'POST', body: JSON.stringify({ role }) });
 		location.reload();
 	}
-	// The bar's height, for windows that open below it on phones (--top-bar).
-	let barHeight = $state(0);
-	$effect(() => {
-		document.documentElement.style.setProperty('--top-bar', `${barHeight}px`);
-		return () => document.documentElement.style.removeProperty('--top-bar');
-	});
 
 	const NAV = [['Discover', '/'], ['Movies', '/movies'], ['Series', '/series'], ['Requests', '/requests']] as const;
 	const active = (h: string) => (h === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(h));
@@ -112,7 +106,7 @@
 	</div>
 {/snippet}
 
-<header bind:offsetHeight={barHeight} class="fixed inset-x-0 top-0 z-30 border-b pt-[max(0px,calc(env(safe-area-inset-top)-0.75rem))] transition-[background-color,border-color,backdrop-filter] duration-500 ease-out {solid ? 'border-gray-700/40 bg-gray-950/85 backdrop-blur-xl' : 'border-transparent bg-transparent backdrop-blur-[0px]'}">
+<header class="fixed inset-x-0 top-0 z-30 border-b pt-[max(0px,calc(env(safe-area-inset-top)-0.75rem))] transition-[background-color,border-color,backdrop-filter] duration-500 ease-out {solid ? 'border-gray-700/40 bg-gray-950/85 backdrop-blur-xl' : 'border-transparent bg-transparent backdrop-blur-[0px]'}">
 	<div class="mx-auto flex max-w-[1600px] items-center gap-6 px-4 py-3 laptop:px-10">
 		<div class="flex items-center gap-2">
 			<a href="/" class="text-logo text-3xl laptop:text-4xl">Flixarr</a>
