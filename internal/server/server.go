@@ -117,7 +117,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/requests/{id}/decline", s.auth(s.allow("manageRequests", s.requestDecline)))
 	mux.HandleFunc("POST /api/requests/{id}/retry", s.auth(s.allow("manageRequests", s.requestRetry)))
 	mux.HandleFunc("POST /api/requests/{id}/fix", s.auth(s.allow("manageRequests", s.requestFix)))
-	mux.HandleFunc("POST /api/requests/{id}/plexmatch", s.auth(s.allow("manageRequests", s.requestPlexMatch)))
 	mux.HandleFunc("GET /api/requests/{id}/detail", s.auth(s.requestDetail))
 	mux.HandleFunc("GET /api/titles/{type}/{id}/admin", s.auth(s.allow("manageRequests", s.titleAdmin)))
 	mux.HandleFunc("POST /api/titles/{type}/{id}/fix", s.auth(s.allow("manageRequests", s.titleFix)))

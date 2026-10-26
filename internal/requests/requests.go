@@ -34,6 +34,7 @@ type Service struct {
 	rescanned  map[int64]time.Time
 	rescans    map[int64]int
 	checked    map[int64]time.Time // last follow of each active request
+	matchTried map[int64]bool      // requests whose wrong Plex match was already fixed once (#171)
 }
 
 // Publish tells open pages about a request (status "deleted" when it was removed).
@@ -808,6 +809,7 @@ func (s *Service) follow(ctx context.Context, v store.Server, r *store.Request) 
 			return err
 		}
 		if b, _ := m["hasFile"].(bool); b {
+			s.autoMatch(ctx, r, m)
 			s.filesDone(ctx, r, nil)
 			return nil
 		}

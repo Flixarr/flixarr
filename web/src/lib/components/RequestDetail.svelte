@@ -85,13 +85,10 @@
 	const person = (name: string, avatar = '') => ({ username: name || '?', avatar }) as User;
 	const facts = $derived(r ? [r.year, series ? 'Series' : 'Movie', ...(title?.genres?.slice(0, 2) ?? []), !series && title?.runtime ? `${Math.floor(title.runtime / 60) ? Math.floor(title.runtime / 60) + 'h ' : ''}${title.runtime % 60}m` : ''].filter(Boolean) : []);
 
-	async function act(what: 'approve' | 'decline' | 'retry' | 'fix' | 'plexmatch', body: object = {}) {
+	async function act(what: 'approve' | 'decline' | 'retry' | 'fix', body: object = {}) {
 		busy = what;
 		try {
-			if (what === 'plexmatch') {
-				await api(`/requests/${id}/plexmatch`, { method: 'POST' });
-				notify('Fixed the match in Plex. It shows as available in a moment.');
-			} else if (what === 'fix') {
+			if (what === 'fix') {
 				const x = await api<{ request: Request; done: string }>(`/requests/${id}/fix`, { method: 'POST' });
 				notify(x.done || 'Asked for a search.');
 				onchanged?.(x.request);
@@ -252,7 +249,6 @@
 			{:else if r.status === 'failed'}
 				<button class="btn px-4 py-1.5 text-xs" disabled={!!busy} onclick={() => act('retry')}>{busy === 'retry' ? 'Trying…' : 'Try again'}</button>
 			{:else if fixable && d}
-				{#if d.live.plexMatch}<button class="btn px-4 py-1.5 text-xs" disabled={!!busy} onclick={() => act('plexmatch')}>{busy === 'plexmatch' ? 'Fixing…' : 'Fix match'}</button>{/if}
 				<FixMenu title={r.title} {series} live={d.live} search={() => act('fix')} redownload={() => (redoOpen = true)} ondone={load} />
 			{/if}
 		{:else if r && r.status === 'pending' && r.userId === session.me?.id}

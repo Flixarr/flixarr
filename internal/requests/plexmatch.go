@@ -2,8 +2,6 @@ package requests
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
 	"github.com/Flixarr/flixarr/internal/plexlib"
 	"github.com/Flixarr/flixarr/internal/store"
@@ -19,27 +17,30 @@ func (s *Service) wrongMatch(file string, tmdbID int) (plexlib.FileItem, bool) {
 	return it, ok && it.TmdbID != tmdbID
 }
 
-// FixMatch tells Plex which movie a request's file really is, when Plex matched it to another one.
-func (s *Service) FixMatch(ctx context.Context, r store.Request) error {
-	if r.Type != "movie" {
-		return errors.New("only movies can be matched again")
-	}
-	v, ok, err := s.Store.FirstServer("radarr")
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return errors.New("Radarr isn't connected")
-	}
-	var m map[string]any
-	if err := client(v).Get(ctx, fmt.Sprintf("movie/%d", r.ArrID), &m); err != nil {
-		return err
-	}
-	f, _ := m["movieFile"].(map[string]any)
+// autoMatch fixes a movie Plex matched to the wrong title: Radarr's file and the request's TMDB ID say
+// which movie it really is. It tries once per request; if Plex still has it wrong, the request says so.
+func (s *Service) autoMatch(ctx context.Context, r *store.Request, movie map[string]any) {
+	f, _ := movie["movieFile"].(map[string]any)
 	file, _ := f["path"].(string)
 	it, ok := s.wrongMatch(file, r.TmdbID)
 	if !ok {
-		return errors.New("Plex doesn't have it matched to another movie")
+		return
 	}
-	return s.Plex.FixMatch(ctx, it.RatingKey, r.TmdbID)
+	s.mu.Lock()
+	if s.matchTried == nil {
+		s.matchTried = map[int64]bool{}
+	}
+	tried := s.matchTried[r.ID]
+	s.matchTried[r.ID] = true
+	s.mu.Unlock()
+	if tried {
+		return
+	}
+	if err := s.Plex.FixMatch(ctx, it.RatingKey, r.TmdbID); err != nil {
+		s.Log.Warn("plex match", "title", r.Title, "err", err)
+		return
+	}
+	s.Log.Info("fixed the match in plex", "title", r.Title, "was", it.Title)
+	s.Store.AddTitleEvent(r.Type, r.TmdbID, "fix", "Fixed the match in Plex", 0, "")
+	s.Store.AddFixSteps(r.Type, r.TmdbID, r.ID, "Fixed the match in Plex", 0)
 }
