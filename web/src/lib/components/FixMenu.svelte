@@ -36,6 +36,7 @@
 	const CHOICES = $derived([
 		{ action: 'different', label: 'Get a different release', about: `Removes this one from ${app} and the download client, blocks it so it isn't grabbed again, and searches for another.`, suggested: true },
 		{ action: 'retry', label: 'Try the import again', about: `${app} looks at the downloaded files again. For when they weren't ready yet.` },
+		{ action: 'force', label: 'Import anyway', about: `${app} imports the download even though it said no, replacing the file you have.` },
 		{ action: 'remove', label: 'Remove it', about: `Removes it from ${app} and the download client without searching again.` }
 	]);
 

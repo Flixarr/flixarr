@@ -4,17 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 
 	"github.com/Flixarr/flixarr/internal/arr"
 )
 
-// Fixing a download stuck in Radarr's or Sonarr's queue (#129). The three ways out:
+// Fixing a download stuck in Radarr's or Sonarr's queue (#129). The ways out:
 //
 //	different: remove it from the queue and the download client, block that release so it isn't grabbed
 //	           again, and let Radarr/Sonarr search for another (what fixes most stuck downloads)
 //	retry:     ask Radarr/Sonarr to try importing its files again (when they weren't ready yet)
+//	force:     import the files anyway, as Radarr's / Sonarr's manual import does (when it refused them)
 //	remove:    remove it from the queue and the download client without searching again
-var QueueActions = map[string]string{"different": "Got a different release", "retry": "Tried the import again", "remove": "Removed from the download queue"}
+var QueueActions = map[string]string{"different": "Got a different release", "retry": "Tried the import again", "force": "Imported it anyway", "remove": "Removed from the download queue"}
 
 // Fixed is the title a fixed download belonged to.
 type Fixed struct {
@@ -26,7 +28,7 @@ type Fixed struct {
 // FixDownload does one of QueueActions to a queue item in the Radarr ("radarr") or Sonarr ("sonarr") connection.
 func (s *Service) FixDownload(ctx context.Context, kind string, queueID int, action string) (Fixed, error) {
 	if _, ok := QueueActions[action]; !ok {
-		return Fixed{}, errors.New("pick a different release, try the import again, or remove it")
+		return Fixed{}, errors.New("that isn't something Flixarr can do to a download")
 	}
 	v, ok, err := s.Store.FirstServer(kind)
 	if err != nil || !ok {
@@ -92,6 +94,44 @@ func (s *Service) FixDownload(ctx context.Context, kind string, queueID int, act
 			name = "DownloadedEpisodesScan"
 		}
 		err = c.Post(ctx, "command", map[string]any{"name": name, "path": path, "downloadClientId": download, "importMode": "Auto"}, nil)
+	case "force":
+		err = forceImport(ctx, c, kind, download, f.ArrID)
 	}
 	return f, err
+}
+
+// forceImport is Radarr's / Sonarr's manual import of a download it refused (like "not an upgrade"): the
+// files go in anyway, replacing what's there.
+func forceImport(ctx context.Context, c *arr.Client, kind, download string, arrID int) error {
+	if download == "" {
+		return errors.New("Radarr or Sonarr doesn't say which download it is")
+	}
+	var items []map[string]any
+	if err := c.Get(ctx, "manualimport?downloadId="+url.QueryEscape(download)+"&filterExistingFiles=false", &items); err != nil {
+		return err
+	}
+	var files []map[string]any
+	for _, it := range items {
+		file := map[string]any{"path": it["path"], "quality": it["quality"], "languages": it["languages"], "releaseGroup": it["releaseGroup"], "indexerFlags": it["indexerFlags"], "downloadId": download}
+		if kind == "sonarr" {
+			var ids []int
+			eps, _ := it["episodes"].([]any)
+			for _, e := range eps {
+				if m, ok := e.(map[string]any); ok {
+					ids = append(ids, num(m["id"]))
+				}
+			}
+			if len(ids) == 0 {
+				continue // a sample or an extra Sonarr can't place
+			}
+			file["seriesId"], file["episodeIds"], file["releaseType"] = arrID, ids, it["releaseType"]
+		} else {
+			file["movieId"] = arrID
+		}
+		files = append(files, file)
+	}
+	if len(files) == 0 {
+		return errors.New("there's no file in that download to import")
+	}
+	return c.Post(ctx, "command", map[string]any{"name": "ManualImport", "files": files, "importMode": "auto"}, nil)
 }
