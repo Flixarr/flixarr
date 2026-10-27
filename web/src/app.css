@@ -152,6 +152,14 @@ html.modal-open body { overscroll-behavior: none; }
 @media (display-mode: standalone) {
 	html, body { overscroll-behavior: none; }
 }
+/* Home-screen app on iOS: a solid strip behind the status bar. iOS 27 frosts the top of installed web apps
+   (well past the status bar) unless something solid covers the top edge; then it just colors the status bar. */
+.status-strip { display: none; }
+@media (display-mode: standalone) {
+	@supports (-webkit-touch-callout: none) {
+		.status-strip { display: block; position: fixed; inset-inline: 0; top: 0; z-index: 70; height: max(12px, env(safe-area-inset-top)); background: var(--color-gray-950); pointer-events: none; }
+	}
+}
 /* Home-screen app on a phone: the status bar overlays the page, so pages start below it. */
 @media (display-mode: standalone) and (max-width: 1023px) {
 	.pt-20 { padding-top: calc(5rem + max(0px, env(safe-area-inset-top) - 0.75rem)); } /* the header's own top padding overlaps the inset */
