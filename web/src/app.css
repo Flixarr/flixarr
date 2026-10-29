@@ -152,12 +152,12 @@ html.modal-open body { overscroll-behavior: none; }
 @media (display-mode: standalone) {
 	html, body { overscroll-behavior: none; }
 }
-/* Home-screen app on iOS: iOS 27 frosts about 40px below the status bar in installed web apps, and nothing
+/* Home-screen app on iOS: iOS 27 frosts a band below the status bar in installed web apps, and nothing
    turns it off, so the top bar and anything pinned to the top start below that band (--ios-blur). */
 :root { --ios-blur: 0px; }
 @media (display-mode: standalone) {
 	@supports (-webkit-touch-callout: none) {
-		:root { --ios-blur: 44px; }
+		:root { --ios-blur: 10px; }
 	}
 }
 /* Home-screen app on a phone: the status bar overlays the page, so pages start below it. */
