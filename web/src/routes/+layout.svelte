@@ -71,4 +71,3 @@
 	{/if}
 {/if}
 <Toast />
-<div class="status-strip" aria-hidden="true"></div>

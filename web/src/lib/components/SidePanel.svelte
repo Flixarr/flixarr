@@ -25,7 +25,7 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 	<div class="fixed inset-0 z-50 bg-gray-950/70" transition:fade={{ duration: 150 }} onclick={() => (open = false)}></div>
 	<div class="fixed inset-y-0 right-0 z-50 flex w-full flex-col bg-gray-900 shadow-2xl tablet:max-w-md tablet:border-l tablet:border-gray-700/40" role="dialog" aria-modal="true" aria-label={title} transition:fly={{ x: 480, duration: 220, opacity: 1 }}>
-		<div class="flex shrink-0 items-start justify-between gap-4 border-b border-gray-700/40 px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))]">
+		<div class="flex shrink-0 items-start justify-between gap-4 border-b border-gray-700/40 px-5 pb-4 pt-[calc(max(1rem,env(safe-area-inset-top))+var(--ios-blur,0px))]">
 			<div class="min-w-0"><div class="font-semibold">{title}</div>{#if sub}<div class="truncate text-xs text-gray-400">{sub}</div>{/if}</div>
 			<button class="rounded-lg p-1 text-gray-400 hover:bg-white/10 hover:text-white" onclick={() => (open = false)} aria-label="Close"><Icon name="close" /></button>
 		</div>

@@ -106,7 +106,7 @@
 	</div>
 {/snippet}
 
-<header class="fixed inset-x-0 top-0 z-30 border-b pt-[max(0px,calc(env(safe-area-inset-top)-0.75rem))] transition-[background-color,border-color,backdrop-filter] duration-500 ease-out {solid ? 'border-gray-700/40 bg-gray-950/85 backdrop-blur-xl' : 'border-transparent bg-transparent backdrop-blur-[0px]'}">
+<header class="fixed inset-x-0 top-0 z-30 border-b pt-[calc(max(0px,calc(env(safe-area-inset-top)-0.75rem))+var(--ios-blur,0px))] transition-[background-color,border-color,backdrop-filter] duration-500 ease-out {solid ? 'border-gray-700/40 bg-gray-950/85 backdrop-blur-xl' : 'border-transparent bg-transparent backdrop-blur-[0px]'}">
 	<div class="mx-auto flex max-w-[1600px] items-center gap-6 px-4 py-3 laptop:px-10">
 		<div class="flex items-center gap-2">
 			<a href="/" class="text-logo text-3xl laptop:text-4xl">Flixarr</a>
@@ -153,7 +153,7 @@
 				<div class="relative" data-menu>
 					<button class="relative rounded-full p-1 hover:bg-white/10" aria-label="Account menu" onclick={() => (menu = menu === 'user' ? '' : 'user')}><Avatar user={session.me} />{#if admin && servicesUnread()}<span class="alert-dot absolute right-0.5 top-0.5"></span>{/if}</button>
 					{#if menu === 'user'}
-						<div class="fixed right-3 top-[calc(4rem+max(0px,calc(env(safe-area-inset-top)-0.75rem)))] w-60 tablet:absolute tablet:right-0 tablet:top-11">
+						<div class="fixed right-3 top-[calc(4rem+max(0px,calc(env(safe-area-inset-top)-0.75rem))+var(--ios-blur,0px))] w-60 tablet:absolute tablet:right-0 tablet:top-11">
 							<div class="overflow-hidden rounded-xl border border-gray-700/60 bg-gray-900 py-1.5 shadow-2xl">
 								<div class="flex items-center gap-3 px-4 py-2"><Avatar user={session.me} class="size-9 text-sm" /><div><div class="text-sm font-medium">{session.me.username}</div><div class="text-xs text-gray-400">{roleLabel(session.me)}</div></div></div>
 								<div class="my-1 border-t border-gray-700/40"></div>
@@ -181,7 +181,7 @@
 <!-- Phones: the alerts dropdown spans the screen's width under the top bar. It sits outside the header
      because the header's backdrop blur makes it the box fixed children are placed in (#101). -->
 {#if menu === 'notif'}
-	<div class="fixed inset-x-3 top-[calc(4rem+max(0px,calc(env(safe-area-inset-top)-0.75rem)))] z-50 tablet:hidden" data-menu>
+	<div class="fixed inset-x-3 top-[calc(4rem+max(0px,calc(env(safe-area-inset-top)-0.75rem))+var(--ios-blur,0px))] z-50 tablet:hidden" data-menu>
 		{@render alertsPanel()}
 	</div>
 {/if}
