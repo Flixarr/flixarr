@@ -10,9 +10,10 @@
 	import Select from '#lib/components/Select.svelte';
 
 	const KINDS = { titles: ['Titles', 'Movies, series, seasons, collections'], people: ['People', 'Cast and crew pages'], lists: ['Lists', 'Discover rows, browse pages, genres'], searches: ['Searches', 'Search results'] };
-	const PAGES = [[360, '6 hours'], [720, '12 hours'], [1440, '1 day'], [4320, '3 days'], [10080, '7 days']] as const;
-	const LISTS = [[360, '6 hours'], [720, '12 hours'], [1440, '1 day'], [4320, '3 days']] as const;
-	const SEARCHES = [[360, '6 hours'], [720, '12 hours'], [1440, '1 day'], [4320, '3 days'], [10080, '7 days']] as const;
+	const TIMES = [[1440, '1 day'], [4320, '3 days'], [10080, '7 days'], [20160, '14 days'], [43200, '30 days']] as const;
+	const PAGES = TIMES;
+	const LISTS = TIMES;
+	const SEARCHES = TIMES;
 	const MAX = [5000, 10000, 25000, 50000, 100000];
 	const DAYS = [7, 14, 30, 60, 90];
 	const API_OFF = 'Cache API responses is off.';

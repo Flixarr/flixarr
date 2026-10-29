@@ -39,9 +39,9 @@ func TestKeepAutomatic(t *testing.T) {
 		want  time.Duration
 	}{
 		{KindTitles, 6 * time.Hour, 6 * time.Hour},
-		{KindPeople, 0, 24 * time.Hour},
-		{KindLists, 0, time.Hour},
-		{KindSearches, 0, time.Hour},
+		{KindPeople, 0, 7 * 24 * time.Hour},
+		{KindLists, 0, 24 * time.Hour},
+		{KindSearches, 0, 7 * 24 * time.Hour},
 		{KindLists, 40 * time.Minute, 40 * time.Minute},
 		{KindTitles, 20 * time.Second, minKeep},
 	} {

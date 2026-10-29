@@ -41,7 +41,7 @@ type Config struct {
 }
 
 // DefaultConfig is what a new install starts with.
-var DefaultConfig = Config{Enabled: true, Auto: true, PagesMin: 24 * 60, ListsMin: 12 * 60, SearchesMin: 24 * 60, MaxResults: 10000}
+var DefaultConfig = Config{Enabled: true, Auto: true, PagesMin: 7 * 24 * 60, ListsMin: 24 * 60, SearchesMin: 7 * 24 * 60, MaxResults: 25000}
 
 // With Auto on, each answer is kept for as long as the API says it stays fresh (for title pages:
 // hours for airing series and new or upcoming movies, days for ended series, older movies and
@@ -130,12 +130,14 @@ func (c *Client) loadConfig() Config {
 		}
 		return def
 	}
+	// Keep times are a day at the least now; an older install's shorter choice reads as a day.
+	day := func(key string, def int) int { return max(num(key, def), 24*60) }
 	return Config{
 		Enabled:     c.Store.Setting(keyEnabled, "true") == "true",
 		Auto:        c.Store.Setting(keyAuto, "true") == "true",
-		PagesMin:    num(keyPages, d.PagesMin),
-		ListsMin:    num(keyLists, d.ListsMin),
-		SearchesMin: num(keySearches, d.SearchesMin),
+		PagesMin:    day(keyPages, d.PagesMin),
+		ListsMin:    day(keyLists, d.ListsMin),
+		SearchesMin: day(keySearches, d.SearchesMin),
 		MaxResults:  num(keyMax, d.MaxResults),
 	}
 }
@@ -150,8 +152,8 @@ func (c *Client) Config() Config {
 // SetConfig validates, saves and applies new cache settings.
 func (c *Client) SetConfig(cfg Config) error {
 	for _, m := range []int{cfg.PagesMin, cfg.ListsMin, cfg.SearchesMin} {
-		if m < 5 || m > 30*24*60 {
-			return errors.New("keep times must be between 5 minutes and 30 days")
+		if m < 24*60 || m > 30*24*60 {
+			return errors.New("keep times must be between 1 day and 30 days")
 		}
 	}
 	if cfg.MaxResults < 100 || cfg.MaxResults > 1000000 {
@@ -208,12 +210,12 @@ func kindOf(p string) string {
 // keep is how long to save an answer of this kind. fresh is how long the API says its copy stays
 // fresh from now (0 if it sent no time).
 func (cfg Config) keep(kind string, fresh time.Duration) time.Duration {
-	set, fallback := cfg.PagesMin, 24*time.Hour
+	set, fallback := cfg.PagesMin, 7*24*time.Hour
 	switch kind {
 	case KindLists:
-		set, fallback = cfg.ListsMin, time.Hour
+		set, fallback = cfg.ListsMin, 24*time.Hour
 	case KindSearches:
-		set, fallback = cfg.SearchesMin, time.Hour
+		set, fallback = cfg.SearchesMin, 7*24*time.Hour
 	}
 	if !cfg.Auto {
 		return time.Duration(set) * time.Minute

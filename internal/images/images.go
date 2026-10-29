@@ -57,7 +57,7 @@ func New(dataDir string, st *store.Store) *Cache {
 func (c *Cache) Enabled() bool { return c.Store.Setting(keyEnabled, "false") == "true" }
 
 // DefaultDays is how long an unviewed image is kept on a new install.
-const DefaultDays = 30
+const DefaultDays = 90
 
 // Days is how long an image nobody views is kept.
 func (c *Cache) Days() int {
