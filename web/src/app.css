@@ -157,7 +157,7 @@ html.modal-open body { overscroll-behavior: none; }
 :root { --ios-blur: 0px; }
 @media (display-mode: standalone) {
 	@supports (-webkit-touch-callout: none) {
-		:root { --ios-blur: 10px; }
+		:root { --ios-blur: 15px; }
 	}
 }
 /* Home-screen app on a phone: the status bar overlays the page, so pages start below it. */
