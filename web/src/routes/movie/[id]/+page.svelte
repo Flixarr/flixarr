@@ -54,13 +54,13 @@
 		{#snippet chip()}
 			{#if brief?.plex}<span class="rounded-md bg-green-500/15 px-1.5 py-0.5 text-green-400 ring-1 ring-green-500/40">✓ In your library</span>
 			{:else if brief !== undefined}<span class="rounded-md bg-gray-900/70 px-1.5 py-0.5 text-gray-300 ring-1 ring-gray-700/60">Not in your library</span>{/if}
+			{#if m && brief?.plex}<LeavingActions type="movie" id={m.id} title={m.title} chip />{/if}
 		{/snippet}
 		{#snippet actions()}
 			{#if m}<RequestButton item={m} bind:req={brief} />{/if}
 			{#if m && (inLib || waiting) && can('reportIssues')}<button class="btn-ghost act" onclick={() => (issueOpen = true)}><Icon name="issues" class="size-4" />Report issue</button>{/if}
 			{#if m && inLib && can('redownload') && !can('manageRequests')}<FixMenu title={m.title} series={false} redownload={() => (fixOpen = true)} class="btn-ghost act" />{/if}
 			{#if m?.trailer}<button class="btn-ghost act" onclick={() => (trailer = true)}><Icon name="play" class="size-4" />Trailer</button>{/if}
-			{#if m && brief?.plex}<LeavingActions type="movie" id={m.id} title={m.title} />{/if}
 			{#if m && can('manageRequests')}<button class="btn-ghost act" onclick={() => (adminOpen = true)}><Icon name="settings" class="size-4" />Admin</button>{/if}
 		{/snippet}
 	</DetailHeader>

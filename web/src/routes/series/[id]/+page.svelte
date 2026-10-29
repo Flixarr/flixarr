@@ -82,13 +82,13 @@
 		{#snippet chip()}
 			{#if brief?.plex}<span class="rounded-md bg-green-500/15 px-1.5 py-0.5 text-green-400 ring-1 ring-green-500/40">{brief.episodes && brief.episodes[0] < brief.episodes[1] ? `◐ ${brief.episodes[0]} of ${brief.episodes[1]} episodes in your library` : '✓ In your library'}</span>
 			{:else if brief !== undefined}<span class="rounded-md bg-gray-900/70 px-1.5 py-0.5 text-gray-300 ring-1 ring-gray-700/60">Not in your library</span>{/if}
+			{#if t && brief?.plex}<LeavingActions type="series" id={t.id} title={t.title} chip />{/if}
 		{/snippet}
 		{#snippet actions()}
 			{#if t}<RequestButton item={t} bind:req={brief} />{/if}
 			{#if t && (inLib || waiting) && can('reportIssues')}<button class="btn-ghost act" onclick={() => (issueOpen = true)}><Icon name="issues" class="size-4" />Report issue</button>{/if}
 			{#if t && (inLib || waiting) && can('redownload') && !can('manageRequests')}<FixMenu title={t.title} series={true} redownload={() => (fixOpen = true)} class="btn-ghost act" />{/if}
 			{#if t?.trailer}<button class="btn-ghost act" onclick={() => (trailer = true)}><Icon name="play" class="size-4" />Trailer</button>{/if}
-			{#if t && brief?.plex}<LeavingActions type="series" id={t.id} title={t.title} />{/if}
 			{#if t && can('manageRequests')}<button class="btn-ghost act" onclick={() => (adminOpen = true)}><Icon name="settings" class="size-4" />Admin</button>{/if}
 		{/snippet}
 	</DetailHeader>
