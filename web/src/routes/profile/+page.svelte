@@ -17,10 +17,12 @@
 	type Stats = { requests: number; available: number; waiting: number; inProgress: number; openIssues: number };
 	let stats = $state<Stats | null>(null);
 	let mine = $state<Card[]>([]);
+	let watched = $state<Card[] | null>(null); // Recently watched in Plex; null while it loads
 	$effect(() => {
 		document.title = 'Flixarr · Profile';
 		api<Stats>('/me/stats').then((d) => (stats = d)).catch(() => {});
 		api<Page<Card>>('/discover/recent-requests?mine=1').then((p) => (mine = p.results)).catch(() => {});
+		api<{ results: Card[] }>('/me/watched').then((d) => (watched = d.results)).catch(() => (watched = []));
 		api<Watch>('/me/watchlist').then((d) => (watch = d)).catch(() => {});
 		api<{ on: boolean }>('/push').then((d) => (pushOn = d.on)).catch(() => {});
 		api<Prefs>('/me/notifications').then((d) => (prefs = d)).catch(() => {});
@@ -182,6 +184,9 @@
 		{/if}
 		{#if mine.length}
 			<div class="-mx-4 laptop:mx-0"><Row title="My requests" items={mine} more="/requests">{#snippet item(c)}<Poster item={c} />{/snippet}</Row></div>
+		{/if}
+		{#if watched === null || watched.length}
+			<div class="-mx-4 laptop:mx-0"><Row title="Recently watched" items={watched ?? []} loading={watched === null}>{#snippet item(c)}<Poster item={c} />{/snippet}</Row></div>
 		{/if}
 
 		{#if pushOn || shownCh.length || shownAcct.length}

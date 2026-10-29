@@ -178,3 +178,35 @@ func (s *Server) library(w http.ResponseWriter, r *http.Request, _ *store.User) 
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"page": page, "totalPages": max((total+19)/20, 1), "results": s.cards(r, refs)})
 }
+
+// watchedCards is what someone watched lately in Plex (#181), newest first, as poster cards.
+func (s *Server) watchedCards(r *http.Request, u store.User) []*card {
+	if s.Library == nil {
+		return []*card{}
+	}
+	list, err := s.Library.Watched(r.Context(), u.PlexID, u.Owner, 20)
+	if err != nil {
+		s.Log.Warn("plex watch history", "err", err)
+	}
+	refs := []titleRef{}
+	for _, w := range list {
+		refs = append(refs, titleRef{Type: w.Type, ID: w.TmdbID, Fallback: card{ID: w.TmdbID, Type: w.Type, Title: w.Title, Genres: []int{}}})
+	}
+	return s.cards(r, refs)
+}
+
+// myWatched is the Profile page's Recently watched row.
+func (s *Server) myWatched(w http.ResponseWriter, r *http.Request, u *store.User) {
+	writeJSON(w, http.StatusOK, map[string]any{"results": s.watchedCards(r, *u)})
+}
+
+// userWatched is someone's Recently watched row, for people who can see their profile.
+func (s *Server) userWatched(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	u, err := s.Store.UserByID(id)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "That user doesn't exist.")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"results": s.watchedCards(r, *u)})
+}

@@ -21,6 +21,7 @@
 	type Stats = { requests: number; available: number; waiting: number; inProgress: number; openIssues: number };
 	type Info = { user: User; stats: Stats; requests: Card[]; roles: Record<string, string[]>; admin: boolean; canChange: boolean; approvalRequired: boolean };
 	let info = $state<Info | null>(null);
+	let watched = $state<Card[] | null>(null); // Recently watched in Plex; null while it loads
 	let perms = $state<string[]>([]);
 	let movieLimit = $state(0);
 	let seasonLimit = $state(0);
@@ -45,6 +46,8 @@
 		if (session.me && !session.me.managesUsers) goto('/', { replaceState: true });
 	});
 	async function load(id: string) {
+		watched = null;
+		api<{ results: Card[] }>(`/users/${id}/watched`).then((d) => (watched = d.results)).catch(() => (watched = []));
 		try {
 			info = await api<Info>(`/users/${id}`);
 			reset();
@@ -142,6 +145,9 @@
 		</section>
 		{#if info.requests.length}
 			<div class="-mx-4 laptop:mx-0"><Row title="{u.username}'s requests" items={info.requests}>{#snippet item(c)}<Poster item={c} />{/snippet}</Row></div>
+		{/if}
+		{#if watched === null || watched.length}
+			<div class="-mx-4 laptop:mx-0"><Row title="Recently watched" items={watched ?? []} loading={watched === null}>{#snippet item(c)}<Poster item={c} />{/snippet}</Row></div>
 		{/if}
 
 	{/if}
