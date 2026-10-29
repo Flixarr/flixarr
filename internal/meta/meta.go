@@ -349,12 +349,8 @@ func freshFor(cc, age string) time.Duration {
 	return 0
 }
 
-// Cleanup removes expired answers (keeping a day of grace for the API-down fallback) and enforces the size limit.
+// Cleanup keeps the cache under its size limit (oldest dropped first). Expired answers stay: while the API
+// is down, the last answer it gave is shown until it gives a new one (#166).
 func (c *Client) Cleanup() (int64, error) {
-	n, err := c.Store.CacheDeleteExpired(time.Now().Add(-24 * time.Hour))
-	if err != nil {
-		return n, err
-	}
-	t, err := c.Store.CacheTrim(c.Config().MaxResults)
-	return n + t, err
+	return c.Store.CacheTrim(c.Config().MaxResults)
 }

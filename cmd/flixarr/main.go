@@ -95,8 +95,8 @@ func main() {
 
 	// Scheduled jobs (Settings → Jobs); schedules are editable there.
 	runner := &jobs.Runner{Store: st, Log: log, Background: meta.Background}
-	runner.Add(&jobs.Job{ID: "cache-cleanup", Name: "Clear expired cache", Default: "0 3 * * *",
-		About: "Removes saved results that expired more than a day ago and keeps the cache under its size limit.",
+	runner.Add(&jobs.Job{ID: "cache-cleanup", Name: "Trim the cache", Default: "0 3 * * *",
+		About: "Keeps the cache under its size limit, oldest results first. Expired results stay, so pages keep working while the Flixarr API is down.",
 		Run: func(context.Context) (string, error) {
 			n, err := mc.Cleanup()
 			return plural(n, "result") + " removed", err
