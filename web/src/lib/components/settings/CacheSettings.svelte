@@ -119,7 +119,7 @@
 		{@render heading('Caching')}
 		<div class="card divide-y divide-gray-700/40 px-4">
 			<div class="py-3">
-				<Toggle checked={st.settings.enabled} label="Cache API responses" about="Answers from the Flixarr API are saved in this app's database, so repeat lookups are instant and don't go back to the API. If the API is unreachable, expired results are shown for up to a day."
+				<Toggle checked={st.settings.enabled} label="Cache API responses" about="Answers from the Flixarr API are saved in this app's database, so repeat lookups are instant and don't go back to the API. If the API is unreachable, the last saved results are shown until it's back."
 					onchange={(on) => save((s) => (s.settings.enabled = on), on ? 'API responses are cached again.' : "API responses aren't cached. Every lookup goes to the Flixarr API.")} />
 			</div>
 			<div class="py-3">
