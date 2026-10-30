@@ -87,11 +87,11 @@
 {/snippet}
 
 {#snippet stored(label: string, about: string, count: number, bytes: number, hm: HitMiss, onflush: () => void)}
-	<div class="flex items-center gap-3 py-3 text-sm">
-		<span class="min-w-0 flex-1"><span class="block">{label}</span><span class="block text-xs text-gray-500">{about}</span></span>
+	<div class="grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem_4.75rem] items-center gap-x-3 py-3 text-sm">
+		<span class="min-w-0"><span class="block">{label}</span><span class="block truncate text-xs text-gray-500">{about}</span></span>
 		<Tooltip text="Lookups since {since}" align="right"><span class="block text-right text-xs"><span class="block tabular-nums text-gray-300">{fmtNum(hm.hits)} hit{hm.hits === 1 ? '' : 's'}</span><span class="block tabular-nums text-gray-500">{fmtNum(hm.misses)} miss{hm.misses === 1 ? '' : 'es'}</span></span></Tooltip>
-		<span class="text-right"><span class="block tabular-nums">{fmtNum(count)}</span><span class="block text-xs text-gray-500">{fmtBytes(bytes)}</span></span>
-		<button class="btn-ghost px-2.5 py-1 text-xs" disabled={!count || busy !== ''} onclick={onflush}>Flush</button>
+		<span class="text-right"><span class="block tabular-nums">{fmtNum(count)}</span><span class="block text-xs tabular-nums text-gray-500">{fmtBytes(bytes)}</span></span>
+		<button class="btn-ghost w-full px-2 py-1 text-xs" disabled={!count || busy !== ''} onclick={onflush}>Flush</button>
 	</div>
 {/snippet}
 
@@ -171,15 +171,19 @@
 	<div>
 		{@render heading('Storage')}
 		<div class="card divide-y divide-gray-700/40 px-4">
+			<div class="grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem_4.75rem] items-center gap-x-3 pb-2 pt-3 text-[11px] uppercase tracking-wide text-gray-500">
+				<span></span><span class="text-right">Lookups</span><span class="text-right">Saved</span><span></span>
+			</div>
 			{#each st.kinds as k (k.kind)}
 				{@render stored(KINDS[k.kind][0], KINDS[k.kind][1], k.count, k.bytes, st.counters.byKind?.[k.kind] ?? NONE, () => flush(k.kind, KINDS[k.kind][0]))}
 			{/each}
 			{@render stored('Saved images', 'Posters and backdrops', st.images.count, st.images.bytes, st.images, () => (confirmImages = true))}
 			{@render stored('User avatars', 'Plex profile pictures, always saved', st.avatars.count, st.avatars.bytes, st.avatars, () => flush('avatars', 'User avatars'))}
-			<div class="flex items-center gap-3 py-3 text-sm">
-				<span class="flex-1 font-medium">Total</span>
-				<span class="text-right"><span class="block font-medium tabular-nums">{fmtNum(total.count)}</span><span class="block text-xs text-gray-500">{fmtBytes(total.bytes)}</span></span>
-				<button class="btn-ghost px-2.5 py-1 text-xs" disabled={!total.count || busy !== ''} onclick={() => (confirmAll = true)}>Flush all</button>
+			<div class="grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem_4.75rem] items-center gap-x-3 py-3 text-sm">
+				<span class="font-medium">Total</span>
+				<span></span>
+				<span class="text-right"><span class="block font-medium tabular-nums">{fmtNum(total.count)}</span><span class="block text-xs tabular-nums text-gray-500">{fmtBytes(total.bytes)}</span></span>
+				<button class="btn-ghost w-full px-2 py-1 text-xs" disabled={!total.count || busy !== ''} onclick={() => (confirmAll = true)}>Flush all</button>
 			</div>
 		</div>
 	</div>
