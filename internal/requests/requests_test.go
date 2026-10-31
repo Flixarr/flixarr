@@ -234,10 +234,40 @@ func TestApprovalAlreadyThereAndFailure(t *testing.T) {
 	if r.Status != "failed" || !strings.Contains(r.Error, "already configured") {
 		t.Fatalf("failed: %+v", r)
 	}
-	// A failed request can be made again.
+	// Asking again after a failure retries the same request, with its timeline kept.
+	r1, _ := s.Create(ctx, admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix"})
+	if r1.ID != r.ID || r1.Status != "failed" {
+		t.Fatalf("failed again: %+v", r1)
+	}
 	radarr.reject = false
-	if r2, err := s.Create(ctx, admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix"}); err != nil || r2.Status != "sent" {
+	r2, err := s.Create(ctx, admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix"})
+	if err != nil || r2.Status != "sent" || r2.ID != r.ID || r2.Error != "" {
 		t.Fatalf("again after failure: %+v %v", r2, err)
+	}
+	if all, _ := st.RequestsForTitle("movie", 603); len(all) != 1 {
+		t.Fatalf("want one request, got %d", len(all))
+	}
+	if ev, _ := st.RequestEvents(r.ID); len(ev) != 6 || ev[0].Status != "requested" || ev[1].Status != "failed" || ev[5].Status != "sent" {
+		t.Fatalf("timeline: %+v", ev)
+	}
+}
+
+func TestRetryIsPerPerson(t *testing.T) {
+	s, st, _, sonarr, admin, user := setup(t)
+	ctx := context.Background()
+	// Sonarr can't find it: failed.
+	r, _ := s.Create(ctx, user, New{Type: "series", TmdbID: 9999, Title: "Nowhere"})
+	if r.Status != "failed" {
+		t.Fatalf("failed: %+v", r)
+	}
+	// Someone else asking makes their own request; the same person asking again with seasons retries theirs.
+	other, _ := s.Create(ctx, admin, New{Type: "series", TmdbID: 9999, Title: "Nowhere"})
+	again, _ := s.Create(ctx, user, New{Type: "series", TmdbID: 9999, Title: "Nowhere", Seasons: []int{2}})
+	if other.ID == r.ID || again.ID != r.ID || again.Mode != "seasons" || len(again.Seasons) != 1 {
+		t.Fatalf("other %+v again %+v", other, again)
+	}
+	if all, _ := st.RequestsForTitle("series", 9999); len(all) != 2 || len(sonarr.added) != 0 {
+		t.Fatalf("want two requests, got %d", len(all))
 	}
 }
 

@@ -90,6 +90,41 @@ func (s *Store) CreateRequest(r Request) (Request, error) {
 	return s.Request(id)
 }
 
+// FailedRequest returns someone's latest failed request for a title, if any, so asking again retries it.
+func (s *Store) FailedRequest(userID int64, typ string, tmdbID int) (Request, bool, error) {
+	r, err := scanRequest(s.db.QueryRow(`SELECT `+requestCols+` FROM requests r LEFT JOIN users u ON u.id = r.user_id
+		WHERE r.user_id = ? AND r.type = ? AND r.tmdb_id = ? AND r.status = 'failed' AND r.source = '' ORDER BY r.id DESC LIMIT 1`, userID, typ, tmdbID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Request{}, false, nil
+	}
+	return r, err == nil, err
+}
+
+// RetryRequest starts a failed request over with what was asked this time, keeping its timeline.
+func (s *Store) RetryRequest(r Request) (Request, error) {
+	t := now()
+	if r.Seasons == nil {
+		r.Seasons = []int{}
+	}
+	seasons, _ := json.Marshal(r.Seasons)
+	if r.Episodes == nil {
+		r.Episodes = [][2]int{}
+	}
+	episodes, _ := json.Marshal(r.Episodes)
+	var server any
+	if r.ServerID != 0 {
+		server = r.ServerID
+	}
+	_, err := s.db.Exec(`UPDATE requests SET title = ?, year = ?, poster = ?, backdrop = ?, status = ?, server_id = ?, arr_id = 0, profile_id = ?, profile_name = ?,
+		mode = ?, seasons = ?, episodes = ?, anime = ?, season_count = ?, progress = 0, error = '', unreleased = 0, decided_by = NULL, created_at = ?, updated_at = ? WHERE id = ?`,
+		r.Title, r.Year, r.Poster, r.Backdrop, r.Status, server, r.ProfileID, r.ProfileName, r.Mode, string(seasons), string(episodes), r.Anime, r.SeasonCount, t, t, r.ID)
+	if err != nil {
+		return Request{}, err
+	}
+	s.addEvent(r.ID, "requested", "", t)
+	return s.Request(r.ID)
+}
+
 // Request returns one request.
 func (s *Store) Request(id int64) (Request, error) {
 	r, err := scanRequest(s.db.QueryRow(`SELECT `+requestCols+` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.id = ?`, id))

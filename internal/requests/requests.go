@@ -29,6 +29,7 @@ type Service struct {
 	Plex    Plex                                // nil = no Plex checks (tests)
 	Changed func(r store.Request)               // a request was created, moved along or removed (live updates)
 
+	createMu   sync.Mutex // one Create at a time, so two taps at once can't both pass the already-requested check
 	mu         sync.Mutex
 	lastRecent time.Time
 	rescanned  map[int64]time.Time
@@ -191,6 +192,8 @@ func (s *Service) Create(ctx context.Context, u *store.User, in New) (store.Requ
 	if in.TmdbID <= 0 || strings.TrimSpace(in.Title) == "" {
 		return store.Request{}, errors.New("missing title")
 	}
+	s.createMu.Lock()
+	defer s.createMu.Unlock()
 	if s.Store.IsBlocked(in.Type, in.TmdbID) {
 		return store.Request{}, ErrBlocked
 	}
@@ -295,8 +298,25 @@ func (s *Service) Create(ctx context.Context, u *store.User, in New) (store.Requ
 	if s.ApprovalRequired() && !u.Can("autoApprove") {
 		status = "pending"
 	}
-	r, err := s.Store.CreateRequest(store.Request{Type: in.Type, TmdbID: in.TmdbID, Title: in.Title, Year: in.Year, Poster: in.Poster, Backdrop: in.Backdrop,
-		UserID: u.ID, Status: status, ServerID: v.ID, ProfileID: profileID, ProfileName: profileName, Mode: mode, Seasons: seasons, Episodes: episodes, Anime: in.Type == "series" && isAnime(in.Genres, in.Language), SeasonCount: count})
+	r := store.Request{Type: in.Type, TmdbID: in.TmdbID, Title: in.Title, Year: in.Year, Poster: in.Poster, Backdrop: in.Backdrop,
+		UserID: u.ID, Status: status, ServerID: v.ID, ProfileID: profileID, ProfileName: profileName, Mode: mode, Seasons: seasons, Episodes: episodes, Anime: in.Type == "series" && isAnime(in.Genres, in.Language), SeasonCount: count}
+	// Asking again after a failure tries the failed request again instead of adding a second one.
+	old, retry, err := s.Store.FailedRequest(u.ID, in.Type, in.TmdbID)
+	if err != nil {
+		return store.Request{}, err
+	}
+	if retry {
+		r.ID = old.ID
+		r, err = s.Store.RetryRequest(r)
+		s.mu.Lock()
+		delete(s.checked, r.ID)
+		delete(s.rescanned, r.ID)
+		delete(s.rescans, r.ID)
+		delete(s.matchTried, r.ID)
+		s.mu.Unlock()
+	} else {
+		r, err = s.Store.CreateRequest(r)
+	}
 	if err != nil {
 		return store.Request{}, err
 	}
