@@ -53,6 +53,20 @@ func TestRequestIssues(t *testing.T) {
 		t.Fatalf("the movie with the same number is its own title: %+v", got)
 	}
 
+	// The red number on Issues: open issues (the resolved one doesn't count), only for people who manage them.
+	for _, c := range []struct {
+		who *store.User
+		n   int
+	}{{admin, 2}, {sam, 0}} {
+		w := httptest.NewRecorder()
+		s.requestAttention(w, httptest.NewRequest("GET", "/api/requests/attention", nil), c.who)
+		var got struct{ Issues int }
+		json.NewDecoder(w.Body).Decode(&got)
+		if got.Issues != c.n {
+			t.Fatalf("issue count for %s: %d", c.who.Username, got.Issues)
+		}
+	}
+
 	r := httptest.NewRequest("GET", "/api/requests/x/detail", nil)
 	r.SetPathValue("id", strconv.FormatInt(req.ID, 10))
 	w := httptest.NewRecorder()

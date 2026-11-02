@@ -7,7 +7,8 @@
 	import { session, signOut, can } from '#lib/session.svelte.ts';
 	import { alerts, anyNew, openedBell, readAllAlerts, servicesUnread, show as showCount, tapAlert, untapped, watchAlerts } from '#lib/alerts.svelte.ts';
 	import { ago, api, img } from '#lib/api.ts';
-	import { attention, watchAttention } from '#lib/attention.svelte.ts';
+	import { attention, openIssues, watchAttention } from '#lib/attention.svelte.ts';
+	import CountBadge from './CountBadge.svelte';
 	import { roleLabel } from '#lib/roles.ts';
 	import { primeKeyboard } from '#lib/keyboard.ts';
 
@@ -24,7 +25,9 @@
 		location.reload();
 	}
 
-	const NAV = [['Discover', '/'], ['Movies', '/movies'], ['Series', '/series'], ['Requests', '/requests']] as const;
+	// Issues (#192) for anyone who can report or manage them.
+	const NAV = $derived([['Discover', '/'], ['Movies', '/movies'], ['Series', '/series'], ['Requests', '/requests'], ...(can('manageIssues') || can('reportIssues') ? [['Issues', '/issues']] : [])] as [string, string][]);
+	const badge = (h: string) => (h === '/requests' ? attention() : h === '/issues' ? openIssues() : 0);
 	const active = (h: string) => (h === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(h));
 	const solid = $derived(!transparent || scrolled);
 	const admin = $derived(can('admin'));
@@ -126,7 +129,7 @@
 		</div>
 		<nav class="hidden items-center gap-1 text-[15px] tablet:flex">
 			{#each NAV as [label, h] (h)}
-				<a href={h} class="relative rounded-lg px-3 py-1.5 {active(h) ? 'bg-white/10 font-semibold text-white' : 'text-gray-300 hover:text-white'}">{label}{#if h === '/requests' && attention()}<span class="absolute -right-1 -top-1 grid min-w-4 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-4 text-white">{attention() > 99 ? '99+' : attention()}</span>{/if}</a>
+				<a href={h} class="relative rounded-lg px-3 py-1.5 {active(h) ? 'bg-white/10 font-semibold text-white' : 'text-gray-300 hover:text-white'}">{label}<CountBadge n={badge(h)} /></a>
 			{/each}
 		</nav>
 		<!-- Search: a link to the search page (which focuses its box). Laptop+: looks like a search box. Tablet: an icon.
@@ -158,9 +161,6 @@
 								<div class="flex items-center gap-3 px-4 py-2"><Avatar user={session.me} class="size-9 text-sm" /><div><div class="text-sm font-medium">{session.me.username}</div><div class="text-xs text-gray-400">{roleLabel(session.me)}</div></div></div>
 								<div class="my-1 border-t border-gray-700/40"></div>
 								<a href="/profile" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 hover:text-white"><Icon name="profile" class="size-4" />Profile</a>
-								{#if can('manageIssues') || can('reportIssues')}
-									<a href="/issues" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 hover:text-white"><Icon name="issues" class="size-4" />{can('manageIssues') ? 'Issues' : 'My issues'}</a>
-								{/if}
 								{#if session.me?.managesUsers}
 									<a href="/users" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 hover:text-white"><Icon name="users" class="size-4" />Users</a>
 								{/if}

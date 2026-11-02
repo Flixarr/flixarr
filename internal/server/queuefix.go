@@ -82,7 +82,13 @@ func (s *Server) requestAttention(w http.ResponseWriter, r *http.Request, u *sto
 			n++
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]int{"count": n})
+	// The red number on Issues (#192): open issues, for people who manage them.
+	issues := 0
+	if u.Can("manageIssues") {
+		open, _ := s.Store.OpenIssues()
+		issues = len(open)
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"count": n, "issues": issues})
 }
 
 // stuckDownloads lists the titles ("movie:12", by their Radarr/Sonarr ID) with a download stuck right now.
