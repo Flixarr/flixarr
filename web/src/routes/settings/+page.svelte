@@ -13,6 +13,7 @@
 	import ProfilesSettings from '#lib/components/settings/ProfilesSettings.svelte';
 	import GeneralSettings from '#lib/components/settings/GeneralSettings.svelte';
 	import RequestsSettings from '#lib/components/settings/RequestsSettings.svelte';
+	import IssuesSettings from '#lib/components/settings/IssuesSettings.svelte';
 	import UsersSettings from '#lib/components/settings/UsersSettings.svelte';
 	import PlexSettings from '#lib/components/settings/PlexSettings.svelte';
 	import DiscoverSettings from '#lib/components/settings/DiscoverSettings.svelte';
@@ -26,6 +27,7 @@
 	const SECTIONS: [string, string, string, string][] = [
 		['general', 'General', 'settings', 'Address, region, language'],
 		['requests', 'Requests', 'requests', 'Approval, how series are requested'],
+		['issues', 'Issues', 'issues', "What's wrong: the reasons people pick"],
 		['users', 'Users', 'users', 'Sign-in, new people'],
 		['plex', 'Plex', 'play', 'Server, libraries, scans'],
 		['services', 'Services', 'plus', 'Radarr, Sonarr'],
@@ -125,6 +127,8 @@
 					<GeneralSettings />
 				{:else if tab === 'requests'}
 					<RequestsSettings />
+				{:else if tab === 'issues'}
+					<IssuesSettings />
 				{:else if tab === 'users'}
 					<UsersSettings />
 				{:else if tab === 'plex'}

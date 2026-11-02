@@ -11,14 +11,9 @@
 	// inLibrary: it's in Plex, so problems with the files can be.
 	let { open = $bindable(false), item, inLibrary = true, waiting = false }: { open?: boolean; item: Movie | Series; inLibrary?: boolean; waiting?: boolean } = $props();
 
+	// What can be wrong comes from the server (an admin can change the list, #194), in its order.
 	const DIDNT = "Didn't download";
-	const ALL: Record<string, string[]> = {
-		Video: ['Bad quality', 'Wrong file', "Won't play"],
-		Audio: ['Too quiet', 'Out of sync', 'Wrong language', 'No audio'],
-		Subtitles: ['Missing', 'Out of sync', 'Wrong language'],
-		[DIDNT]: ['Never started', 'Got stuck'],
-		Other: []
-	};
+	let ALL = $state<Record<string, string[]>>({ [DIDNT]: ['Never started', 'Got stuck'] });
 	const KINDS = $derived(Object.fromEntries(Object.entries(ALL).filter(([k]) => (k === DIDNT ? waiting : inLibrary))));
 	// Problems with files: only the seasons and episodes that are in Plex are offered.
 	let inPlex = $state<Record<number, number[]> | null>(null);
@@ -32,7 +27,13 @@
 
 	$effect(() => {
 		if (open) {
-			pickKind(inLibrary ? 'Video' : DIDNT);
+			api<{ kinds: { kind: string; subs: string[] }[] }>('/issues/kinds')
+				.then((d) => {
+					ALL = Object.fromEntries(d.kinds.map((k) => [k.kind, k.subs]));
+					pickKind(Object.keys(KINDS)[0] ?? DIDNT);
+				})
+				.catch(() => {});
+			pickKind(Object.keys(KINDS)[0] ?? DIDNT);
 			parts = [];
 			note = '';
 			if (item.type === 'series' && inLibrary && !inPlex) api<Record<number, number[]>>(`/plex/episodes/${item.id}`).then((d) => (inPlex = d)).catch(() => {});
@@ -40,7 +41,7 @@
 	});
 	function pickKind(k: string) {
 		kind = k;
-		sub = ALL[k][0] ?? '';
+		sub = ALL[k]?.[0] ?? '';
 	}
 
 	async function send() {
@@ -81,12 +82,12 @@
 			</div>
 		{/if}
 		<div>
-			<label for="is-note" class="block text-sm font-medium">Details {#if kind !== 'Other'}<span class="font-normal text-gray-500">(optional)</span>{/if}</label>
+			<label for="is-note" class="block text-sm font-medium">Details {#if KINDS[kind]?.length}<span class="font-normal text-gray-500">(optional)</span>{/if}</label>
 			<textarea id="is-note" rows="3" maxlength="2000" bind:value={note} class="mt-1 w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/60" placeholder="e.g. dialogue is too quiet starting around 20 minutes in"></textarea>
 		</div>
 	</div>
 	{#snippet footer()}
 		<button class="btn-ghost" onclick={() => (open = false)}>Cancel</button>
-		<button class="btn px-6" disabled={sending || (kind === 'Other' && !note.trim())} onclick={send}>{sending ? 'Sending…' : 'Submit report'}</button>
+		<button class="btn px-6" disabled={sending || (!KINDS[kind]?.length && !note.trim())} onclick={send}>{sending ? 'Sending…' : 'Submit report'}</button>
 	{/snippet}
 </Modal>

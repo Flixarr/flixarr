@@ -12,19 +12,6 @@ import (
 	"github.com/Flixarr/flixarr/internal/store"
 )
 
-// issueKinds: what can be wrong, and the details for each (Other has none).
-var issueKinds = map[string][]string{
-	"Video":     {"Bad quality", "Wrong file", "Won't play"},
-	"Audio":     {"Too quiet", "Out of sync", "Wrong language", "No audio"},
-	"Subtitles": {"Missing", "Out of sync", "Wrong language"},
-	"Other":     {},
-	// Not about a file: a request that never arrived. The one kind allowed on titles not in the library.
-	"Didn't download": {"Never started", "Got stuck"},
-}
-
-// downloadKind is the issue kind for a request that never arrived.
-const downloadKind = "Didn't download"
-
 // waitingFor: someone asked for the title and it hasn't (all) arrived: a request that's on its way or failed.
 func (s *Server) waitingFor(typ string, id int) bool {
 	reqs, _ := s.Store.RequestsForTitle(typ, id)
@@ -61,7 +48,7 @@ func (s *Server) issueList(w http.ResponseWriter, r *http.Request, u *store.User
 		writeErr(w, http.StatusInternalServerError, "Database error.")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"issues": list, "kinds": issueKinds})
+	writeJSON(w, http.StatusOK, map[string]any{"issues": list, "kinds": s.issueKinds()})
 }
 
 func (s *Server) issueCreate(w http.ResponseWriter, r *http.Request, u *store.User) {
@@ -70,7 +57,7 @@ func (s *Server) issueCreate(w http.ResponseWriter, r *http.Request, u *store.Us
 		writeErr(w, http.StatusBadRequest, "Bad request.")
 		return
 	}
-	subs, ok := issueKinds[in.Kind]
+	subs, ok := issueKindMap(s.issueKinds())[in.Kind]
 	switch {
 	case !ok:
 		writeErr(w, http.StatusBadRequest, "Pick what's wrong.")
@@ -92,7 +79,7 @@ func (s *Server) issueCreate(w http.ResponseWriter, r *http.Request, u *store.Us
 	if len(in.Note) > 2000 {
 		in.Note = in.Note[:2000]
 	}
-	if in.Kind == "Other" && in.Note == "" {
+	if len(subs) == 0 && in.Note == "" { // a reason with no details (like Other) needs the note
 		writeErr(w, http.StatusBadRequest, "Say what's wrong in the details.")
 		return
 	}
