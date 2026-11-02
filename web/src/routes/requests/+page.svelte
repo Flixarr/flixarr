@@ -12,7 +12,6 @@
 	import { notify } from '#lib/toast.svelte.ts';
 	import { session, can } from '#lib/session.svelte.ts';
 	import type { IssueBrief, Request } from '#lib/types.ts';
-	import { statusOf } from '#lib/availability.svelte.ts';
 	import { on } from '#lib/live.svelte.ts';
 	import { page } from '$app/state';
 	import { infinite } from '#lib/infinite.ts';
@@ -219,7 +218,7 @@
 				<span></span><span>Title</span><span>Requested by</span>{#if admin}<span>Quality</span>{/if}<span>Status</span>
 			</div>
 			{#each visible as r (r.id)}
-				<RequestRow {r} issues={issuesOf(r)} manager={admin} picked={picked.has(r.id)} busy={busy === r.id} plex={r.status === 'available' ? (statusOf(`${r.type}:${r.tmdbId}`)?.plex ?? '') : ''}
+				<RequestRow {r} issues={issuesOf(r)} manager={admin} picked={picked.has(r.id)} busy={busy === r.id}
 					onpick={() => (picked.has(r.id) ? picked.delete(r.id) : picked.add(r.id))} onopen={() => openDetail(r)} onapprove={() => approve(r)} ondecline={() => ask('decline', [r.id])} />
 			{/each}
 		</div>

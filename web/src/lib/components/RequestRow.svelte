@@ -17,10 +17,9 @@
 	import Check from './Check.svelte';
 	import Person from './Person.svelte';
 	import StatusPill from './StatusPill.svelte';
-	import PlexMark from './PlexMark.svelte';
 
-	let { r, issues = [], manager = false, picked = false, busy = false, plex = '', onpick, onopen, onapprove, ondecline }: {
-		r: Request; issues?: IssueBrief[]; manager?: boolean; picked?: boolean; busy?: boolean; plex?: string;
+	let { r, issues = [], manager = false, picked = false, busy = false, onpick, onopen, onapprove, ondecline }: {
+		r: Request; issues?: IssueBrief[]; manager?: boolean; picked?: boolean; busy?: boolean;
 		onpick?: () => void; onopen: () => void; onapprove?: () => void; ondecline?: () => void;
 	} = $props();
 
@@ -66,8 +65,6 @@
 				<button class="btn px-2.5 py-0.5 text-[11px]" disabled={busy} onclick={(e) => (e.stopPropagation(), onapprove?.())}>{busy ? 'Approving…' : 'Approve'}</button>
 				<button class="btn-ghost px-2.5 py-0.5 text-[11px]" disabled={busy} onclick={(e) => (e.stopPropagation(), ondecline?.())}>Decline</button>
 			</div>
-		{:else if r.status === 'available' && plex}
-			<a href={plex} target="_blank" rel="noopener" class="btn-plex px-2.5 py-0.5 text-[11px]" onclick={(e) => e.stopPropagation()}><PlexMark class="size-3" color="#111827" />Play</a>
 		{/if}
 	</div>
 </div>
