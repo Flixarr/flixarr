@@ -440,6 +440,9 @@ func PlainError(r store.Request) string {
 	case "failed":
 		return "It couldn't be added. Someone who manages requests can look into it."
 	case "expired":
+		if store.EndedOnImport(r.Status, r.Error) {
+			return "Brought over from Seerr as ended. Request it again to get it."
+		}
 		return "Removed from Plex to make room. Request it again to get it back."
 	case "declined":
 		return r.Error // the admin's own words

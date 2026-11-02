@@ -20,27 +20,26 @@ import (
 
 // Seerr permission bits (the same in Overseerr and Jellyseerr).
 const (
-	permAdmin         = 2
-	permManageReqs    = 16
-	permRequest       = 32
-	permAutoApprove   = 128
-	permAutoMovie     = 256
-	permAutoTv        = 512
-	permAdvanced      = 8192
-	permRequestMovie  = 262144
-	permRequestTv     = 524288
-	permManageIssues  = 1048576
-	permCreateIssues  = 4194304
-	permAutoRequest   = 8388608
-	permAutoReqMovie  = 16777216
-	permAutoReqTv     = 33554432
-	requestPending    = 1
-	requestDeclined   = 3
-	issueResolved     = 2
-	userTypePlex      = 1
-	defaultQuotaDays  = 7
-	titleLookupPause  = 120 * time.Millisecond // stays well under the API's 100 lookups per 10 seconds
-	expiredReasonText = "Not in Plex, Radarr or Sonarr when it was brought over from Seerr."
+	permAdmin        = 2
+	permManageReqs   = 16
+	permRequest      = 32
+	permAutoApprove  = 128
+	permAutoMovie    = 256
+	permAutoTv       = 512
+	permAdvanced     = 8192
+	permRequestMovie = 262144
+	permRequestTv    = 524288
+	permManageIssues = 1048576
+	permCreateIssues = 4194304
+	permAutoRequest  = 8388608
+	permAutoReqMovie = 16777216
+	permAutoReqTv    = 33554432
+	requestPending   = 1
+	requestDeclined  = 3
+	issueResolved    = 2
+	userTypePlex     = 1
+	defaultQuotaDays = 7
+	titleLookupPause = 120 * time.Millisecond // stays well under the API's 100 lookups per 10 seconds
 )
 
 // Perms turns Seerr's permission bits into Flixarr's switches.
@@ -470,11 +469,11 @@ func (im *Importer) Plan(ctx context.Context, src Source) (*Preview, *Data, *lib
 			if prev, ok := openMovie[r.Media.TmdbID]; ok {
 				old := p.statuses[prev]
 				p.Requests.ByStatus[old.status]--
-				old.status, old.note = "expired", "Requested again later."
+				old.status, old.note = "expired", store.SeerrAskedAgain
 				p.statuses[prev] = old
 				p.Requests.ByStatus["expired"]++
 			} else if _, open, _ := im.Store.OpenRequest("movie", r.Media.TmdbID); open {
-				pl.status, pl.note = "expired", "Already requested in Flixarr."
+				pl.status, pl.note = "expired", store.SeerrDuplicate
 			}
 			if pl.status != "expired" {
 				openMovie[r.Media.TmdbID] = r.ID
@@ -776,7 +775,7 @@ func (im *Importer) request(r Request, pl planned, t title, lib *library, users 
 	case "expired":
 		note := pl.note
 		if note == "" {
-			note = expiredReasonText
+			note = store.SeerrNotFound
 		}
 		fr.Error = note
 		events = append(events, store.Event{Status: "expired", Note: note, At: now})

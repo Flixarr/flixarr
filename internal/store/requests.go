@@ -353,6 +353,7 @@ func (s *Store) RequestEvents(requestID int64) ([]Event, error) {
 		if err := rows.Scan(&e.Status, &e.Note, &e.At); err != nil {
 			return nil, err
 		}
+		e.Status = eventStatus(e.Status, e.Note)
 		out = append(out, e)
 	}
 	return out, rows.Err()

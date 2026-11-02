@@ -82,7 +82,7 @@
 			text: e.status === 'fix' ? e.note : (EVENT_TEXT[e.status] ?? e.status) + (e.note && (e.status === 'approved' || e.status === 'declined') ? ` by ${e.note}` : ''),
 			at: e.at,
 			dot: eventDot(e.status),
-			note: e.note && ['failed', 'expired', 'removed'].includes(e.status) ? e.note : undefined
+			note: e.note && ['failed', 'expired', 'removed', 'imported'].includes(e.status) ? e.note : undefined
 		}))
 	);
 	const person = (name: string, avatar = '') => ({ username: name || '?', avatar }) as User;

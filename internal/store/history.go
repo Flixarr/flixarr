@@ -7,6 +7,27 @@ import (
 	"time"
 )
 
+// The notes a Seerr import gives the requests it brings in as already ended. Those steps are stored as
+// "expired" but nothing left Plex; they read as "imported" (#186).
+const (
+	SeerrNotFound   = "Not in Plex, Radarr or Sonarr when it was brought over from Seerr."
+	SeerrAskedAgain = "Requested again later."
+	SeerrDuplicate  = "Already requested in Flixarr."
+)
+
+// EndedOnImport: a request the Seerr import brought in as already ended (its note says why).
+func EndedOnImport(status, note string) bool {
+	return status == "expired" && (note == SeerrNotFound || note == SeerrAskedAgain || note == SeerrDuplicate)
+}
+
+// eventStatus is how a stored step reads: an import's "expired" is "imported", not a removal.
+func eventStatus(status, note string) string {
+	if EndedOnImport(status, note) {
+		return "imported"
+	}
+	return status
+}
+
 // HistoryItem is one step in a title's history: a request's step, an issue reported or resolved, or a
 // title event (added to Plex, Redownload, deleted, data cleared).
 type HistoryItem struct {
@@ -15,6 +36,7 @@ type HistoryItem struct {
 	Note   string `json:"note"`   // the reason, the issue's kind, what was deleted
 	Who    string `json:"who"`    // who did it, when known
 	Detail string `json:"detail"` // series: what the request asked for
+	seq    int    // the order it was read in, for steps saved in the same second
 }
 
 // AddTitleEvent records something done to a title (userID 0 = nobody in particular).
@@ -49,11 +71,12 @@ func (s *Store) TitleHistory(typ string, tmdbID int) ([]HistoryItem, error) {
 	}
 	// Request steps (Fix steps come from the title events instead); "requested" names the person who asked, approved/declined name who decided.
 	err := add(`SELECT e.status, e.note, e.at, COALESCE(u.username, ''), r.mode, r.seasons FROM request_events e
-		JOIN requests r ON r.id = e.request_id LEFT JOIN users u ON u.id = r.user_id WHERE r.type = ? AND r.tmdb_id = ? AND e.status NOT IN ('redownload', 'fix')`,
+		JOIN requests r ON r.id = e.request_id LEFT JOIN users u ON u.id = r.user_id WHERE r.type = ? AND r.tmdb_id = ? AND e.status NOT IN ('redownload', 'fix') ORDER BY e.id`,
 		func(scan func(...any) error) (HistoryItem, error) {
 			var h HistoryItem
 			var asker, mode, seasons string
 			err := scan(&h.Kind, &h.Note, &h.At, &asker, &mode, &seasons)
+			h.Kind = eventStatus(h.Kind, h.Note)
 			if h.Kind == "requested" {
 				h.Who = asker
 			}
@@ -83,13 +106,24 @@ func (s *Store) TitleHistory(typ string, tmdbID int) ([]HistoryItem, error) {
 			})
 	}
 	if err == nil {
-		err = add(`SELECT e.kind, e.note, e.at, COALESCE(u.username, '') FROM title_events e LEFT JOIN users u ON u.id = e.user_id WHERE e.type = ? AND e.tmdb_id = ?`,
+		err = add(`SELECT e.kind, e.note, e.at, COALESCE(u.username, '') FROM title_events e LEFT JOIN users u ON u.id = e.user_id WHERE e.type = ? AND e.tmdb_id = ? ORDER BY e.id`,
 			func(scan func(...any) error) (HistoryItem, error) {
 				var h HistoryItem
 				return h, scan(&h.Kind, &h.Note, &h.At, &h.Who)
 			})
 	}
-	sort.SliceStable(out, func(a, b int) bool { return when(out[a].At).After(when(out[b].At)) })
+	// Newest first. Steps saved in the same second (a Seerr import writes Requested and Approved together)
+	// keep the order they happened in: the one read later is the newer.
+	for i := range out {
+		out[i].seq = i
+	}
+	sort.SliceStable(out, func(a, b int) bool {
+		ta, tb := when(out[a].At), when(out[b].At)
+		if ta.Equal(tb) {
+			return out[a].seq > out[b].seq
+		}
+		return ta.After(tb)
+	})
 	return out, err
 }
 

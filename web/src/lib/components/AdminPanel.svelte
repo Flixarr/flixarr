@@ -132,7 +132,7 @@
 		return { shown: (allHistory ? all : all.slice(-5)).map(story), earlier: Math.max(0, all.length - 5) };
 	});
 	function story(h: History): Step {
-		const note = h.note && ['request:failed', 'request:removed', 'request:expired'].includes(h.kind) ? h.note : undefined;
+		const note = h.note && ['request:failed', 'request:removed', 'request:expired', 'request:imported'].includes(h.kind) ? h.note : undefined;
 		const by = h.who ? ` by ${h.who}` : '';
 		if (h.kind.startsWith('request:')) {
 			const st = h.kind.slice(8);
