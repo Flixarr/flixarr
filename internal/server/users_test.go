@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Flixarr/flixarr/internal/requests"
 	"github.com/Flixarr/flixarr/internal/secret"
 	"github.com/Flixarr/flixarr/internal/store"
 )
@@ -98,5 +99,33 @@ func TestUserBulk(t *testing.T) {
 	// A Manager can't give admin: everyone skipped.
 	if _, body := post(mgr, `{"ids":`+ids+`,"set":{"admin":true}}`); !strings.Contains(body, `"updated":0`) {
 		t.Fatalf("manager gave admin: %s", body)
+	}
+}
+
+// Anyone can open their own profile (#193); someone else's needs Manage users.
+func TestOwnProfile(t *testing.T) {
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	st, _ := store.Open(dir, box)
+	t.Cleanup(func() { st.Close() })
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	s := &Server{Store: st, Log: log, Requests: &requests.Service{Store: st, Log: log}}
+	admin, _ := st.CreateUser(store.User{PlexID: 1, Username: "admin", Role: "Admin"})
+	sam, _ := st.CreateUser(store.User{PlexID: 2, Username: "sam", Role: "User"})
+	call := func(who *store.User, id int64) int {
+		r := httptest.NewRequest("GET", "/api/users/x", nil)
+		r.SetPathValue("id", strconv.FormatInt(id, 10))
+		w := httptest.NewRecorder()
+		s.peopleOrSelf(s.userProfile)(w, r, who)
+		return w.Code
+	}
+	if c := call(sam, sam.ID); c != 200 {
+		t.Fatalf("own profile: %d", c)
+	}
+	if c := call(sam, admin.ID); c != 403 {
+		t.Fatalf("someone else's without Manage users: %d", c)
+	}
+	if c := call(admin, sam.ID); c != 200 {
+		t.Fatalf("admin opening sam: %d", c)
 	}
 }

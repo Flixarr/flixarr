@@ -145,4 +145,9 @@ export interface IssueBrief {
 	id: number; type: 'movie' | 'series'; tmdbId: number; kind: string; sub: string; season: number; episode: number; parts: [number, number][]; note: string;
 	userId: number; userName: string; userAvatar: string; comments: number; createdAt: string;
 }
+// A person's profile page (#149, #193): who they are, their numbers and latest requests, and what the viewer may change.
+export interface UserProfile {
+	user: User; stats: { requests: number; available: number; waiting: number; inProgress: number; openIssues: number }; requests: Card[];
+	roles: Record<string, string[]>; admin: boolean; canChange: boolean; approvalRequired: boolean;
+}
 export type RequestBrief = { id: number; status: Request['status'] | 'blocked'; progress: number; plex?: string; blocked?: boolean; episodes?: [number, number]; unreleased?: boolean; asked?: { whole: boolean; seasons: number[] } };

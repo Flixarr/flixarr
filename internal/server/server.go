@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -171,8 +172,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/plex/scan", s.auth(s.admin(s.plexScan)))
 	mux.HandleFunc("GET /api/users", s.auth(s.people(s.userList)))
 	mux.HandleFunc("PUT /api/users/{id}", s.auth(s.people(s.userUpdate)))
-	mux.HandleFunc("GET /api/users/{id}", s.auth(s.people(s.userProfile)))
-	mux.HandleFunc("GET /api/users/{id}/watched", s.auth(s.people(s.userWatched)))
+	mux.HandleFunc("GET /api/users/{id}", s.auth(s.peopleOrSelf(s.userProfile)))
+	mux.HandleFunc("GET /api/users/{id}/watched", s.auth(s.peopleOrSelf(s.userWatched)))
 	mux.HandleFunc("POST /api/users/bulk", s.auth(s.people(s.userBulk)))
 	mux.HandleFunc("GET /api/users/everyone", s.auth(s.admin(s.everyoneSettings)))
 	mux.HandleFunc("PUT /api/users/everyone", s.auth(s.admin(s.everyoneSettings)))
@@ -285,6 +286,18 @@ func (s *Server) people(h func(http.ResponseWriter, *http.Request, *store.User))
 			return
 		}
 		h(w, r, u)
+	}
+}
+
+// peopleOrSelf is people, except anyone may read their own profile: Profile is the same page as everyone
+// else's (#193).
+func (s *Server) peopleOrSelf(h func(http.ResponseWriter, *http.Request, *store.User)) func(http.ResponseWriter, *http.Request, *store.User) {
+	return func(w http.ResponseWriter, r *http.Request, u *store.User) {
+		if id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64); id == u.ID {
+			h(w, r, u)
+			return
+		}
+		s.people(h)(w, r, u)
 	}
 }
 
