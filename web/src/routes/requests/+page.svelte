@@ -1,23 +1,25 @@
 <script lang="ts">
-	// Requests: yours or everyone's (anyone can see all requests), grouped by where they are. Tap a card for its details window (timeline, live progress, and the admin buttons for people who
-	// manage requests). Cards update on their own while the page is open.
+	// Requests: yours or everyone's (anyone can see all requests), one row per request (#189). Tap a row for
+	// its window (timeline, live progress, the title's issues, and the buttons for people who manage requests).
+	// People who manage requests can also tick rows and act on them together (#190). Rows update on their
+	// own while the page is open.
 	import Select from '#lib/components/Select.svelte';
-	import { api, ago } from '#lib/api.ts';
+	import Modal from '#lib/components/Modal.svelte';
+	import Check from '#lib/components/Check.svelte';
+	import RequestRow, { rowCols } from '#lib/components/RequestRow.svelte';
+	import RequestDetail from '#lib/components/RequestDetail.svelte';
+	import { api } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import { session, can } from '#lib/session.svelte.ts';
-	import type { Request, User } from '#lib/types.ts';
-	import Avatar from '#lib/components/Avatar.svelte';
-	import StepBar from '#lib/components/StepBar.svelte';
-	import Img from '#lib/components/Img.svelte';
-	import PlexMark from '#lib/components/PlexMark.svelte';
-	import RequestDetail from '#lib/components/RequestDetail.svelte';
+	import type { IssueBrief, Request } from '#lib/types.ts';
 	import { statusOf } from '#lib/availability.svelte.ts';
-	import { simple, askedFor, NOT_RELEASED, waitingRelease } from '#lib/requeststatus.ts';
 	import { on } from '#lib/live.svelte.ts';
 	import { page } from '$app/state';
 	import { infinite } from '#lib/infinite.ts';
+	import { SvelteSet } from 'svelte/reactivity';
 
 	let list = $state<Request[] | null>(null);
+	let issues = $state<Record<string, IssueBrief[]>>({});
 	let approval = $state(false);
 	const admin = $derived(can('manageRequests'));
 	// Your requests or all of them; people who manage requests start on all. Remembered on the device.
@@ -27,7 +29,7 @@
 		localStorage.setItem('flixarr:requests-scope', k);
 	}
 	const mine = $derived((list ?? []).filter((r) => r.userId === session.me?.id).length);
-	let group = $state<'all' | 'onway' | 'attention' | 'ready' | 'ended'>('all');
+	let group = $state<'all' | 'onway' | 'attention' | 'ready' | 'ended' | 'issues'>('all');
 	let query = $state('');
 	let sort = $state<'new' | 'old' | 'title' | 'status'>('new');
 	let busy = $state(0);
@@ -36,8 +38,9 @@
 
 	async function load() {
 		try {
-			const d = await api<{ requests: Request[]; approvalRequired: boolean }>('/requests');
+			const d = await api<{ requests: Request[]; approvalRequired: boolean; issues: Record<string, IssueBrief[]> }>('/requests');
 			list = d.requests;
+			issues = d.issues ?? {};
 			approval = d.approvalRequired;
 		} catch (e) {
 			notify(e instanceof Error ? e.message : 'Could not load requests.', 'orange');
@@ -59,6 +62,7 @@
 		return () => offs.forEach((off) => off());
 	});
 
+	const issuesOf = (r: Request) => issues[`${r.type}:${r.tmdbId}`] ?? [];
 	// Where a request is. Waiting for approval needs attention from people who approve; for everyone else
 	// it's on its way.
 	const groupOf = (r: Request) =>
@@ -66,12 +70,12 @@
 		: r.status === 'declined' || r.status === 'expired' || r.status === 'removed' ? 'ended'
 		: r.status === 'failed' || r.trouble || (r.status === 'pending' && admin) ? 'attention'
 		: 'onway';
+	const inGroup = (r: Request, g: typeof group) => g === 'all' || (g === 'issues' ? issuesOf(r).length > 0 : groupOf(r) === g);
 	const ORDER = ['pending', 'failed', 'importing', 'downloading', 'grabbed', 'sent', 'approved', 'available', 'declined', 'removed', 'expired'];
 	const scoped = $derived((list ?? []).filter((r) => scope === 'all' || r.userId === session.me?.id));
-	const person = (r: Request) => ({ username: r.userName || '?', avatar: r.userAvatar }) as User;
 	const shown = $derived.by(() => {
 		const q = query.trim().toLowerCase();
-		const out = scoped.filter((r) => (group === 'all' || groupOf(r) === group) && (!q || r.title.toLowerCase().includes(q) || r.userName.toLowerCase().includes(q)));
+		const out = scoped.filter((r) => inGroup(r, group) && (!q || r.title.toLowerCase().includes(q) || r.userName.toLowerCase().includes(q)));
 		const by: Record<typeof sort, (a: Request, b: Request) => number> = {
 			new: (a, b) => b.id - a.id,
 			old: (a, b) => a.id - b.id,
@@ -80,8 +84,8 @@
 		};
 		return out.sort(by[sort]);
 	});
-	const count = (g: string) => scoped.filter((r) => groupOf(r) === g).length;
-	// Cards are drawn 60 at a time, more as you scroll (#127); a new filter, search or sort starts over.
+	const count = (g: typeof group) => scoped.filter((r) => inGroup(r, g)).length;
+	// Rows are drawn 60 at a time, more as you scroll (#127); a new filter, search or sort starts over.
 	const STEP = 60;
 	let drawn = $state(STEP);
 	$effect(() => {
@@ -94,9 +98,7 @@
 		drawn += STEP;
 		return true;
 	};
-	const GROUPS: [typeof group, string][] = [['all', 'All'], ['onway', 'On its way'], ['attention', 'Needs attention'], ['ready', 'Ready'], ['ended', 'Ended']];
-
-	const status = (r: Request) => simple(r.status, r.progress);
+	const GROUPS: [typeof group, string][] = [['all', 'All'], ['onway', 'On its way'], ['attention', 'Needs attention'], ['ready', 'Ready'], ['ended', 'Ended'], ['issues', 'Issues']];
 
 	async function approve(r: Request) {
 		busy = r.id;
@@ -119,12 +121,72 @@
 		detail = r.id;
 		detailOpen = true;
 	}
+
+	// Picking several (#190). Each button acts only on the picked requests it applies to and says how many.
+	const picked = new SvelteSet<number>();
+	const sel = $derived((list ?? []).filter((r) => picked.has(r.id)));
+	const allOn = $derived(shown.length > 0 && shown.every((r) => picked.has(r.id)));
+	const someOn = $derived(shown.some((r) => picked.has(r.id)));
+	function pickAll() {
+		if (allOn) shown.forEach((r) => picked.delete(r.id));
+		else shown.forEach((r) => picked.add(r.id));
+	}
+	// Leaving the page's own list (another tab or person's requests) keeps nothing hidden ticked.
+	$effect(() => {
+		void scope;
+		picked.clear();
+	});
+	type Act = 'approve' | 'decline' | 'retry' | 'fix' | 'delete';
+	const FOR: Record<Act, (r: Request) => boolean> = {
+		approve: (r) => r.status === 'pending',
+		decline: (r) => r.status === 'pending',
+		retry: (r) => r.status === 'failed',
+		fix: (r) => ['approved', 'sent', 'grabbed', 'downloading', 'importing'].includes(r.status),
+		delete: () => true
+	};
+	const ACTS: [Act, string, string][] = [['approve', 'Approve', 'btn'], ['decline', 'Decline', 'btn-ghost'], ['retry', 'Try again', 'btn-ghost'], ['fix', 'Fix', 'btn-ghost'], ['delete', 'Delete', 'btn-ghost text-red-300']];
+	const DONE: Record<Act, string> = { approve: 'Approved', decline: 'Declined', retry: 'Tried again for', fix: 'Fixed', delete: 'Deleted' };
+	let running = $state<Act | ''>('');
+	let declineIds = $state<number[]>([]);
+	let declineOpen = $state(false);
+	let reason = $state('');
+	let deleteOpen = $state(false);
+
+	function ask(a: Act, ids: number[]) {
+		if (a === 'decline') return ((declineIds = ids), (reason = ''), (declineOpen = true));
+		if (a === 'delete') return (deleteOpen = true);
+		run(a, ids);
+	}
+	async function run(a: Act, ids: number[], body: object = {}) {
+		running = a;
+		let done = 0;
+		let failed = '';
+		for (const id of ids) {
+			try {
+				if (a === 'delete') {
+					await api(`/requests/${id}`, { method: 'DELETE' });
+					list = list!.filter((x) => x.id !== id);
+				} else {
+					const x = await api<Request | { request: Request }>(`/requests/${id}/${a}`, { method: 'POST', body: JSON.stringify(body) });
+					const next = 'request' in x ? x.request : x;
+					list = list!.map((r) => (r.id === id ? { ...r, ...next } : r));
+				}
+				picked.delete(id);
+				done++;
+			} catch (e) {
+				failed ||= e instanceof Error ? e.message : 'Something went wrong.';
+			}
+		}
+		running = '';
+		const of = ids.length > 1 ? ` of ${ids.length}` : '';
+		notify(done ? `${DONE[a]} ${done}${of}.${failed ? ` ${failed}` : ''}` : failed, failed ? 'orange' : 'green');
+	}
 </script>
 
-<main class="mx-auto max-w-[1200px] px-4 pb-28 pt-20 laptop:px-10 laptop:pt-24">
+<main class="mx-auto max-w-[1600px] px-4 pt-20 laptop:px-10 laptop:pt-24 {admin && sel.length ? 'pb-44 tablet:pb-28' : 'pb-28'}">
 	<div>
 		<h1 class="text-2xl font-bold laptop:text-3xl">Requests</h1>
-		<p class="text-sm text-gray-400">{approval ? 'New requests wait for an admin to approve them.' : 'Requests start right away.'} Tap one for its details.</p>
+		<p class="text-sm text-gray-400">{approval ? 'New requests wait for someone who manages requests to approve them.' : 'Requests start right away.'} Tap one for its details.</p>
 	</div>
 
 	<div class="mt-5 flex gap-6 border-b border-gray-700/60 text-sm" role="tablist">
@@ -139,8 +201,10 @@
 	</div>
 	<div class="no-scrollbar mt-3 flex gap-2 overflow-x-auto pb-1 text-sm">
 		{#each GROUPS as [k, l] (k)}
-			{@const n = k === 'all' ? scoped.length : count(k)}
-			<button class="shrink-0 rounded-full border px-3 py-1 {group === k ? 'border-primary bg-primary/15 text-white' : 'border-gray-700 text-gray-300 hover:text-white'} {k === 'attention' && n ? 'ring-1 ring-red-500/40' : ''}" onclick={() => (group = k)}>{l} <span class="text-gray-500">{n}</span></button>
+			{@const n = count(k)}
+			{#if k !== 'issues' || n}
+				<button class="shrink-0 rounded-full border px-3 py-1 {group === k ? 'border-primary bg-primary/15 text-white' : 'border-gray-700 text-gray-300 hover:text-white'} {k === 'attention' && n ? 'ring-1 ring-red-500/40' : ''} {k === 'issues' && group !== k ? 'text-amber-200' : ''}" onclick={() => (group = k)}>{l} <span class="text-gray-500">{n}</span></button>
+			{/if}
 		{/each}
 	</div>
 
@@ -149,49 +213,52 @@
 	{:else if !shown.length}
 		<div class="card mt-6 p-8 text-center text-sm text-gray-400">{scoped.length ? (query ? 'Nothing matches that search.' : 'Nothing here.') : scope === 'mine' ? "You haven't requested anything yet. Find a movie or series and hit Request." : 'No requests yet.'}</div>
 	{:else}
-		<div class="mt-5 grid gap-3 laptop:grid-cols-2">
+		<div class="mt-5 overflow-hidden rounded-xl border border-gray-700/50 bg-gray-900/40">
+			<div class="hidden items-center gap-4 border-b border-gray-700/50 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500 laptop:grid {rowCols(admin)}">
+				{#if admin}<Check on={allOn} some={someOn} label={allOn ? 'Unpick all' : 'Pick all shown'} onchange={pickAll} />{/if}
+				<span></span><span>Title</span><span>Requested by</span>{#if admin}<span>Quality</span>{/if}<span>Status</span>
+			</div>
 			{#each visible as r (r.id)}
-				{@const st = status(r)}
-				<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-				<div class="relative cursor-pointer overflow-hidden rounded-xl border border-gray-700/40 shadow-xl transition hover:border-primary/50" onclick={() => openDetail(r)}>
-					{#if r.backdrop}<div class="pointer-events-none absolute inset-0 opacity-30"><Img path={r.backdrop} kind="backdrop" sizes="(min-width: 1024px) 600px, 100vw" class="h-full w-full" /></div>{/if}
-					<div class="absolute inset-0 bg-linear-to-r from-gray-950/95 via-gray-950/85 to-gray-950/55"></div>
-					<div class="relative flex gap-3 p-3">
-						<div class="w-16 shrink-0 self-start overflow-hidden rounded-lg shadow-lg ring-1 ring-gray-700/60 tablet:w-20">{#if r.poster}<Img path={r.poster} kind="poster" sizes="80px" class="block aspect-[2/3] w-full" />{:else}<div class="aspect-[2/3] bg-gray-800"></div>{/if}</div>
-						<div class="flex min-w-0 flex-1 flex-col gap-1">
-							<div class="flex items-start justify-between gap-2">
-								<div class="min-w-0">
-									<div class="text-[11px] text-gray-400">{[r.year, r.type === 'movie' ? 'Movie' : 'Series', askedFor(r)].filter(Boolean).join(' · ')}</div>
-									<div class="truncate font-semibold">{r.title}</div>
-								</div>
-								{#if st}<span class="shrink-0 rounded-lg px-2 py-0.5 text-[11px] font-medium ring-1 {st.tone}">{st.label}</span>{/if}
-							</div>
-							<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-400">
-								<span class="flex items-center gap-1.5 text-gray-300"><Avatar user={person(r)} class="size-4 text-[9px]" />{r.source === 'redownload' ? 'Redownload by ' : ''}{r.userName || 'Someone'}</span>
-								{#if admin && r.profileName}<span>{r.profileName}</span>{/if}
-								<span>{ago(r.createdAt)}</span>
-							</div>
-							{#if st && st.step >= 0 && r.status !== 'available'}<StepBar status={r.status} progress={r.progress} class="mt-1.5 max-w-xs" />{/if}
-							{#if waitingRelease(r)}<p class="mt-1 text-xs text-yellow-200">{NOT_RELEASED}</p>{/if}
-							{#if r.trouble && r.status !== 'failed'}<p class="mt-1 text-xs text-yellow-200">{admin ? 'The download is stuck. Open it to fix it.' : 'The download hit a problem. Someone who manages requests can sort it out.'}</p>{/if}
-							{#if r.error && (r.status === 'failed' || r.status === 'declined' || r.status === 'removed')}<p class="mt-1 line-clamp-2 text-xs {r.status === 'failed' ? 'text-red-300' : 'text-gray-400'}">{r.status === 'declined' ? 'Reason: ' : ''}{r.error}</p>{/if}
-							{#if (r.status === 'available' && statusOf(`${r.type}:${r.tmdbId}`)?.plex) || (admin && r.status === 'pending')}
-								<div class="mt-auto flex justify-end gap-2 pt-2">
-									{#if r.status === 'available' && statusOf(`${r.type}:${r.tmdbId}`)?.plex}
-										<a href={statusOf(`${r.type}:${r.tmdbId}`)?.plex} target="_blank" rel="noopener" class="btn-plex px-3 py-1 text-xs" onclick={(e) => e.stopPropagation()}><PlexMark class="size-3.5" color="#111827" />Play</a>
-									{/if}
-									{#if admin && r.status === 'pending'}
-										<button class="btn px-3 py-1 text-xs" disabled={busy === r.id} onclick={(e) => (e.stopPropagation(), approve(r))}>{busy === r.id ? 'Approving…' : 'Approve'}</button>
-									{/if}
-								</div>
-							{/if}
-						</div>
-					</div>
-				</div>
+				<RequestRow {r} issues={issuesOf(r)} manager={admin} picked={picked.has(r.id)} busy={busy === r.id} plex={r.status === 'available' ? (statusOf(`${r.type}:${r.tmdbId}`)?.plex ?? '') : ''}
+					onpick={() => (picked.has(r.id) ? picked.delete(r.id) : picked.add(r.id))} onopen={() => openDetail(r)} onapprove={() => approve(r)} ondecline={() => ask('decline', [r.id])} />
 			{/each}
 		</div>
 		{#if drawn < shown.length}<div use:infinite={more} class="py-6 text-center text-xs text-gray-500">Loading more…</div>{/if}
 	{/if}
 </main>
+
+{#if admin && sel.length}
+	<div class="fixed inset-x-4 bottom-20 z-20 mx-auto max-w-2xl rounded-xl border border-gray-700 bg-gray-900/95 px-4 py-3 shadow-2xl backdrop-blur tablet:bottom-6">
+		<div class="flex flex-wrap items-center gap-2">
+			<span class="mr-auto text-sm font-medium">{sel.length} picked</span>
+			{#each ACTS as [a, label, cls] (a)}
+				{@const ids = sel.filter(FOR[a]).map((r) => r.id)}
+				{#if ids.length}
+					<button class="{cls} px-3 py-1 text-xs" disabled={!!running} onclick={() => ask(a, ids)}>{running === a ? 'Working…' : label}{#if ids.length < sel.length}<span class="ml-1 opacity-70">{ids.length}</span>{/if}</button>
+				{/if}
+			{/each}
+			<button class="px-1 text-gray-400 hover:text-white" aria-label="Unpick all" onclick={() => picked.clear()}>✕</button>
+		</div>
+	</div>
+{/if}
+
+<Modal bind:open={declineOpen} title={declineIds.length === 1 ? 'Decline this request' : `Decline ${declineIds.length} requests`}>
+	<div class="space-y-2 p-5 text-sm">
+		<label for="rq-why" class="block">Reason <span class="text-gray-500">(optional)</span></label>
+		<textarea id="rq-why" rows="2" maxlength="500" bind:value={reason} class="w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/60" placeholder="Shown to the person who asked"></textarea>
+	</div>
+	{#snippet footer()}
+		<button class="btn-ghost" onclick={() => (declineOpen = false)}>Cancel</button>
+		<button class="btn" onclick={() => ((declineOpen = false), run('decline', declineIds, { reason: reason.trim() }))}>Decline</button>
+	{/snippet}
+</Modal>
+
+<Modal bind:open={deleteOpen} title={sel.length === 1 ? 'Delete this request' : `Delete ${sel.length} requests`}>
+	<p class="p-5 text-sm text-gray-300">The {sel.length === 1 ? 'request is' : 'requests are'} removed. Anything already downloaded stays.</p>
+	{#snippet footer()}
+		<button class="btn-ghost" onclick={() => (deleteOpen = false)}>Keep {sel.length === 1 ? 'it' : 'them'}</button>
+		<button class="btn" onclick={() => ((deleteOpen = false), run('delete', sel.map((r) => r.id)))}>Delete</button>
+	{/snippet}
+</Modal>
 
 {#if detail}<RequestDetail bind:open={detailOpen} id={detail} onchanged={(r) => { if (!r) list = list!.filter((x) => x.id !== detail); else list = list!.map((x) => (x.id === r.id ? { ...x, ...r } : x)); }} />{/if}
