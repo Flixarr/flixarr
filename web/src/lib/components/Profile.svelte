@@ -58,7 +58,7 @@
 					{#if u.perms.includes('watchlist') && !u.perms.includes('admin')}<span class="rounded-md bg-gray-800 px-1.5 py-0.5 text-xs text-gray-400 ring-1 ring-gray-700/60">Watchlist</span>{/if}
 					<span>{[u.email, u.local ? 'Local account' : 'Plex account', u.owner ? 'Owner' : ''].filter(Boolean).join(' · ')}</span>
 				</div>
-				<div class="mt-0.5 text-xs text-gray-500">Joined {fmtDate(u.createdAt)}{#if !me} · {u.lastSeen ? `last seen ${ago(u.lastSeen)}` : 'not seen yet'}{/if}</div>
+				<div class="mt-0.5 text-xs text-gray-500">{['Joined ' + fmtDate(u.createdAt), me ? '' : u.lastSeen ? `last seen ${ago(u.lastSeen)}` : 'not seen yet'].filter(Boolean).join(' · ')}</div>
 			</div>
 			<div class="flex gap-2">
 				<button class="btn-ghost text-sm" onclick={() => (settingsOpen = true)}><Icon name="settings" class="size-4" />{me || info.canChange ? 'Settings' : 'Permissions'}</button>
