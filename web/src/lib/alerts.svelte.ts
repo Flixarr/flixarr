@@ -23,16 +23,20 @@ const mark = (a: Alert) => `${a.id}:${a.at}`;
 export type Shown = { one: Alert } | { title: string; list: Alert[] };
 const TOGETHER = 30 * 60 * 1000;
 export function grouped(list: Alert[] = alerts.list): Shown[] {
-	const out: Shown[] = [];
+	// Other alerts can land in between; a group takes every alert of its kind within half an hour of its last.
+	const out: Alert[][] = [];
+	const open = new Map<string, Alert[]>();
 	for (const a of list) {
-		const last = out[out.length - 1];
-		const prev = last && ('one' in last ? last.one : last.list[last.list.length - 1]);
-		if (prev && prev.title === a.title && prev.kind === a.kind && Math.abs(Date.parse(prev.at) - Date.parse(a.at)) <= TOGETHER) {
-			if ('one' in last) out[out.length - 1] = { title: a.title, list: [last.one, a] };
-			else last.list.push(a);
-		} else out.push({ one: a });
+		const k = `${a.kind}|${a.title}`;
+		const g = open.get(k);
+		if (g && Math.abs(Date.parse(g[g.length - 1].at) - Date.parse(a.at)) <= TOGETHER) g.push(a);
+		else {
+			const fresh = [a];
+			open.set(k, fresh);
+			out.push(fresh);
+		}
 	}
-	return out;
+	return out.map((g) => (g.length === 1 ? { one: g[0] } : { title: g[0].title, list: g }));
 }
 // "Heat, Alien and 10 more"
 export const names = (list: Alert[]) => {
