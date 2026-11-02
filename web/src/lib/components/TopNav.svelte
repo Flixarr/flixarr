@@ -5,7 +5,8 @@
 	import Icon from './Icon.svelte';
 	import Avatar from './Avatar.svelte';
 	import { session, signOut, can } from '#lib/session.svelte.ts';
-	import { alerts, anyNew, openedBell, readAllAlerts, servicesUnread, show as showCount, tapAlert, untapped, watchAlerts } from '#lib/alerts.svelte.ts';
+	import { alerts, anyNew, grouped, names, openedBell, readAllAlerts, servicesUnread, show as showCount, tapAlert, tapAlerts, untapped, watchAlerts } from '#lib/alerts.svelte.ts';
+	import AlertRow from './AlertRow.svelte';
 	import { ago, api, img } from '#lib/api.ts';
 	import { attention, openIssues, watchAttention } from '#lib/attention.svelte.ts';
 	import CountBadge from './CountBadge.svelte';
@@ -15,6 +16,7 @@
 	let { transparent = false }: { transparent?: boolean } = $props();
 	let scrolled = $state(false);
 	let menu = $state<'' | 'user' | 'notif' | 'test'>('');
+	let openGroup = $state(0); // the alert group opened in the bell (#185)
 	// Dev install: the DEV badge, and View as for admins (the server applies it).
 	const testInstall = $derived(!!session.status?.testInstall);
 	const viewing = $derived(session.me?.viewAs ?? '');
@@ -89,18 +91,36 @@
 		</div>
 		{#if alerts.list.length}
 			<div class="max-h-[70vh] divide-y divide-gray-700/40 overflow-y-auto tablet:max-h-[60vh]">
-				{#each alerts.list as a (a.id)}
-					<button class="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-white/5 {a.kind === 'todo' ? 'border-l-2 border-l-primary' : ''}" onclick={() => { menu = ''; if (!a.tapped) tapAlert(a.id); goto(a.link); }}>
-						{#if a.poster}<img src={img(a.poster, 'w92')} alt="" class="h-12 w-8 shrink-0 rounded object-cover {a.tapped ? 'opacity-50' : ''}" />
-						{:else if a.key.startsWith('arr:')}<img src="/logos/{a.key.split(':')[1]}.svg" alt="" class="mt-0.5 size-8 shrink-0 {a.tapped ? 'opacity-50' : ''}" />
-						{:else}<span class="grid h-12 w-8 shrink-0 place-items-center rounded bg-gray-800 text-gray-400"><Icon name="bell" class="size-4" /></span>{/if}
-						<span class="min-w-0 flex-1">
-							<span class="block truncate text-sm {a.tapped ? 'text-gray-400' : 'font-semibold text-white'}">{a.title}</span>
-							<span class="block truncate text-xs {a.tapped ? 'text-gray-500' : 'text-gray-300'}">{a.detail}</span>
-							<span class="mt-0.5 block text-[11px] text-gray-500">{ago(a.at)}</span>
-						</span>
-						{#if a.new}<span class="mt-1.5 size-2 shrink-0 rounded-full bg-red-500"></span>{/if}
-					</button>
+				{#each grouped() as g ('one' in g ? g.one.id : `g${g.list[0].id}`)}
+					{#if 'one' in g}
+						<AlertRow a={g.one} onopen={() => { menu = ''; if (!g.one.tapped) tapAlert(g.one.id); goto(g.one.link); }} />
+					{:else}
+						{@const key = g.list[0].id}
+						{@const unread = g.list.filter((a) => !a.tapped)}
+						<!-- Several of the same kind at once (#185): one row, opening to the list; opening it reads them all. -->
+						<button class="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-white/5 {g.list[0].kind === 'todo' ? 'border-l-2 border-l-primary' : ''}" aria-expanded={openGroup === key}
+							onclick={() => { openGroup = openGroup === key ? 0 : key; if (unread.length) tapAlerts(unread.map((a) => a.id)); }}>
+							<span class="relative h-12 w-10 shrink-0">
+								{#each g.list.filter((a) => a.poster).slice(0, 3) as a, i (a.id)}
+									<img src={img(a.poster, 'w92')} alt="" class="absolute top-0 h-12 w-8 rounded object-cover shadow ring-1 ring-gray-900 {unread.length ? '' : 'opacity-50'}" style="left:{i * 4}px; z-index:{3 - i}" />
+								{:else}
+									<span class="grid h-12 w-8 place-items-center rounded bg-gray-800 text-gray-400"><Icon name="bell" class="size-4" /></span>
+								{/each}
+							</span>
+							<span class="min-w-0 flex-1">
+								<span class="block truncate text-sm {unread.length ? 'font-semibold text-white' : 'text-gray-400'}">{g.title} · {g.list.length}</span>
+								<span class="block truncate text-xs {unread.length ? 'text-gray-300' : 'text-gray-500'}">{names(g.list)}</span>
+								<span class="mt-0.5 block text-[11px] text-gray-500">{ago(g.list[0].at)}</span>
+							</span>
+							<Icon name="chevron" class="mt-1 size-4 shrink-0 text-gray-500 transition {openGroup === key ? 'rotate-90' : ''}" />
+							{#if g.list.some((a) => a.new)}<span class="mt-1.5 size-2 shrink-0 rounded-full bg-red-500"></span>{/if}
+						</button>
+						{#if openGroup === key}
+							<div class="divide-y divide-gray-700/30 bg-black/20">
+								{#each g.list as a (a.id)}<AlertRow {a} inner onopen={() => { menu = ''; goto(a.link); }} />{/each}
+							</div>
+						{/if}
+					{/if}
 				{/each}
 			</div>
 		{:else}

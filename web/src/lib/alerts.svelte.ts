@@ -18,10 +18,37 @@ export const servicesUnread = () => alerts.list.some((a) => !a.tapped && a.key.s
 let known: Set<string> | null = null;
 const mark = (a: Alert) => `${a.id}:${a.at}`;
 
+// Alerts of the same kind (same title) that came in close together show as one group (#185): "Left Plex · 12
+// titles", opening to the list. A single alert stays as it is. The list is newest first.
+export type Shown = { one: Alert } | { title: string; list: Alert[] };
+const TOGETHER = 30 * 60 * 1000;
+export function grouped(list: Alert[] = alerts.list): Shown[] {
+	const out: Shown[] = [];
+	for (const a of list) {
+		const last = out[out.length - 1];
+		const prev = last && ('one' in last ? last.one : last.list[last.list.length - 1]);
+		if (prev && prev.title === a.title && prev.kind === a.kind && Math.abs(Date.parse(prev.at) - Date.parse(a.at)) <= TOGETHER) {
+			if ('one' in last) out[out.length - 1] = { title: a.title, list: [last.one, a] };
+			else last.list.push(a);
+		} else out.push({ one: a });
+	}
+	return out;
+}
+// "Heat, Alien and 10 more"
+export const names = (list: Alert[]) => {
+	const t = [...new Set(list.map((a) => a.detail.split(' · ')[0]))];
+	return t.slice(0, 2).join(', ') + (t.length > 2 ? ` and ${t.length - 2} more` : '');
+};
+
 async function set(p: Promise<{ alerts: Alert[] }>) {
 	try {
 		alerts.list = (await p).alerts;
-		if (known) for (const a of alerts.list) if (a.new && !a.tapped && !known.has(mark(a))) alertToast(a.title, a.detail, a.link, () => tapAlert(a.id));
+		// New ones pop up as toasts, one per group, not one per alert.
+		const fresh = known ? alerts.list.filter((a) => a.new && !a.tapped && !known!.has(mark(a))) : [];
+		for (const g of grouped(fresh)) {
+			if ('one' in g) alertToast(g.one.title, g.one.detail, g.one.link, () => tapAlert(g.one.id));
+			else alertToast(`${g.title} · ${g.list.length}`, names(g.list), '', () => tapAlerts(g.list.map((a) => a.id)));
+		}
 		known = new Set(alerts.list.map(mark));
 	} catch {
 		/* signed out or offline: keep what's shown */
@@ -35,6 +62,11 @@ export function openedBell() {
 	if (anyNew()) set(api('/alerts/opened', { method: 'POST' }));
 }
 export const tapAlert = (id: number) => set(api(`/alerts/${id}/tap`, { method: 'POST' }));
+// Tapping a group taps every alert in it, then reads the bell once.
+export async function tapAlerts(ids: number[]) {
+	for (const id of ids) await api(`/alerts/${id}/tap`, { method: 'POST' }).catch(() => {});
+	loadAlerts();
+}
 export const readAllAlerts = () => set(api('/alerts/read-all', { method: 'POST' }));
 // Arriving somewhere by another way counts as tapping its alerts (Settings → Services for server problems).
 export function tapWhere(prefix: string) {
