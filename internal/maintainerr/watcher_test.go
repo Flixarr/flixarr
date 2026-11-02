@@ -78,7 +78,11 @@ func TestSync(t *testing.T) {
 	told := []string{}
 	var changed []string
 	w := &Watcher{Store: st, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Leaving: func(r store.Request, at time.Time) { told = append(told, r.Title) },
+		Leaving: func(rs []store.Request, at time.Time) {
+			for _, r := range rs {
+				told = append(told, r.Title)
+			}
+		},
 		Changed: func(k []string) { changed = k }}
 
 	// Keeping new requests switched off: nothing kept, and Eryn hears The Matrix leaves within a week.
@@ -164,5 +168,40 @@ func TestLeaveAt(t *testing.T) {
 	}
 	if got := leaveAt(added, 30, nil, now); !got.Equal(added.Add(30 * 24 * time.Hour)) {
 		t.Errorf("no schedule: %v", got)
+	}
+}
+
+// Several of one person's requests leaving on the same date make one heads-up (#168); someone else, or
+// another date, gets their own; and nobody hears twice.
+func TestHeadsUpGrouped(t *testing.T) {
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	st, _ := store.Open(dir, box)
+	t.Cleanup(func() { st.Close() })
+	sam, _ := st.CreateUser(store.User{PlexID: 1, Username: "sam", Role: "User"})
+	jo, _ := st.CreateUser(store.User{PlexID: 2, Username: "jo", Role: "User"})
+	for i, who := range []int64{sam.ID, sam.ID, sam.ID, jo.ID} {
+		st.CreateRequest(store.Request{Type: "movie", TmdbID: 100 + i, Title: fmt.Sprint("Movie ", i), UserID: who, Status: "available"})
+	}
+	soon := time.Now().Add(3 * 24 * time.Hour).UTC().Format(time.RFC3339)
+	later := time.Now().Add(5 * 24 * time.Hour).UTC().Format(time.RFC3339)
+	items := []store.Leaving{{Type: "movie", TmdbID: 100, LeaveAt: soon}, {Type: "movie", TmdbID: 101, LeaveAt: soon}, {Type: "movie", TmdbID: 102, LeaveAt: later}, {Type: "movie", TmdbID: 103, LeaveAt: soon}}
+	got := map[string]int{}
+	w := &Watcher{Store: st, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Leaving: func(rs []store.Request, at time.Time) {
+		got[fmt.Sprintf("%d %s", rs[0].UserID, at.Format("Jan 2"))] += len(rs)
+		for _, r := range rs {
+			if r.UserID != rs[0].UserID {
+				t.Fatalf("mixed people in one heads-up: %+v", rs)
+			}
+		}
+	}}
+	w.headsUp(items)
+	if len(got) != 3 || got[fmt.Sprintf("%d %s", sam.ID, time.Now().Add(3*24*time.Hour).Format("Jan 2"))] != 2 {
+		t.Fatalf("heads-ups: %v", got)
+	}
+	got = map[string]int{}
+	w.headsUp(items)
+	if len(got) != 0 {
+		t.Fatalf("told again: %v", got)
 	}
 }

@@ -183,10 +183,18 @@ func main() {
 	// Maintainerr: titles leaving Plex by its rules, kept on request, and new requests kept for a while.
 	maint := &maintainerr.Watcher{Store: st, Log: log}
 	maint.Changed = func(keys []string) { hub.Publish(live.Event{Type: "leaving", Data: keys}) }
-	maint.Leaving = func(r store.Request, at time.Time) {
-		notifier.Send(notifier.FromLeaving(r, at))
-		st.AddNews(store.Alert{Audience: fmt.Sprintf("user:%d", r.UserID), Title: "Leaving Plex " + at.Local().Format("Jan 2"), Detail: r.Title + " · ask to keep it",
-			Link: fmt.Sprintf("/%s/%d", r.Type, r.TmdbID), Poster: r.Poster})
+	maint.Leaving = func(rs []store.Request, at time.Time) {
+		r := rs[0]
+		if len(rs) == 1 {
+			notifier.Send(notifier.FromLeaving(r, at))
+			st.AddNews(store.Alert{Audience: fmt.Sprintf("user:%d", r.UserID), Title: "Leaving Plex " + at.Local().Format("Jan 2"), Detail: r.Title + " · ask to keep it",
+				Link: fmt.Sprintf("/%s/%d", r.Type, r.TmdbID), Poster: r.Poster})
+			return
+		}
+		// Several of one person's requests leaving on the same date: one message and one alert (#168).
+		notifier.Send(notifier.FromLeavingMany(rs, at))
+		st.AddNews(store.Alert{Audience: fmt.Sprintf("user:%d", r.UserID), Title: "Leaving Plex " + at.Local().Format("Jan 2"), Detail: fmt.Sprintf("%d of your requests · ask to keep them", len(rs)),
+			Link: "/leaving", Poster: r.Poster})
 	}
 	runner.Add(&jobs.Job{ID: "maintainerr", Name: "Maintainerr: read collections", Default: "*/15 * * * *",
 		About: "Reads which titles Maintainerr is about to remove and when, keeps new requests out of its rules for a while, and tells people a week before their request leaves Plex. Maintainerr's webhook runs it right away too.",

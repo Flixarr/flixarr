@@ -427,3 +427,19 @@ func TestDefaultOff(t *testing.T) {
 		t.Fatalf("after reset: %v", off)
 	}
 }
+
+// Several requests leaving on one date read as one message that opens Leaving soon (#168).
+func TestFromLeavingMany(t *testing.T) {
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	st, _ := store.Open(dir, box)
+	t.Cleanup(func() { st.Close() })
+	st.SetSetting("app_url", "https://flixarr.example.com")
+	n := &Notifier{Store: st, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	rs := []store.Request{{Title: "Heat", UserID: 7, UserName: "sam"}, {Title: "Alien"}, {Title: "Jaws"}, {Title: "Up"}}
+	m := n.FromLeavingMany(rs, time.Date(2026, 11, 7, 4, 0, 0, 0, time.Local))
+	if m.Title != "4 of your requests" || m.UserID != 7 || m.Link != "https://flixarr.example.com/leaving" || m.Request != 0 ||
+		!strings.HasPrefix(m.Text, "Heat, Alien, Jaws and 1 more leave Plex on Saturday, November 7.") {
+		t.Fatalf("%+v", m)
+	}
+}

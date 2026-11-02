@@ -623,6 +623,27 @@ func (n *Notifier) FromLeaving(r store.Request, at time.Time) Message {
 	return m
 }
 
+// FromLeavingMany builds one heads-up for several of a person's requests leaving on the same date (#168).
+func (n *Notifier) FromLeavingMany(rs []store.Request, at time.Time) Message {
+	m := n.FromRequest("request_leaving", rs[0])
+	m.Title = fmt.Sprintf("%d of your requests", len(rs))
+	m.Type, m.TmdbID, m.Request, m.Seasons = "", 0, 0, ""
+	names := []string{}
+	for _, r := range rs[:min(len(rs), 3)] {
+		names = append(names, r.Title)
+	}
+	list := strings.Join(names, ", ")
+	if len(rs) > 3 {
+		list += fmt.Sprintf(" and %d more", len(rs)-3)
+	}
+	m.Text = list + " leave Plex on " + at.Local().Format("Monday, January 2") + ". Watch them before then, or ask to keep them in Flixarr."
+	m.Link = ""
+	if base := n.Store.Setting("app_url", ""); base != "" {
+		m.Link = base + "/leaving"
+	}
+	return m
+}
+
 // FromServer builds the message for a Radarr/Sonarr problem (admins only).
 func (n *Notifier) FromServer(name, detail string) Message {
 	m := Message{Event: "server_problem", Title: name, Text: detail}

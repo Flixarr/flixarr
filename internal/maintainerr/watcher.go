@@ -35,7 +35,7 @@ type Watcher struct {
 	Store *store.Store
 	Log   *slog.Logger
 	// Leaving is told when a requester should hear that their title leaves soon (once per leave date).
-	Leaving func(r store.Request, at time.Time)
+	Leaving func(rs []store.Request, at time.Time) // one person's requests leaving on one date (#168)
 	// Changed is told which titles' leaving state changed, so open pages redraw them.
 	Changed func(keys []string)
 
@@ -240,11 +240,18 @@ func (w *Watcher) endFreshKeeps(ctx context.Context, c *Client) {
 	}
 }
 
-// headsUp tells the people who asked for a title, once per leave date, when it leaves within a week.
+// headsUp tells the people who asked for a title, once per leave date, when it leaves within a week. Each
+// person hears once per leave date about all their requests leaving then (#168), not once per title.
 func (w *Watcher) headsUp(items []store.Leaving) {
 	if w.Leaving == nil {
 		return
 	}
+	type batch struct {
+		at   time.Time
+		reqs []store.Request
+	}
+	batches := map[string]*batch{}
+	order := []string{}
 	for _, l := range items {
 		at, err := time.Parse(time.RFC3339, l.LeaveAt)
 		if err != nil || time.Until(at) > HeadsUp {
@@ -256,9 +263,17 @@ func (w *Watcher) headsUp(items []store.Leaving) {
 		reqs, _ := w.Store.OpenRequests(l.Type, l.TmdbID)
 		for _, r := range reqs {
 			if r.Status == "available" && !w.Store.ToldLeaving(r.ID, l.LeaveAt) {
-				w.Leaving(r, at)
+				k := fmt.Sprintf("%d|%s", r.UserID, l.LeaveAt)
+				if batches[k] == nil {
+					batches[k] = &batch{at: at}
+					order = append(order, k)
+				}
+				batches[k].reqs = append(batches[k].reqs, r)
 			}
 		}
+	}
+	for _, k := range order {
+		w.Leaving(batches[k].reqs, batches[k].at)
 	}
 }
 
