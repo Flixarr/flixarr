@@ -8,8 +8,8 @@
 	import EpisodesMismatch from './EpisodesMismatch.svelte';
 	import { can, session } from '#lib/session.svelte.ts';
 	import { on } from '#lib/live.svelte.ts';
-	import type { Movie, Request, Series, User } from '#lib/types.ts';
-	import { simple, text, EVENT_TEXT, askedFor, eventDot } from '#lib/requeststatus.ts';
+	import type { IssueBrief, Movie, Request, Series, User } from '#lib/types.ts';
+	import { EVENT_TEXT, askedFor, eventDot } from '#lib/requeststatus.ts';
 	import Modal from './Modal.svelte';
 	import Img from './Img.svelte';
 	import Avatar from './Avatar.svelte';
@@ -19,10 +19,13 @@
 	import FixMenu from './FixMenu.svelte';
 	import RedownloadModal from './RedownloadModal.svelte';
 	import FixEpisodesModal from './FixEpisodesModal.svelte';
+	import StatusPill from './StatusPill.svelte';
+	import Icon from './Icon.svelte';
+	import { issueWhat, issueWhere } from '#lib/issuetext.ts';
 
 	type Download = { queueId?: number; season?: number; episode?: number; percent: number; timeLeft?: string; state: string; size: number; release?: string; problem?: string; detail?: string };
 	type Live = { inArr: boolean; monitored: boolean; hasFile: boolean; file?: { quality?: string; size: number; release?: string; path?: string }; queue: Download[]; seasons?: { number: number; have: number; total: number; inPlex: number }[]; link?: string; server: string; error?: string; orderMismatch?: boolean; plexMatch?: { title: string; year?: number } };
-	type Detail = { request: Request; events: { status: string; note: string; at: string }[]; live: Live; hint?: string };
+	type Detail = { request: Request; events: { status: string; note: string; at: string }[]; live: Live; hint?: string; issues?: IssueBrief[] };
 	type Title = { genres?: string[]; runtime?: number; cert?: string };
 
 	let { open = $bindable(false), id, onchanged }: { open?: boolean; id: number; onchanged?: (r: Request | null) => void } = $props();
@@ -58,7 +61,6 @@
 	});
 
 	const r = $derived(d?.request);
-	const st = $derived(r ? simple(r.status, r.progress) : null);
 	const series = $derived(r?.type === 'series');
 	const ended = $derived(!!r && ['available', 'declined', 'expired', 'removed'].includes(r.status));
 	// Fix (#139): only while the request is in play or available (a bad file can be replaced).
@@ -135,8 +137,8 @@
 						<div class="text-[11px] text-gray-400">{facts.join(' · ')}</div>
 						<a href="/{r.type}/{r.tmdbId}" class="text-xl font-bold leading-tight hover:underline">{r.title}</a>
 						<div class="mt-2 flex flex-wrap items-center gap-2">
-							{#if admin}<span class="inline-flex rounded-lg px-2.5 py-1 text-xs font-medium ring-1 {st?.tone ?? 'bg-gray-800/70 text-gray-200 ring-gray-700/60'}">{text(r.status, r.progress)}</span>
-							{:else if st}<span class="inline-flex rounded-lg px-2.5 py-1 text-xs font-medium ring-1 {st.tone}">{st.label}</span>{/if}
+							<StatusPill status={r.status} progress={r.progress} exact={admin} class="px-2.5 py-1 text-xs" />
+							{#if d?.issues?.length}<span class="inline-flex items-center gap-1 rounded-lg bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-300 ring-1 ring-amber-500/40"><Icon name="issues" class="size-3.5" />{d.issues.length === 1 ? '1 open issue' : `${d.issues.length} open issues`}</span>{/if}
 							{#if took}<span class="text-xs text-gray-400">Arrived in {took}</span>{/if}
 						</div>
 						<StepBar status={r.status} progress={r.progress} full={admin} labels class="mt-auto max-w-md pt-3" />
@@ -170,6 +172,29 @@
 					{#if r.status === 'declined' && r.error}<span class="rounded-md bg-gray-800/80 px-2 py-1 text-gray-300 ring-1 ring-gray-700/60">Reason: {r.error}</span>{/if}
 				</div>
 			</section>
+
+			{#if d.issues?.length}
+				<!-- The title's open issues (#191). The note and the link only reach people who may open the issue. -->
+				<section>
+					{@render head('Issues', `${d.issues.length} open`)}
+					<div class="card divide-y divide-gray-700/40 ring-1 ring-amber-500/20">
+						{#each d.issues as i (i.id)}
+							{@const mayOpen = can('manageIssues') || i.userId === session.me?.id}
+							<div class="flex gap-3 p-3">
+								<Avatar user={person(i.userName, i.userAvatar)} class="size-8 text-xs" />
+								<div class="min-w-0 flex-1">
+									<div class="flex items-baseline justify-between gap-2 text-xs"><span><span class="font-medium text-gray-100">{i.userName || 'Someone'}</span> <span class="text-gray-400">reported</span> <span class="font-medium text-amber-300">{issueWhat(i)}</span></span><span class="shrink-0 text-[11px] text-gray-500">{ago(i.createdAt)}</span></div>
+									<div class="mt-0.5 text-[11px] text-gray-400">{issueWhere(i) || (i.type === 'series' ? 'The whole show' : 'The movie')}</div>
+									{#if i.note.trim()}<p class="mt-1.5 rounded-md bg-gray-800/60 px-2.5 py-1.5 text-xs text-gray-200">"{i.note.trim()}"</p>{/if}
+									{#if mayOpen}
+										<div class="mt-1.5 flex items-center gap-3 text-[11px]"><span class="flex items-center gap-1 text-gray-400"><Icon name="chat" class="size-3" />{i.comments ? `${i.comments} ${i.comments === 1 ? 'reply' : 'replies'}` : 'No replies yet'}</span><a href="/issues?open={i.id}" class="text-primary-light hover:underline">Open issue</a></div>
+									{/if}
+								</div>
+							</div>
+						{/each}
+					</div>
+				</section>
+			{/if}
 
 			{#if d.live.queue.length}
 				<section>

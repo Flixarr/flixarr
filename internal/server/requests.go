@@ -30,7 +30,32 @@ func (s *Server) requestList(w http.ResponseWriter, r *http.Request, u *store.Us
 		list[i] = requests.ForViewer(list[i], admin)
 		list[i].Trouble = stuck[fmt.Sprintf("%s:%d", list[i].Type, list[i].ArrID)] && list[i].ArrID > 0
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"requests": list, "approvalRequired": s.Requests.ApprovalRequired()})
+	writeJSON(w, http.StatusOK, map[string]any{"requests": list, "approvalRequired": s.Requests.ApprovalRequired(), "issues": s.openIssuesByTitle(u)})
+}
+
+// openIssuesByTitle is every open issue keyed "type:tmdbId", as the viewer may see it (issuesForViewer).
+func (s *Server) openIssuesByTitle(u *store.User) map[string][]store.Issue {
+	out := map[string][]store.Issue{}
+	list, _ := s.Store.OpenIssues()
+	for _, i := range issuesForViewer(list, u) {
+		k := fmt.Sprintf("%s:%d", i.Type, i.TmdbID)
+		out[k] = append(out[k], i)
+	}
+	return out
+}
+
+// issuesForViewer: everyone sees that a title has issues and what they are; the note is only for people who
+// manage issues and the person who reported it, the same people the Issues page shows the issue to.
+func issuesForViewer(list []store.Issue, u *store.User) []store.Issue {
+	if u.Can("manageIssues") {
+		return list
+	}
+	for n := range list {
+		if list[n].UserID != u.ID {
+			list[n].Note = ""
+		}
+	}
+	return list
 }
 
 func (s *Server) requestCreate(w http.ResponseWriter, r *http.Request, u *store.User) {

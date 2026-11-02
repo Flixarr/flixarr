@@ -144,8 +144,17 @@ func (s *Store) AddComment(issueID, userID int64, body string) (int64, error) {
 
 // OpenIssuesForTitle lists a title's open issues, newest first.
 func (s *Store) OpenIssuesForTitle(typ string, tmdbID int) ([]Issue, error) {
+	return s.openIssues(`AND i.type = ? AND i.tmdb_id = ?`, typ, tmdbID)
+}
+
+// OpenIssues lists every open issue, newest first (the Requests page shows them on each title's requests).
+func (s *Store) OpenIssues() ([]Issue, error) {
+	return s.openIssues(``)
+}
+
+func (s *Store) openIssues(where string, args ...any) ([]Issue, error) {
 	rows, err := s.db.Query(`SELECT `+issueCols+` FROM issues i LEFT JOIN users u ON u.id = i.user_id
-		WHERE i.type = ? AND i.tmdb_id = ? AND i.status = 'open' ORDER BY i.id DESC`, typ, tmdbID)
+		WHERE i.status = 'open' `+where+` ORDER BY i.id DESC`, args...)
 	if err != nil {
 		return nil, err
 	}

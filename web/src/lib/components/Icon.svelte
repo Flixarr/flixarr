@@ -25,7 +25,8 @@
 		browse: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
 		clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
 		refresh: '<path d="M21 12a9 9 0 0 1-15.4 6.4L3 16m0 5v-5h5M3 12a9 9 0 0 1 15.4-6.4L21 8m0-5v5h-5"/>',
-		info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/>'
+		info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/>',
+		chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'
 	};
 	let { name, class: cls = 'size-5' }: { name: string; class?: string } = $props();
 </script>

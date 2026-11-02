@@ -18,7 +18,12 @@ func (s *Server) requestDetail(w http.ResponseWriter, r *http.Request, u *store.
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, s.Requests.Detail(r.Context(), req, u.Can("manageRequests")))
+	// The window also lists the title's open issues (#191).
+	open, _ := s.Store.OpenIssuesForTitle(req.Type, req.TmdbID)
+	writeJSON(w, http.StatusOK, struct {
+		requests.Detail
+		Issues []store.Issue `json:"issues"`
+	}{s.Requests.Detail(r.Context(), req, u.Can("manageRequests")), issuesForViewer(open, u)})
 }
 
 func titleParams(r *http.Request) (string, int, bool) {

@@ -140,4 +140,9 @@ export interface Request {
 	trouble?: boolean; // its download is stuck in Radarr / Sonarr right now
 	unreleased?: boolean; // not out yet, so it can't download
 }
+// An open issue as the Requests page and the request window show it (the note is blank unless the viewer may read it).
+export interface IssueBrief {
+	id: number; type: 'movie' | 'series'; tmdbId: number; kind: string; sub: string; season: number; episode: number; parts: [number, number][]; note: string;
+	userId: number; userName: string; userAvatar: string; comments: number; createdAt: string;
+}
 export type RequestBrief = { id: number; status: Request['status'] | 'blocked'; progress: number; plex?: string; blocked?: boolean; episodes?: [number, number]; unreleased?: boolean; asked?: { whole: boolean; seasons: number[] } };
