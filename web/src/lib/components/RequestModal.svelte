@@ -8,6 +8,7 @@
 	import Select from './Select.svelte';
 	import Img from './Img.svelte';
 	import EpisodePicker from './EpisodePicker.svelte';
+	import { loadSeasons, noSeasons, episodeCount } from '#lib/seasons.ts';
 
 	let { open = $bindable(false), item, asked, onrequested }: { open?: boolean; item: Movie | Series; asked?: { whole: boolean; seasons: number[] }; onrequested?: (r: Request) => void } = $props();
 
@@ -20,7 +21,9 @@
 	let seasons = $state<number[]>([]);
 	let episodes = $state<[number, number][]>([]);
 	let sending = $state(false);
-	let inPlex = $state<Record<number, number>>({}); // episodes in Plex per season
+	let plex = $state(noSeasons()); // episodes in Plex per season, and each season's count
+	const inPlex = $derived(plex.inPlex);
+	const eps = (s: { n: number; episodes: number }) => episodeCount(plex, s);
 
 	const series = $derived(item.type === 'series' ? (item as Series) : null);
 	const list = $derived(series ? series.seasons.filter((s) => s.n > 0) : []);
@@ -33,7 +36,7 @@
 	const today = new Date().toISOString().slice(0, 10);
 	const allLeft = $derived(
 		mode === 'seasons' && seasons.length > 0 &&
-		list.filter((s) => s.episodes > 0 && (!s.air || s.air <= today)).every((s) => seasons.includes(s.n) || requested(s.n) || complete(s.n, s.episodes))
+		list.filter((s) => eps(s) > 0 && (!s.air || s.air <= today)).every((s) => seasons.includes(s.n) || requested(s.n) || complete(s.n, eps(s)))
 	);
 
 	$effect(() => {
@@ -42,8 +45,8 @@
 		mode = 'whole';
 		seasons = [];
 		episodes = [];
-		inPlex = {};
-		if (item.type === 'series') api<Record<number, number>>(`/plex/seasons/${item.id}`).then((d) => (inPlex = d)).catch(() => {});
+		plex = noSeasons();
+		if (item.type === 'series') loadSeasons(item.id).then((d) => (plex = d));
 		api<Options>(`/requests/options?type=${item.type}`).then((o) => {
 			opts = o;
 			profileId = o.defaultProfileId ?? 0;
@@ -122,15 +125,15 @@
 					{:else if mode === 'seasons'}
 						<div class="max-h-64 divide-y divide-gray-700/40 overflow-y-auto rounded-lg border border-gray-700/50 bg-gray-900/40">
 							{#each list as s (s.n)}
-								{@const done = complete(s.n, s.episodes)}
+								{@const done = complete(s.n, eps(s))}
 								{@const onWay = !done && requested(s.n)}
 								<label class="flex items-center gap-3 px-3 py-2 text-sm {done || onWay ? 'opacity-60' : 'cursor-pointer hover:bg-white/5'}">
 									<input type="checkbox" class="accent-[var(--color-primary)]" disabled={done || onWay} checked={done || onWay || seasons.includes(s.n)} onchange={() => toggle(s.n)} />
 									<span class="flex-1">{s.name}</span>
 									{#if done}<span class="text-xs text-green-400">In Plex</span>
 									{:else if onWay}<span class="text-xs text-blue-300">Requested</span>
-									{:else if inPlex[s.n]}<span class="text-xs text-green-300">{inPlex[s.n]} of {s.episodes} in Plex</span>
-									{:else}<span class="text-xs text-gray-500">{s.episodes} episode{s.episodes === 1 ? '' : 's'}</span>{/if}
+									{:else if inPlex[s.n]}<span class="text-xs text-green-300">{inPlex[s.n]} of {eps(s)} in Plex</span>
+									{:else}<span class="text-xs text-gray-500">{eps(s)} episode{eps(s) === 1 ? '' : 's'}</span>{/if}
 								</label>
 							{/each}
 						</div>

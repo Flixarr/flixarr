@@ -57,3 +57,43 @@ func TestSeriesEpisodes(t *testing.T) {
 		t.Fatalf("ended: %d of %d", have, total)
 	}
 }
+
+// When Plex numbers a show by TheTVDB, the whole series check counts by Sonarr's seasons (#197): The
+// Office's season 4 is 14 episodes on TMDB and 19 in Sonarr and Plex.
+func TestSeriesEpisodesSonarrCounts(t *testing.T) {
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	st, _ := store.Open(dir, box)
+	defer st.Close()
+	order := "aired"
+	plex := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/library/metadata/7/children":
+			fmt.Fprint(w, `{"MediaContainer":{"Metadata":[{"index":4,"leafCount":19}]}}`)
+		case "/library/metadata/7":
+			fmt.Fprint(w, `{"MediaContainer":{"Metadata":[{"Preferences":{"Setting":[{"id":"showOrdering","value":""}]}}]}}`)
+		case "/library/sections/2/prefs":
+			fmt.Fprintf(w, `{"MediaContainer":{"Setting":[{"id":"showOrdering","value":%q}]}}`, order)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer plex.Close()
+	st.SetSetting(keyServerURL, plex.URL)
+	st.SetSecretSetting(keyToken, "srv")
+	st.SavePlexItem(store.PlexItem{Type: "series", TmdbID: 2316, RatingKey: "7", Section: "2", SeenAt: "x"})
+	l := &Library{Store: st, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Meta: fakeMeta{"series/2316": `{"seasons":[{"n":4,"episodes":14,"air":"2007-09-27"}],"next":null,"status":"Ended"}`},
+		Sonarr: func(context.Context, int) map[int]SeasonCount {
+			return map[int]SeasonCount{4: {Total: 19, Aired: 19}}
+		}}
+	have, total, _, err := l.seriesEpisodes(context.Background(), 2316, "2026-11-03")
+	if err != nil || have != 19 || total != 19 {
+		t.Fatalf("TheTVDB order: got %d of %d (%v), want 19 of 19", have, total, err)
+	}
+	// Plex numbering by TMDB: TMDB's counts stay.
+	order, l.orders = "tmdbAiring", nil
+	if have, total, _, _ = l.seriesEpisodes(context.Background(), 2316, "2026-11-03"); have != 14 || total != 14 {
+		t.Fatalf("TMDB order: got %d of %d, want 14 of 14", have, total)
+	}
+}

@@ -5,6 +5,7 @@
 	import { notify } from '#lib/toast.svelte.ts';
 	import type { Movie, Series } from '#lib/types.ts';
 	import Modal from './Modal.svelte';
+	import { loadSeasons } from '#lib/seasons.ts';
 
 	let { open = $bindable(false), item, seasons: preset = [] }: { open?: boolean; item: Movie | Series; seasons?: number[] } = $props();
 
@@ -18,7 +19,7 @@
 		if (!open) return;
 		picked = [...preset];
 		inPlex = {};
-		if (item.type === 'series') api<Record<number, number>>(`/plex/seasons/${item.id}`).then((d) => (inPlex = d)).catch(() => {});
+		if (item.type === 'series') loadSeasons(item.id).then((d) => (inPlex = d.inPlex));
 	});
 
 	function toggle(n: number) {

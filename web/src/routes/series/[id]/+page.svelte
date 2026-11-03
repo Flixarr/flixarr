@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { api, meta, fmtDate } from '#lib/api.ts';
+	import { meta, fmtDate } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import type { Series, Season } from '#lib/types.ts';
 	import DetailHeader from '#lib/components/DetailHeader.svelte';
@@ -19,6 +19,7 @@
 	import { can } from '#lib/session.svelte.ts';
 	import type { RequestBrief } from '#lib/types.ts';
 	import Img from '#lib/components/Img.svelte';
+	import { loadSeasons, noSeasons, episodeCount } from '#lib/seasons.ts';
 
 	let t = $state<Series | null>(null);
 	let error = $state('');
@@ -36,12 +37,13 @@
 		return () => (alive = false);
 	});
 
-	// Episodes in Plex per season (empty when the series isn't in Plex).
-	let inPlex = $state<Record<number, number>>({});
+	// Episodes in Plex per season (empty when the series isn't in Plex), and each season's count.
+	let plex = $state(noSeasons());
+	const inPlex = $derived(plex.inPlex);
 	$effect(() => {
 		const tid = page.params.id;
-		inPlex = {};
-		api<Record<number, number>>(`/plex/seasons/${tid}`).then((d) => tid === page.params.id && (inPlex = d)).catch(() => {});
+		plex = noSeasons();
+		loadSeasons(tid).then((d) => tid === page.params.id && (plex = d));
 	});
 
 	// Opened from a person's page (?credit=…): which seasons and episodes they're in, marked below.
@@ -124,7 +126,8 @@
 									<div class="min-w-0 flex-1"><div class="truncate text-sm font-medium">{s.name}</div><div class="text-xs text-gray-400">{s.episodes} episodes{s.air ? ' · ' + s.air.slice(0, 4) : ''}</div></div>
 									{#if creditSeason(s.n)}<span class="shrink-0 rounded-md bg-primary/15 px-1.5 py-0.5 text-[11px] text-primary-light ring-1 ring-primary/40">{creditIn(s.n) ? `${creditIn(s.n)} with ${credit?.person.split(' ')[0]}` : `With ${credit?.person.split(' ')[0]}`}</span>{/if}
 									{#if inPlex[s.n]}
-										<span class="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] ring-1 {inPlex[s.n] >= s.episodes ? 'bg-green-500/15 text-green-400 ring-green-500/40' : 'bg-green-500/10 text-green-300 ring-green-500/30'}">{inPlex[s.n] >= s.episodes ? 'In Plex' : `${inPlex[s.n]} of ${s.episodes} in Plex`}</span>
+										{@const eps = episodeCount(plex, s)}
+										<span class="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] ring-1 {inPlex[s.n] >= eps ? 'bg-green-500/15 text-green-400 ring-green-500/40' : 'bg-green-500/10 text-green-300 ring-green-500/30'}">{inPlex[s.n] >= eps ? 'In Plex' : `${inPlex[s.n]} of ${eps} in Plex`}</span>
 									{/if}
 									<span class="text-gray-500 transition group-open:rotate-90"><Icon name="chevron" class="size-4" /></span>
 								</summary>

@@ -10,6 +10,7 @@
 	import { remember } from '#lib/availability.svelte.ts';
 	import { simple, waitingRelease } from '#lib/requeststatus.ts';
 	import { on } from '#lib/live.svelte.ts';
+	import { loadSeasons, noSeasons, episodeCount } from '#lib/seasons.ts';
 	import RequestModal from './RequestModal.svelte';
 	import RequestDetail from './RequestDetail.svelte';
 
@@ -42,17 +43,17 @@
 	});
 
 	// Series: offer Request more while some season that has aired is neither fully in Plex nor asked for.
-	let plexSeasons = $state<Record<number, number>>({});
+	let plexSeasons = $state(noSeasons());
 	const hasPlex = $derived(!!req?.plex);
 	$effect(() => {
-		plexSeasons = {};
-		if (item.type === 'series' && hasPlex) api<Record<number, number>>(`/plex/seasons/${item.id}`).then((d) => (plexSeasons = d)).catch(() => {});
+		plexSeasons = noSeasons();
+		if (item.type === 'series' && hasPlex) loadSeasons(item.id).then((d) => (plexSeasons = d));
 	});
 	const asked = $derived(req?.asked);
 	const moreSeasons = $derived.by(() => {
 		if (item.type !== 'series' || asked?.whole || (!asked && !hasPlex)) return false;
 		const today = new Date().toISOString().slice(0, 10);
-		return (item as Series).seasons.some((s) => s.n > 0 && s.episodes > 0 && (!s.air || s.air <= today) && (plexSeasons[s.n] ?? 0) < s.episodes && !(asked?.seasons ?? []).includes(s.n));
+		return (item as Series).seasons.some((s) => s.n > 0 && episodeCount(plexSeasons, s) > 0 && (!s.air || s.air <= today) && (plexSeasons.inPlex[s.n] ?? 0) < episodeCount(plexSeasons, s) && !(asked?.seasons ?? []).includes(s.n));
 	});
 
 </script>

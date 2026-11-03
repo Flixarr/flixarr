@@ -55,6 +55,11 @@ type Library struct {
 	Meta interface {
 		Get(ctx context.Context, path string, q url.Values) ([]byte, int, error)
 	}
+	// Sonarr is a series' episode counts per season in Sonarr (nil when it isn't there), for counts
+	// that match Plex (#197). Nil = no Sonarr counts.
+	Sonarr   func(ctx context.Context, tmdbID int) map[int]SeasonCount
+	orders   map[string]orderSeen // Plex ordering per show (rating key), see SonarrCounts
+	ordersMu sync.Mutex
 	live     atomic.Bool
 	lastFull atomic.Int64 // unix time of the last full scan
 	fullDue  atomic.Bool  // a full read is scheduled

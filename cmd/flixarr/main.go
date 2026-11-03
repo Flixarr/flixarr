@@ -135,6 +135,8 @@ func main() {
 	// Plex: what's in the server's libraries, so titles show as available whoever added them.
 	lib := &plexlib.Library{Store: st, ClientID: clientID, Version: version.Full(), Log: log, Meta: mc}
 	reqs.Plex = lib
+	reqs.Meta = mc
+	lib.Sonarr = reqs.SeasonCounts // counts that match Plex once a show is in Sonarr (#197)
 	lib.OnAdded = func(keys []string) {
 		hub.Publish(live.Event{Type: "plex", Data: keys})
 		go reqs.FollowImporting(runCtx) // anything waiting for Plex: check now

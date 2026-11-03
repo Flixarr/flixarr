@@ -12,6 +12,7 @@ import (
 // Whole or part of a series (#137): for each series in Plex, how many of the episodes aired so far Plex
 // has. Seasons that haven't started don't count; for a season still airing, only its episodes already out.
 // Specials (season 0) are left out. Posters show a full check for all of it and a half one for part of it.
+// When Plex numbers the show like Sonarr, Sonarr's counts are used instead of TMDB's (#197).
 
 type seriesPage struct {
 	Seasons []struct {
@@ -82,6 +83,16 @@ func (l *Library) seriesEpisodes(ctx context.Context, tmdbID int, today string) 
 		return 0, 0, false, err
 	}
 	ended = sp.Status == "Ended" || sp.Status == "Canceled"
+	if counts := l.SonarrCounts(ctx, tmdbID); counts != nil {
+		// Plex numbers the show like Sonarr: count by Sonarr's seasons, not TMDB's (#197).
+		for n, c := range counts {
+			if n > 0 {
+				total += c.Aired
+				have += min(inPlex[n], c.Aired)
+			}
+		}
+		return have, total, ended, nil
+	}
 	latest := 0 // the newest season that has started
 	for _, s := range sp.Seasons {
 		if s.Air != nil && *s.Air <= today && s.N > latest {

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -28,14 +29,20 @@ type Service struct {
 	Notify  func(event string, r store.Request) // Settings → Notifications; nil = none
 	Plex    Plex                                // nil = no Plex checks (tests)
 	Changed func(r store.Request)               // a request was created, moved along or removed (live updates)
+	// Meta reads TMDB season pages from the Flixarr API (specials in a season, #197); nil = skipped.
+	Meta interface {
+		Get(ctx context.Context, path string, q url.Values) ([]byte, int, error)
+	}
 
 	createMu   sync.Mutex // one Create at a time, so two taps at once can't both pass the already-requested check
 	mu         sync.Mutex
 	lastRecent time.Time
 	rescanned  map[int64]time.Time
 	rescans    map[int64]int
-	checked    map[int64]time.Time // last follow of each active request
-	matchTried map[int64]bool      // requests whose wrong Plex match was already fixed once (#171)
+	checked    map[int64]time.Time                 // last follow of each active request
+	matchTried map[int64]bool                      // requests whose wrong Plex match was already fixed once (#171)
+	counts     map[int]map[int]plexlib.SeasonCount // Sonarr's episode counts per series, see SeasonCounts
+	countsAt   time.Time
 }
 
 // Publish tells open pages about a request (status "deleted" when it was removed).
@@ -429,7 +436,11 @@ func (s *Service) sendSeries(ctx context.Context, v store.Server, r *store.Reque
 		if r.Mode == "episodes" {
 			return s.monitorEpisodes(ctx, c, v, id, r.Episodes)
 		}
-		return s.monitorSeasons(ctx, c, v, id, r.Mode == "all", want)
+		if err := s.monitorSeasons(ctx, c, v, id, r.Mode == "all", want); err != nil {
+			return err
+		}
+		s.followSpecials(ctx, c, v, id, r.TmdbID, r.Mode == "all", want)
+		return nil
 	}
 	if seasons, ok := series["seasons"].([]any); ok {
 		for _, x := range seasons {
@@ -465,6 +476,7 @@ func (s *Service) sendSeries(ctx context.Context, v store.Server, r *store.Reque
 		return s.monitorEpisodes(ctx, c, v, r.ArrID, r.Episodes)
 	}
 	r.ArrID, r.Status = num(added["id"]), "sent"
+	s.followSpecials(ctx, c, v, r.ArrID, r.TmdbID, r.Mode == "all", want)
 	return nil
 }
 

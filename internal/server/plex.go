@@ -134,6 +134,8 @@ func (s *Server) plexEpisodes(w http.ResponseWriter, r *http.Request, _ *store.U
 	writeJSON(w, http.StatusOK, got)
 }
 
+// inPlex: episodes in Plex per season. episodes: how many each season has, when Plex numbers the show like
+// Sonarr and Sonarr has it (#197); left out, the page uses TMDB's counts.
 func (s *Server) plexSeasons(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	id, _ := strconv.Atoi(r.PathValue("tmdbId"))
 	got, err := s.Library.Seasons(r.Context(), id)
@@ -141,5 +143,13 @@ func (s *Server) plexSeasons(w http.ResponseWriter, r *http.Request, _ *store.Us
 		s.Log.Warn("plex seasons", "err", err)
 		got = map[int]int{} // the page works without it
 	}
-	writeJSON(w, http.StatusOK, got)
+	out := map[string]any{"inPlex": got}
+	if counts := s.Library.SonarrCounts(r.Context(), id); counts != nil {
+		eps := map[int]int{}
+		for n, c := range counts {
+			eps[n] = c.Total
+		}
+		out["episodes"] = eps
+	}
+	writeJSON(w, http.StatusOK, out)
 }
