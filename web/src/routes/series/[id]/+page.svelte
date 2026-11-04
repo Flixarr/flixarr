@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { meta, fmtDate } from '#lib/api.ts';
+	import { meta, fmtDate, isOut, airsIn } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import type { Series, Season } from '#lib/types.ts';
 	import DetailHeader from '#lib/components/DetailHeader.svelte';
@@ -138,10 +138,17 @@
 										<div class="p-3 text-xs text-red-400">Couldn't load episodes.</div>
 									{:else}
 										{#each (episodes[s.n] as Season).episodes as e (e.n)}
+											{@const out = isOut(e.air)}
 											<div class="flex gap-3 border-b border-gray-700/30 p-3 last:border-0 {creditEp(s.n, e.n) ? 'bg-primary/10' : ''}">
-												<div class="aspect-video w-28 shrink-0 overflow-hidden rounded-md bg-gray-800 tablet:w-36">{#if e.still}<Img path={e.still} kind="still" sizes="(min-width: 640px) 144px, 112px" class="h-full w-full" />{/if}</div>
-												<div class="min-w-0 flex-1">
-													<div class="flex items-center gap-2 text-sm"><span class="text-xs text-gray-500">E{e.n}</span><span class="truncate font-medium">{e.name}</span>{#if creditEp(s.n, e.n)}<span class="shrink-0 rounded bg-primary/20 px-1.5 py-0.5 text-[10px] font-semibold text-primary-light">{credit?.person.split(' ')[0]}</span>{/if}</div>
+												{#if out}
+													<div class="aspect-video w-28 shrink-0 overflow-hidden rounded-md bg-gray-800 tablet:w-36">{#if e.still}<Img path={e.still} kind="still" sizes="(min-width: 640px) 144px, 112px" class="h-full w-full" />{/if}</div>
+												{:else}
+													<div class="grid aspect-video w-28 shrink-0 place-items-center rounded-md bg-gray-800 bg-[repeating-linear-gradient(135deg,rgba(255,255,255,0.04)_0_8px,transparent_8px_16px)] tablet:w-36">
+														<div class="flex flex-col items-center gap-1 text-gray-400"><Icon name="clock" class="size-5" /><span class="text-[11px] font-medium">{airsIn(e.air)}</span></div>
+													</div>
+												{/if}
+												<div class="min-w-0 flex-1 {out ? '' : 'opacity-60'}">
+													<div class="flex items-center gap-2 text-sm"><span class="text-xs text-gray-500">E{e.n}</span><span class="truncate font-medium">{e.name}</span>{#if !out}<span class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium bg-gray-800 text-gray-300 ring-1 ring-gray-600">Not out</span>{/if}{#if creditEp(s.n, e.n)}<span class="shrink-0 rounded bg-primary/20 px-1.5 py-0.5 text-[10px] font-semibold text-primary-light">{credit?.person.split(' ')[0]}</span>{/if}</div>
 													<div class="text-xs text-gray-500">{fmtDate(e.air)}{e.runtime ? ' · ' + e.runtime + 'm' : ''}</div>
 													<p class="mt-1 line-clamp-2 text-xs text-gray-400">{e.overview}</p>
 												</div>

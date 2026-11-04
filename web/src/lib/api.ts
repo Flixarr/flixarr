@@ -86,6 +86,16 @@ export const href = (item: { type: string; id: number }) => (item.type === 'pers
 export const fmtDate = (d: string | null | undefined, opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' }) =>
 	d ? new Date(d.length === 10 ? d + 'T00:00:00' : d).toLocaleDateString('en-US', opts) : 'TBA';
 
+// Episodes that haven't aired (#201): out = its air date has come (in the viewer's own time zone);
+// airsIn says how long until it does ("In 6 days"), or that there's no date yet.
+const localDay = (d = new Date()) => d.toLocaleDateString('en-CA');
+export const isOut = (d: string | null | undefined) => !!d && d.slice(0, 10) <= localDay();
+export const airsIn = (d: string | null | undefined) => {
+	if (!d) return 'No date yet';
+	const n = Math.round((new Date(d.slice(0, 10) + 'T00:00:00').getTime() - new Date(localDay() + 'T00:00:00').getTime()) / 864e5);
+	return n <= 0 ? 'Today' : n === 1 ? 'Tomorrow' : `In ${n} days`;
+};
+
 export const runtime = (m: number) => (m ? `${Math.floor(m / 60) ? Math.floor(m / 60) + 'h ' : ''}${m % 60}m` : '');
 
 export const fmtBytes = (n: number) =>
