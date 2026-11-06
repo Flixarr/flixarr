@@ -42,7 +42,7 @@
 			loadedFor = list.key;
 			return pageN < total;
 		} catch (e) {
-			if (g === gen) error = e instanceof Error ? e.message : 'Could not load.';
+			if (g === gen) error = e instanceof Error ? e.message : 'Unable to load this';
 			return false;
 		} finally {
 			if (g === gen) busy = false;

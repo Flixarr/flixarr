@@ -37,7 +37,7 @@
 				if (hit) openIssue(hit);
 			}
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not load issues.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to load issues', 'orange');
 		}
 	}
 	$effect(() => {
@@ -68,7 +68,7 @@
 			current = d.issue;
 			comments = d.comments;
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not load it.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to load this issue', 'orange');
 		}
 	}
 	async function comment() {
@@ -80,7 +80,7 @@
 			reply = '';
 			list = list!.map((x) => (x.id === d.issue.id ? d.issue : x));
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not comment.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to add the comment', 'orange');
 		} finally {
 			busy = false;
 		}
@@ -94,7 +94,7 @@
 			detailOpen = false;
 			notify(what === 'resolve' ? `Resolved.${is.userId !== session.me?.id ? ` ${is.userName} gets a notification if notifications are set up.` : ''}` : 'Reopened.', what === 'resolve' ? 'green' : 'orange');
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not change it.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to change this issue', 'orange');
 		} finally {
 			busy = false;
 		}
@@ -107,7 +107,7 @@
 			list = list!.filter((x) => x.id !== id);
 			notify('Issue removed.');
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not remove it.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to remove this issue', 'orange');
 		}
 	}
 </script>

@@ -29,7 +29,7 @@
 			info = await api<UserProfile>(`/users/${id}`);
 			document.title = me ? 'Flixarr · Profile' : `Flixarr · ${info.user.username}`;
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not load them.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to load this profile', 'orange');
 			goto(me ? '/' : '/users', { replaceState: true });
 		}
 	}

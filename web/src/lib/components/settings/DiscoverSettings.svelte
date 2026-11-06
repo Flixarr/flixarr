@@ -24,7 +24,7 @@
 			rows = await api<DiscoverRow[]>('/discover/rows', { method: 'PUT', body: JSON.stringify(rows) });
 			notify(msg);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to save these settings', 'orange');
 		}
 	}
 

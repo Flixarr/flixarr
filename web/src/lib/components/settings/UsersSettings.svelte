@@ -27,7 +27,7 @@
 			all = await api<Everyone>('/users/everyone', { method: 'PUT', body: JSON.stringify({ ...all, ...change }) });
 			notify(msg);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to save these settings', 'orange');
 		}
 	}
 	const CH_LABEL: Record<string, string> = { email: 'Email', push: 'Push', discord: 'Discord', telegram: 'Telegram', pushover: 'Pushover', ntfy: 'ntfy' };
@@ -46,7 +46,7 @@
 			await api('/users/everyone/apply', { method: 'POST' });
 			notify("Everyone's notification choices are back to these.");
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not reset.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to reset', 'orange');
 		}
 	}
 	async function save(change: Partial<Info>, msg: string) {
@@ -54,7 +54,7 @@
 			info = await api<Info>('/settings/users', { method: 'PUT', body: JSON.stringify({ ...info, ...change }) });
 			notify(msg);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to save these settings', 'orange');
 		}
 	}
 </script>

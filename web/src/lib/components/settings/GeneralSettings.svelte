@@ -18,7 +18,7 @@
 			appUrl = general.appUrl;
 			notify(msg);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to save these settings', 'orange');
 		}
 	}
 	async function saveUrl() {

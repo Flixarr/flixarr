@@ -40,7 +40,7 @@
 			open = false;
 			ondone?.();
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not delete it.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to delete this', 'orange');
 			ondone?.();
 		} finally {
 			busy = false;

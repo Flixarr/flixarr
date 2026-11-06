@@ -135,7 +135,7 @@
 									{#if episodes[s.n] === 'loading' || !episodes[s.n]}
 										<div class="p-3 text-xs text-gray-500">Loading episodes…</div>
 									{:else if episodes[s.n] === 'error'}
-										<div class="p-3 text-xs text-red-400">Couldn't load episodes.</div>
+										<div class="p-3 text-xs text-red-400">Unable to load the episodes</div>
 									{:else}
 										{#each (episodes[s.n] as Season).episodes as e (e.n)}
 											{@const out = isOut(e.air)}

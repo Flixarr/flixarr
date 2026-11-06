@@ -52,7 +52,7 @@
 			open = false;
 			ondone?.();
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not fix it.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to fix this', 'orange');
 		} finally {
 			busy = '';
 		}

@@ -38,7 +38,7 @@
 			iAmAdmin = d.admin;
 			approvals = d.approvalRequired;
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not load users.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to load users', 'orange');
 		}
 	}
 	$effect(() => {
@@ -77,7 +77,7 @@
 			permsOpen = roleMenu = false;
 			await load();
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to save these changes', 'orange');
 		} finally {
 			saving = false;
 		}
@@ -111,7 +111,7 @@
 			friends = await api<Friend[]>('/users/plex');
 			picked = friends.filter((f) => !f.added).map((f) => f.plexId);
 		} catch (e) {
-			importError = e instanceof Error ? e.message : 'Could not reach Plex.';
+			importError = e instanceof Error ? e.message : 'Unable to connect to Plex';
 		}
 	}
 	async function runImport() {
@@ -122,7 +122,7 @@
 			notify(added ? `Added ${added} ${added === 1 ? 'person' : 'people'}. They can sign in with Plex now.` : 'Nobody new to add.');
 			load();
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not import.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to import', 'orange');
 		} finally {
 			saving = false;
 		}
@@ -143,7 +143,7 @@
 			notify(`Added ${u.username}. Give them the username and password; they can change the password in their Profile.`);
 			load();
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not add them.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to add these users', 'orange');
 		} finally {
 			saving = false;
 		}

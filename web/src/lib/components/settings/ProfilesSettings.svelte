@@ -31,7 +31,7 @@
 		try {
 			changes[k] = await api<Changes>(`/services/${kind}/profiles/${key}/changes`);
 		} catch (e) {
-			changes[k] = e instanceof Error ? e.message : "Couldn't compare.";
+			changes[k] = e instanceof Error ? e.message : 'Unable to compare';
 		}
 	}
 	async function act(kind: ServiceKind, key: string, what: 'use-flixarr' | 'skip') {
