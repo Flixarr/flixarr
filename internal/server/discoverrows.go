@@ -77,7 +77,7 @@ func (s *Server) discoverRowsGet(w http.ResponseWriter, r *http.Request, _ *stor
 func (s *Server) discoverRowsSet(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	var in []discoverRow
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16384)).Decode(&in); err != nil || len(in) > 60 {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	for i := range in {

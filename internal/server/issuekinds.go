@@ -52,7 +52,7 @@ func issueKindMap(list []IssueKind) map[string][]string {
 // kept. It returns the list tidied up, or what's wrong in plain words.
 func cleanIssueKinds(in []IssueKind) ([]IssueKind, string) {
 	if len(in) > 20 {
-		return nil, "Keep it to 20 reasons or fewer."
+		return nil, "No more than 20 reasons"
 	}
 	out := []IssueKind{}
 	seen := map[string]bool{}
@@ -61,13 +61,13 @@ func cleanIssueKinds(in []IssueKind) ([]IssueKind, string) {
 		name := strings.TrimSpace(k.Kind)
 		switch {
 		case name == "":
-			return nil, "Every reason needs a name."
+			return nil, "Every reason needs a name"
 		case len(name) > 40:
-			return nil, "Keep reason names to 40 letters or fewer."
+			return nil, "Reason names must be 40 characters or fewer"
 		case seen[strings.ToLower(name)]:
 			return nil, "\"" + name + "\" is in the list twice."
 		case len(k.Subs) > 20:
-			return nil, "Keep it to 20 details per reason or fewer."
+			return nil, "No more than 20 details per reason"
 		}
 		seen[strings.ToLower(name)] = true
 		hasDownload = hasDownload || name == downloadKind
@@ -79,7 +79,7 @@ func cleanIssueKinds(in []IssueKind) ([]IssueKind, string) {
 			case sub == "":
 				return nil, "Every detail under " + name + " needs a name."
 			case len(sub) > 40:
-				return nil, "Keep details to 40 letters or fewer."
+				return nil, "Details must be 40 characters or fewer"
 			case seenSub[strings.ToLower(sub)]:
 				return nil, "\"" + sub + "\" is under " + name + " twice."
 			}
@@ -111,7 +111,7 @@ func (s *Server) issueKindsSettings(w http.ResponseWriter, r *http.Request, _ *s
 			Reset bool        `json:"reset"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 65536)).Decode(&in); err != nil {
-			writeErr(w, http.StatusBadRequest, "Bad request.")
+			writeErr(w, http.StatusBadRequest, "Invalid request")
 			return
 		}
 		if in.Reset {
@@ -124,7 +124,7 @@ func (s *Server) issueKindsSettings(w http.ResponseWriter, r *http.Request, _ *s
 			}
 			raw, _ := json.Marshal(list)
 			if err := s.Store.SetSetting(keyIssueKinds, string(raw)); err != nil {
-				writeErr(w, http.StatusInternalServerError, "Database error.")
+				writeErr(w, http.StatusInternalServerError, "Database error")
 				return
 			}
 		}

@@ -45,7 +45,7 @@ func (s *Server) issueList(w http.ResponseWriter, r *http.Request, u *store.User
 	}
 	list, err := s.Store.Issues(owner, status)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"issues": list, "kinds": s.issueKinds()})
@@ -54,25 +54,25 @@ func (s *Server) issueList(w http.ResponseWriter, r *http.Request, u *store.User
 func (s *Server) issueCreate(w http.ResponseWriter, r *http.Request, u *store.User) {
 	var in store.Issue
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16384)).Decode(&in); err != nil {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	subs, ok := issueKindMap(s.issueKinds())[in.Kind]
 	switch {
 	case !ok:
-		writeErr(w, http.StatusBadRequest, "Pick what's wrong.")
+		writeErr(w, http.StatusBadRequest, "No problem selected")
 		return
 	case in.Sub != "" && !slices.Contains(subs, in.Sub):
-		writeErr(w, http.StatusBadRequest, "Pick one of the listed problems.")
+		writeErr(w, http.StatusBadRequest, "Invalid problem")
 		return
 	case (in.Type != "movie" && in.Type != "series") || in.TmdbID <= 0 || strings.TrimSpace(in.Title) == "":
-		writeErr(w, http.StatusBadRequest, "Missing title.")
+		writeErr(w, http.StatusBadRequest, "Missing title")
 		return
 	case in.Kind == downloadKind && !s.waitingFor(in.Type, in.TmdbID):
-		writeErr(w, http.StatusConflict, "Nobody is waiting for it to download.")
+		writeErr(w, http.StatusConflict, "Nobody is waiting for this to download")
 		return
 	case in.Kind != downloadKind && !s.inLibrary(in.Type, in.TmdbID):
-		writeErr(w, http.StatusConflict, "Issues can only be reported on titles in the library.")
+		writeErr(w, http.StatusConflict, "Issues can only be reported on titles in the library")
 		return
 	}
 	in.Note = strings.TrimSpace(in.Note)
@@ -80,7 +80,7 @@ func (s *Server) issueCreate(w http.ResponseWriter, r *http.Request, u *store.Us
 		in.Note = in.Note[:2000]
 	}
 	if len(subs) == 0 && in.Note == "" { // a reason with no details (like Other) needs the note
-		writeErr(w, http.StatusBadRequest, "Say what's wrong in the details.")
+		writeErr(w, http.StatusBadRequest, "Details are required")
 		return
 	}
 	if in.Type == "movie" {
@@ -100,7 +100,7 @@ func (s *Server) issueCreate(w http.ResponseWriter, r *http.Request, u *store.Us
 	in.UserID = u.ID
 	is, err := s.Store.CreateIssue(in)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	s.Notify.Send(s.Notify.FromIssue("issue_reported", is))
@@ -113,11 +113,11 @@ func (s *Server) issueByID(w http.ResponseWriter, r *http.Request, u *store.User
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	is, err := s.Store.Issue(id)
 	if errors.Is(err, store.ErrNotFound) || (err == nil && is.UserID != u.ID && !u.Can("manageIssues")) {
-		writeErr(w, http.StatusNotFound, "That issue doesn't exist.")
+		writeErr(w, http.StatusNotFound, "This issue doesn't exist")
 		return is, false
 	}
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return is, false
 	}
 	return is, true
@@ -130,7 +130,7 @@ func (s *Server) issueGet(w http.ResponseWriter, r *http.Request, u *store.User)
 	}
 	comments, err := s.Store.Comments(is.ID)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"issue": is, "comments": comments})
@@ -145,7 +145,7 @@ func (s *Server) issueComment(w http.ResponseWriter, r *http.Request, u *store.U
 		Body string `json:"body"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&in); err != nil || strings.TrimSpace(in.Body) == "" {
-		writeErr(w, http.StatusBadRequest, "Write a comment first.")
+		writeErr(w, http.StatusBadRequest, "Comment is required")
 		return
 	}
 	body := strings.TrimSpace(in.Body)
@@ -154,7 +154,7 @@ func (s *Server) issueComment(w http.ResponseWriter, r *http.Request, u *store.U
 	}
 	cid, err := s.Store.AddComment(is.ID, u.ID, body)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	s.issueAlerts(is, u, fmt.Sprintf("reply c%d", cid))
@@ -168,7 +168,7 @@ func (s *Server) issueStatus(status string) func(http.ResponseWriter, *http.Requ
 			return
 		}
 		if err := s.Store.SetIssueStatus(is.ID, u.ID, status); err != nil {
-			writeErr(w, http.StatusInternalServerError, "Database error.")
+			writeErr(w, http.StatusInternalServerError, "Database error")
 			return
 		}
 		is, _ = s.Store.Issue(is.ID)
@@ -186,7 +186,7 @@ func (s *Server) issueDelete(w http.ResponseWriter, r *http.Request, u *store.Us
 		return
 	}
 	if err := s.Store.DeleteIssue(is.ID); err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	s.issueAlerts(is, u, "deleted")

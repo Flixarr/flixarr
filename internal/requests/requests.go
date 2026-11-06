@@ -298,7 +298,7 @@ func (s *Service) Create(ctx context.Context, u *store.User, in New) (store.Requ
 		}
 		if use.Used+want > use.Limit {
 			left := max(use.Limit-use.Used, 0)
-			return store.Request{}, LimitError{fmt.Sprintf("that's over your limit of %d %ss a week (%d left)", use.Limit, what, left)}
+			return store.Request{}, LimitError{fmt.Sprintf("This is over your limit of %d %ss a week (%d left)", use.Limit, what, left)}
 		}
 	}
 	status := "approved"

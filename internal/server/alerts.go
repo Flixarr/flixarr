@@ -14,7 +14,7 @@ import (
 func (s *Server) alerts(w http.ResponseWriter, r *http.Request, u *store.User) {
 	list, err := s.Store.Bell(u.ID, u.Can)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"alerts": list})

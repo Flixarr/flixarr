@@ -43,18 +43,18 @@ func viewAs(r *http.Request, u *store.User) (*store.User, error) {
 // viewAsSet switches View as: {"role": "User"}, or "" to be yourself again.
 func (s *Server) viewAsSet(w http.ResponseWriter, r *http.Request, u *store.User) {
 	if !testinstall.On || !u.RealAdmin {
-		writeErr(w, http.StatusForbidden, "View as is only on dev installs, for admins.")
+		writeErr(w, http.StatusForbidden, "View as is only available on dev installs, for admins")
 		return
 	}
 	var in struct {
 		Role string `json:"role"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in); err != nil {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	if _, ok := viewAsPerms(in.Role); in.Role != "" && !ok {
-		writeErr(w, http.StatusBadRequest, "Pick Admin, Manager, Trusted or User.")
+		writeErr(w, http.StatusBadRequest, "Invalid role")
 		return
 	}
 	c := &http.Cookie{Name: viewAsCookie, Value: in.Role, Path: "/", HttpOnly: true, Secure: secure(r), SameSite: http.SameSiteLaxMode}

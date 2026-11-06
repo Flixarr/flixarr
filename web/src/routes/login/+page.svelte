@@ -18,7 +18,7 @@
 			const d = await api<{ user: User }>('/auth/local', { method: 'POST', body: JSON.stringify({ username, password }) });
 			done(d.user);
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Could not sign in.';
+			error = err instanceof Error ? err.message : 'Unable to sign in';
 		} finally {
 			busy = false;
 		}

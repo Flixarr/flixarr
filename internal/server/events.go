@@ -18,7 +18,7 @@ import (
 func (s *Server) liveStream(w http.ResponseWriter, r *http.Request, u *store.User) {
 	fl, ok := w.(http.Flusher)
 	if !ok {
-		writeErr(w, http.StatusInternalServerError, "Streaming isn't supported.")
+		writeErr(w, http.StatusInternalServerError, "Streaming isn't supported")
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")

@@ -63,7 +63,7 @@ func (s *Server) cacheState() (cacheState, error) {
 func (s *Server) writeCache(w http.ResponseWriter) {
 	st, err := s.cacheState()
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	writeJSON(w, http.StatusOK, st)
@@ -80,15 +80,15 @@ func (s *Server) cacheSettings(w http.ResponseWriter, r *http.Request, _ *store.
 		} `json:"images"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	if err := s.Meta.SetConfig(in.Config); err != nil {
-		writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadRequest, capitalize(err.Error()))
 		return
 	}
 	if err := s.Images.SetConfig(in.Images.Enabled, in.Images.Days); err != nil {
-		writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadRequest, capitalize(err.Error()))
 		return
 	}
 	s.writeCache(w)
@@ -113,11 +113,11 @@ func (s *Server) cacheFlush(w http.ResponseWriter, r *http.Request, _ *store.Use
 	case contains(meta.Kinds, kind):
 		_, err = s.Store.CacheFlush(kind)
 	default:
-		writeErr(w, http.StatusNotFound, "Unknown cache.")
+		writeErr(w, http.StatusNotFound, "Unknown cache")
 		return
 	}
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Couldn't clear the cache.")
+		writeErr(w, http.StatusInternalServerError, "Unable to clear the cache")
 		return
 	}
 	s.writeCache(w)
@@ -127,7 +127,7 @@ func (s *Server) cacheFlush(w http.ResponseWriter, r *http.Request, _ *store.Use
 func (s *Server) image(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	size, file := r.PathValue("size"), r.PathValue("file")
 	if !images.Valid(size, file) {
-		writeErr(w, http.StatusNotFound, "Not found.")
+		writeErr(w, http.StatusNotFound, "Not found")
 		return
 	}
 	if !s.Images.Enabled() {
@@ -149,7 +149,7 @@ func (s *Server) image(w http.ResponseWriter, r *http.Request, _ *store.User) {
 func (s *Server) avatar(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	u := r.URL.Query().Get("u")
 	if !images.AvatarValid(u) {
-		writeErr(w, http.StatusNotFound, "Not found.")
+		writeErr(w, http.StatusNotFound, "Not found")
 		return
 	}
 	if !s.Store.AvatarKnown(u) { // only people's own pictures are saved, so nobody can fill the disk with other addresses
@@ -178,15 +178,15 @@ func (s *Server) jobSet(w http.ResponseWriter, r *http.Request, _ *store.User) {
 		Enabled  bool   `json:"enabled"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in); err != nil {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	if err := s.Jobs.Set(r.PathValue("id"), strings.TrimSpace(in.Schedule), in.Enabled); err != nil {
 		if errors.Is(err, jobs.ErrUnknown) {
-			writeErr(w, http.StatusNotFound, "Unknown job.")
+			writeErr(w, http.StatusNotFound, "Unknown job")
 			return
 		}
-		writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadRequest, capitalize(err.Error()))
 		return
 	}
 	writeJSON(w, http.StatusOK, s.Jobs.List())
@@ -194,7 +194,7 @@ func (s *Server) jobSet(w http.ResponseWriter, r *http.Request, _ *store.User) {
 
 func (s *Server) jobRun(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	if err := s.Jobs.RunNow(s.BaseCtx, r.PathValue("id")); err != nil {
-		writeErr(w, http.StatusNotFound, "Unknown job.")
+		writeErr(w, http.StatusNotFound, "Unknown job")
 		return
 	}
 	writeJSON(w, http.StatusOK, s.Jobs.List())

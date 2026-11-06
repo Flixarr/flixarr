@@ -37,12 +37,12 @@ func titleParams(r *http.Request) (string, int, bool) {
 func (s *Server) titleAdmin(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	typ, id, ok := titleParams(r)
 	if !ok {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	reqs, err := s.Store.RequestsForTitle(typ, id)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	open, _ := s.Store.OpenIssuesForTitle(typ, id)
@@ -82,7 +82,7 @@ func (s *Server) titleAdmin(w http.ResponseWriter, r *http.Request, _ *store.Use
 func (s *Server) titleFix(w http.ResponseWriter, r *http.Request, u *store.User) {
 	typ, id, ok := titleParams(r)
 	if !ok {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	steps := s.Store.AddFixSteps(typ, id, 0, "Searched again", u.ID)
@@ -100,7 +100,7 @@ func (s *Server) titleFix(w http.ResponseWriter, r *http.Request, u *store.User)
 func (s *Server) titlePlexOrder(w http.ResponseWriter, r *http.Request, u *store.User) {
 	typ, id, ok := titleParams(r)
 	if !ok || typ != "series" {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	if err := s.Requests.UseSonarrOrder(r.Context(), id); err != nil {
@@ -122,11 +122,11 @@ func (s *Server) titleDelete(w http.ResponseWriter, r *http.Request, u *store.Us
 		Data  bool `json:"data"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in); err != nil || !ok || (!in.Files && !in.Data) {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	if in.Files && !u.Can("redownload") {
-		writeErr(w, http.StatusForbidden, "You don't have permission to delete files.")
+		writeErr(w, http.StatusForbidden, "You don't have permission to delete files")
 		return
 	}
 	ctx := r.Context()
@@ -144,7 +144,7 @@ func (s *Server) titleDelete(w http.ResponseWriter, r *http.Request, u *store.Us
 			return
 		}
 		if !found {
-			writeErr(w, http.StatusConflict, "It isn't in "+requests.ArrName(typ)+".")
+			writeErr(w, http.StatusConflict, "This isn't in "+requests.ArrName(typ))
 			return
 		}
 		done = append(done, "Deleted it and its files from "+requests.ArrName(typ)+".")
@@ -153,7 +153,7 @@ func (s *Server) titleDelete(w http.ResponseWriter, r *http.Request, u *store.Us
 	if in.Data {
 		open, _ := s.Store.OpenIssuesForTitle(typ, id)
 		if err := s.Requests.ClearTitle(typ, id); err != nil {
-			writeErr(w, http.StatusInternalServerError, "Database error.")
+			writeErr(w, http.StatusInternalServerError, "Database error")
 			return
 		}
 		for _, is := range open {
@@ -170,7 +170,7 @@ func (s *Server) titleDelete(w http.ResponseWriter, r *http.Request, u *store.Us
 func (s *Server) titleEpisodes(w http.ResponseWriter, r *http.Request, u *store.User) {
 	_, id, ok := titleParams(r)
 	if !ok {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	inPlex, _ := s.Library.Episodes(r.Context(), id)
@@ -192,7 +192,7 @@ func (s *Server) titleFixEpisodes(w http.ResponseWriter, r *http.Request, u *sto
 		Poster   string   `json:"poster"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 65536)).Decode(&in); err != nil || !ok || len(in.Episodes) > 2000 {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	steps := s.Store.AddFixSteps("series", id, 0, withNote("Redownload asked for", plexParts(in.Episodes)), u.ID)

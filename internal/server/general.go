@@ -30,18 +30,18 @@ func (s *Server) generalSettings(w http.ResponseWriter, r *http.Request, _ *stor
 	if r.Method == http.MethodPut {
 		var in generalSettings
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil {
-			writeErr(w, http.StatusBadRequest, "Bad request.")
+			writeErr(w, http.StatusBadRequest, "Invalid request")
 			return
 		}
 		if !reRegion.MatchString(in.Region) || !reLanguage.MatchString(in.Language) {
-			writeErr(w, http.StatusBadRequest, "Pick a region and language from the lists.")
+			writeErr(w, http.StatusBadRequest, "Invalid region or language")
 			return
 		}
 		in.AppURL = strings.TrimRight(strings.TrimSpace(in.AppURL), "/")
 		if in.AppURL != "" {
 			u, err := url.Parse(in.AppURL)
 			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-				writeErr(w, http.StatusBadRequest, "The application URL should look like https://flixarr.example.com.")
+				writeErr(w, http.StatusBadRequest, "Invalid application URL (e.g. https://flixarr.example.com)")
 				return
 			}
 		}

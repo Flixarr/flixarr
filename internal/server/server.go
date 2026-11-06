@@ -219,7 +219,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/jobs", s.auth(s.admin(s.jobList)))
 	mux.HandleFunc("PUT /api/jobs/{id}", s.auth(s.admin(s.jobSet)))
 	mux.HandleFunc("POST /api/jobs/{id}/run", s.auth(s.admin(s.jobRun)))
-	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { writeErr(w, http.StatusNotFound, "Unknown endpoint.") })
+	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { writeErr(w, http.StatusNotFound, "Unknown endpoint") })
 	mux.Handle("/", s.spa())
 	return headers(mux)
 }
@@ -254,16 +254,16 @@ func (s *Server) auth(h func(http.ResponseWriter, *http.Request, *store.User)) h
 	return func(w http.ResponseWriter, r *http.Request) {
 		c, err := r.Cookie(sessionCookie)
 		if err != nil || c.Value == "" {
-			writeErr(w, http.StatusUnauthorized, "Sign in first.")
+			writeErr(w, http.StatusUnauthorized, "Not signed in")
 			return
 		}
 		u, err := s.Store.SessionUser(c.Value)
 		if err != nil {
-			writeErr(w, http.StatusUnauthorized, "Your session has ended. Sign in again.")
+			writeErr(w, http.StatusUnauthorized, "Your session has ended")
 			return
 		}
 		if u, err = viewAs(r, u); err != nil {
-			writeErr(w, http.StatusForbidden, capitalize(err.Error())+".")
+			writeErr(w, http.StatusForbidden, capitalize(err.Error()))
 			return
 		}
 		h(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, u)), u)
@@ -274,7 +274,7 @@ func (s *Server) auth(h func(http.ResponseWriter, *http.Request, *store.User)) h
 func (s *Server) admin(h func(http.ResponseWriter, *http.Request, *store.User)) func(http.ResponseWriter, *http.Request, *store.User) {
 	return func(w http.ResponseWriter, r *http.Request, u *store.User) {
 		if !u.Can("admin") {
-			writeErr(w, http.StatusForbidden, "Only admins can do that.")
+			writeErr(w, http.StatusForbidden, "Only admins can do that")
 			return
 		}
 		h(w, r, u)
@@ -285,7 +285,7 @@ func (s *Server) admin(h func(http.ResponseWriter, *http.Request, *store.User)) 
 func (s *Server) people(h func(http.ResponseWriter, *http.Request, *store.User)) func(http.ResponseWriter, *http.Request, *store.User) {
 	return func(w http.ResponseWriter, r *http.Request, u *store.User) {
 		if !u.CanManageUsers() {
-			writeErr(w, http.StatusForbidden, "Only admins and Managers can do that.")
+			writeErr(w, http.StatusForbidden, "Only admins and Managers can do that")
 			return
 		}
 		h(w, r, u)
@@ -318,7 +318,7 @@ func (s *Server) setSession(w http.ResponseWriter, r *http.Request, token string
 func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	n, err := s.Store.UserCount()
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -342,7 +342,7 @@ func (s *Server) plexPin(w http.ResponseWriter, r *http.Request) {
 	pin, err := s.Plex.CreatePin(r.Context())
 	if err != nil {
 		s.Log.Warn("plex pin", "err", err)
-		writeErr(w, http.StatusBadGateway, "Couldn't reach plex.tv. Try again in a moment.")
+		writeErr(w, http.StatusBadGateway, "Unable to connect to plex.tv")
 		return
 	}
 	s.pinsMu.Lock()
@@ -361,19 +361,19 @@ func (s *Server) plexCheck(w http.ResponseWriter, r *http.Request) {
 		ID int64 `json:"id"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in); err != nil || in.ID == 0 {
-		writeErr(w, http.StatusBadRequest, "Missing PIN id.")
+		writeErr(w, http.StatusBadRequest, "Missing PIN id")
 		return
 	}
 	s.pinsMu.Lock()
 	_, known := s.pins[in.ID]
 	s.pinsMu.Unlock()
 	if !known {
-		writeErr(w, http.StatusBadRequest, "That sign-in expired. Start again.")
+		writeErr(w, http.StatusBadRequest, "Sign-in expired")
 		return
 	}
 	pin, err := s.Plex.CheckPin(r.Context(), in.ID)
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, "Couldn't reach plex.tv.")
+		writeErr(w, http.StatusBadGateway, "Unable to connect to plex.tv")
 		return
 	}
 	if pin.AuthToken == "" {
@@ -386,7 +386,7 @@ func (s *Server) plexCheck(w http.ResponseWriter, r *http.Request) {
 
 	acct, err := s.Plex.Me(r.Context(), pin.AuthToken)
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, "Couldn't read your Plex account.")
+		writeErr(w, http.StatusBadGateway, "Unable to read your Plex account")
 		return
 	}
 	name := acct.Username
@@ -407,18 +407,18 @@ func (s *Server) plexCheck(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, store.ErrNotFound) {
 			// Someone new: let them in if the Plex server is shared with them (and that's switched on).
 			if s.signIn() == "local" {
-				writeErr(w, http.StatusForbidden, "Sign in with the username and password the admin gave you.")
+				writeErr(w, http.StatusForbidden, "Plex sign-in is disabled")
 				return
 			}
 			if ok, aerr := s.Library.HasAccess(r.Context(), pin.AuthToken); s.plexSignInOpen() && aerr == nil && ok {
 				u, err = s.Store.CreateUser(store.User{PlexID: acct.ID, Username: name, Email: acct.Email, Avatar: acct.Thumb, Role: s.defaultRole()})
 				s.Log.Info("new user signed in", "user", name)
 			} else {
-				writeErr(w, http.StatusForbidden, "Your Plex account doesn't have access to this Flixarr yet. Ask the admin to add you.")
+				writeErr(w, http.StatusForbidden, "Your Plex account doesn't have access to this Flixarr")
 				return
 			}
 		} else if err == nil && s.signIn() == "local" && !u.Can("admin") && !u.Owner {
-			writeErr(w, http.StatusForbidden, "Sign in with the username and password the admin gave you.")
+			writeErr(w, http.StatusForbidden, "Plex sign-in is disabled")
 			return
 		} else if err == nil {
 			err = s.Store.UpdatePlexProfile(u.ID, name, acct.Email, acct.Thumb)
@@ -433,12 +433,12 @@ func (s *Server) plexCheck(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		s.Log.Error("sign-in", "err", err)
-		writeErr(w, http.StatusInternalServerError, "Couldn't sign you in.")
+		writeErr(w, http.StatusInternalServerError, "Unable to sign in")
 		return
 	}
 	token, err := s.Store.CreateSession(u.ID)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Couldn't start a session.")
+		writeErr(w, http.StatusInternalServerError, "Unable to start a session")
 		return
 	}
 	s.setSession(w, r, token)
@@ -452,7 +452,7 @@ func (s *Server) updateInfo(w http.ResponseWriter, r *http.Request, _ *store.Use
 
 func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	if _, err := s.Update.Check(r.Context()); err != nil {
-		writeErr(w, http.StatusBadGateway, "Couldn't check for updates: "+err.Error())
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error()))
 		return
 	}
 	writeJSON(w, http.StatusOK, s.Update.Last())
@@ -463,15 +463,15 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request, _ *store
 		Enabled bool `json:"enabled"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in); err != nil {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	if s.Update.Locked() && in.Enabled {
-		writeErr(w, http.StatusConflict, "Update checks are turned off by the FLIXARR_UPDATE_CHECK setting on the server.")
+		writeErr(w, http.StatusConflict, "Update checks are disabled by FLIXARR_UPDATE_CHECK")
 		return
 	}
 	if err := s.Update.SetEnabled(in.Enabled); err != nil {
-		writeErr(w, http.StatusInternalServerError, "Couldn't save.")
+		writeErr(w, http.StatusInternalServerError, "Unable to save")
 		return
 	}
 	writeJSON(w, http.StatusOK, s.Update.Last())
@@ -499,11 +499,11 @@ func (s *Server) metaProxy(w http.ResponseWriter, r *http.Request, u *store.User
 	body, status, err := s.Meta.Get(r.Context(), r.PathValue("path"), q)
 	if err != nil {
 		s.Log.Warn("Flixarr API", "err", err)
-		writeErr(w, http.StatusBadGateway, "The Flixarr API didn't answer. Try again in a moment.")
+		writeErr(w, http.StatusBadGateway, "Unable to connect to the Flixarr API: no response")
 		return
 	}
 	if status != http.StatusOK {
-		writeErr(w, status, "Not found.")
+		writeErr(w, status, "Not found")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -586,7 +586,7 @@ func (s *Server) badgeManifest(w http.ResponseWriter, badge string) {
 	b, err := fs.ReadFile(s.Web, "manifest.webmanifest")
 	var m map[string]any
 	if err != nil || json.Unmarshal(b, &m) != nil {
-		http.Error(w, "Not found.", http.StatusNotFound)
+		http.Error(w, "Not found", http.StatusNotFound)
 		return
 	}
 	m["name"], m["short_name"] = "Flixarr "+badge, "Flixarr "+badge

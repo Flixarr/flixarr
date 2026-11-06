@@ -42,7 +42,7 @@ func (s *Server) defaultRole() string {
 func (s *Server) allow(perm string, h func(http.ResponseWriter, *http.Request, *store.User)) func(http.ResponseWriter, *http.Request, *store.User) {
 	return func(w http.ResponseWriter, r *http.Request, u *store.User) {
 		if !u.Can(perm) {
-			writeErr(w, http.StatusForbidden, "You don't have permission to do that.")
+			writeErr(w, http.StatusForbidden, "You don't have permission to do that")
 			return
 		}
 		h(w, r, u)
@@ -54,7 +54,7 @@ func (s *Server) allow(perm string, h func(http.ResponseWriter, *http.Request, *
 func (s *Server) userList(w http.ResponseWriter, r *http.Request, me *store.User) {
 	list, err := s.Store.Users()
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"users": list, "perms": store.AllPerms, "roles": store.RolePerms, "plexSignIn": s.plexSignInOpen(), "admin": me.Can("admin"),
@@ -69,7 +69,7 @@ func (s *Server) userUpdate(w http.ResponseWriter, r *http.Request, me *store.Us
 		SeasonLimit int      `json:"seasonLimit"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil || in.Perms == nil {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	if t, err := s.Store.UserByID(id); err == nil {
@@ -79,7 +79,7 @@ func (s *Server) userUpdate(w http.ResponseWriter, r *http.Request, me *store.Us
 		}
 	}
 	if in.MovieLimit < 0 || in.SeasonLimit < 0 || in.MovieLimit > 1000 || in.SeasonLimit > 1000 {
-		writeErr(w, http.StatusBadRequest, "Limits go from 0 (unlimited) to 1000.")
+		writeErr(w, http.StatusBadRequest, "Limits must be between 0 (unlimited) and 1000")
 		return
 	}
 	u, err := s.Store.SetPerms(id, in.Perms)
@@ -89,11 +89,11 @@ func (s *Server) userUpdate(w http.ResponseWriter, r *http.Request, me *store.Us
 	}
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		writeErr(w, http.StatusNotFound, "That user doesn't exist.")
+		writeErr(w, http.StatusNotFound, "This user doesn't exist")
 	case errors.Is(err, store.ErrOwner):
-		writeErr(w, http.StatusConflict, "The owner always stays an admin.")
+		writeErr(w, http.StatusConflict, "The owner must stay an admin")
 	case err != nil:
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 	default:
 		writeJSON(w, http.StatusOK, u)
 	}
@@ -106,17 +106,17 @@ func mayChange(me, t *store.User, perms []string) (int, string) {
 	admin := slices.Contains(perms, "admin")
 	if !me.Can("admin") {
 		if t.Owner || t.Can("admin") {
-			return http.StatusForbidden, "Only admins can change an admin."
+			return http.StatusForbidden, "Only admins can change an admin"
 		}
 		if admin {
-			return http.StatusForbidden, "Only admins can give admin."
+			return http.StatusForbidden, "Only admins can give admin"
 		}
 	}
 	if t.Owner && !admin {
-		return http.StatusConflict, "The owner always stays an admin."
+		return http.StatusConflict, "The owner must stay an admin"
 	}
 	if t.ID == me.ID && me.Can("admin") && !admin {
-		return http.StatusConflict, "You can't take admin away from yourself."
+		return http.StatusConflict, "You can't remove your own admin"
 	}
 	return 0, ""
 }
@@ -126,7 +126,7 @@ func (s *Server) userProfile(w http.ResponseWriter, r *http.Request, me *store.U
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	u, err := s.Store.UserByID(id)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "That user doesn't exist.")
+		writeErr(w, http.StatusNotFound, "This user doesn't exist")
 		return
 	}
 	u.LastSeen = s.Store.LastSeen(id)
@@ -146,12 +146,12 @@ func (s *Server) userBulk(w http.ResponseWriter, r *http.Request, me *store.User
 		Set  map[string]bool `json:"set"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 65536)).Decode(&in); err != nil || len(in.IDs) == 0 || len(in.IDs) > 10000 {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	preset, isRole := store.RolePerms[in.Role]
 	if in.Role != "" && !isRole {
-		writeErr(w, http.StatusBadRequest, "Pick User, Trusted or Manager.")
+		writeErr(w, http.StatusBadRequest, "Invalid role")
 		return
 	}
 	type skip struct {
@@ -196,17 +196,17 @@ func (s *Server) userBulk(w http.ResponseWriter, r *http.Request, me *store.User
 func (s *Server) userDelete(w http.ResponseWriter, r *http.Request, me *store.User) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if id == me.ID {
-		writeErr(w, http.StatusConflict, "You can't remove yourself.")
+		writeErr(w, http.StatusConflict, "You can't remove yourself")
 		return
 	}
 	err := s.Store.DeleteUser(id)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		writeErr(w, http.StatusNotFound, "That user doesn't exist.")
+		writeErr(w, http.StatusNotFound, "This user doesn't exist")
 	case errors.Is(err, store.ErrOwner):
-		writeErr(w, http.StatusConflict, "The owner can't be removed.")
+		writeErr(w, http.StatusConflict, "The owner can't be removed")
 	case err != nil:
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 	default:
 		w.WriteHeader(http.StatusNoContent)
 	}
@@ -240,7 +240,7 @@ func (s *Server) userPlexImport(w http.ResponseWriter, r *http.Request, _ *store
 		PlexIDs []int64 `json:"plexIds"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 65536)).Decode(&in); err != nil {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	friends, err := s.Library.Friends(r.Context())
@@ -272,7 +272,7 @@ func (s *Server) userSettings(w http.ResponseWriter, r *http.Request, _ *store.U
 			SignIn      string `json:"signIn"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in); err != nil {
-			writeErr(w, http.StatusBadRequest, "Bad request.")
+			writeErr(w, http.StatusBadRequest, "Invalid request")
 			return
 		}
 		s.Store.SetSetting(KeyPlexSignIn, strconv.FormatBool(in.PlexSignIn))
@@ -296,18 +296,18 @@ func (s *Server) myNotifications(w http.ResponseWriter, r *http.Request, u *stor
 			Accounts map[string]string   `json:"accounts"` // optional: own accounts on Discord, Telegram, Pushover, ntfy
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&in); err != nil {
-			writeErr(w, http.StatusBadRequest, "Bad request.")
+			writeErr(w, http.StatusBadRequest, "Invalid request")
 			return
 		}
 		if in.Accounts != nil {
 			if err := s.Notify.SetAccounts(u.ID, in.Accounts); err != nil {
-				writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
+				writeErr(w, http.StatusBadRequest, capitalize(err.Error()))
 				return
 			}
 		}
 		if in.Off != nil {
 			if err := s.Notify.SetOff(u.ID, in.Off); err != nil {
-				writeErr(w, http.StatusForbidden, capitalize(err.Error())+".")
+				writeErr(w, http.StatusForbidden, capitalize(err.Error()))
 				return
 			}
 		}
@@ -346,15 +346,15 @@ func (s *Server) myWatchlist(w http.ResponseWriter, r *http.Request, u *store.Us
 			On bool `json:"on"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in); err != nil {
-			writeErr(w, http.StatusBadRequest, "Bad request.")
+			writeErr(w, http.StatusBadRequest, "Invalid request")
 			return
 		}
 		if in.On && s.Store.Setting(store.KeyWatchlistOff, "") == "true" {
-			writeErr(w, http.StatusForbidden, "An admin turned Plex Watchlist requests off for everyone.")
+			writeErr(w, http.StatusForbidden, "Plex Watchlist requests are disabled by an admin")
 			return
 		}
 		if in.On && !u.Can("watchlist") {
-			writeErr(w, http.StatusForbidden, "You don't have permission to request from your Plex Watchlist.")
+			writeErr(w, http.StatusForbidden, "You don't have permission to request from your Plex Watchlist")
 			return
 		}
 		s.Store.SetWatchlist(u.ID, in.On)
@@ -371,7 +371,7 @@ func (s *Server) myWatchlist(w http.ResponseWriter, r *http.Request, u *store.Us
 func (s *Server) myDevices(w http.ResponseWriter, r *http.Request, u *store.User) {
 	list, err := s.Store.Devices(u.ID)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	writeJSON(w, http.StatusOK, list)
@@ -389,13 +389,13 @@ func (s *Server) everyoneSettings(w http.ResponseWriter, r *http.Request, _ *sto
 			OffLocked    bool                `json:"offLocked"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16384)).Decode(&in); err != nil {
-			writeErr(w, http.StatusBadRequest, "Bad request.")
+			writeErr(w, http.StatusBadRequest, "Invalid request")
 			return
 		}
 		s.Store.SetSetting(store.KeyWatchlistOff, strconv.FormatBool(in.WatchlistOff))
 		s.Store.SetSetting(store.KeyLocaleLocked, strconv.FormatBool(in.LocaleLocked))
 		if err := s.Notify.SetDefaultOff(in.DefaultOff, in.OffLocked); err != nil {
-			writeErr(w, http.StatusInternalServerError, "Database error.")
+			writeErr(w, http.StatusInternalServerError, "Database error")
 			return
 		}
 	}
@@ -419,7 +419,7 @@ func (s *Server) everyoneSettings(w http.ResponseWriter, r *http.Request, _ *sto
 // everyoneApply puts everyone back on the starting notification choices.
 func (s *Server) everyoneApply(w http.ResponseWriter, r *http.Request, u *store.User) {
 	if err := s.Notify.ResetEveryone(); err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	s.Log.Info("everyone's notification choices reset", "by", u.Username)

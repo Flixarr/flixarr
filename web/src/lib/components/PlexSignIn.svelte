@@ -25,7 +25,7 @@
 					return;
 				}
 			}
-			error = 'Sign-in timed out. Try again.';
+			error = 'Sign-in timed out';
 		} catch (e) {
 			win?.close();
 			error = e instanceof Error ? e.message : 'Sign-in failed.';

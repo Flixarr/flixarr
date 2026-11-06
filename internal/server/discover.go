@@ -85,7 +85,7 @@ func (s *Server) cards(r *http.Request, refs []titleRef) []*card {
 func (s *Server) recentlyAdded(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	items, err := s.Store.RecentPlexItems(20)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	refs := []titleRef{}
@@ -104,7 +104,7 @@ func (s *Server) recentRequests(w http.ResponseWriter, r *http.Request, u *store
 	}
 	cards, err := s.requestCards(r, owner)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"page": 1, "totalPages": 1, "results": cards})
@@ -129,7 +129,7 @@ func (s *Server) requestCards(r *http.Request, owner int64) ([]*card, error) {
 func (s *Server) myStats(w http.ResponseWriter, r *http.Request, u *store.User) {
 	out, err := s.userStats(u.ID)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -162,14 +162,14 @@ func (s *Server) userStats(id int64) (map[string]int, error) {
 func (s *Server) library(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	typ := r.PathValue("type")
 	if typ != "movie" && typ != "series" {
-		writeErr(w, http.StatusNotFound, "Unknown type.")
+		writeErr(w, http.StatusNotFound, "Unknown type")
 		return
 	}
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	page = max(page, 1)
 	items, total, err := s.Store.PlexItemsPage(typ, r.URL.Query().Get("sort"), page, 20)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	refs := []titleRef{}
@@ -205,7 +205,7 @@ func (s *Server) userWatched(w http.ResponseWriter, r *http.Request, _ *store.Us
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	u, err := s.Store.UserByID(id)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "That user doesn't exist.")
+		writeErr(w, http.StatusNotFound, "This user doesn't exist")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"results": s.watchedCards(r, *u)})

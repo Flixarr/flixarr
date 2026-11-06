@@ -25,19 +25,19 @@ func (s *Server) backupList(w http.ResponseWriter, r *http.Request, _ *store.Use
 func (s *Server) backupOffsite(w http.ResponseWriter, r *http.Request, u *store.User) {
 	var in backup.Offsite
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&in); err != nil {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	if in.S3.SecretKey == "" && in.S3.Endpoint != "" {
 		in.S3.SecretKey = s.Backups.LoadOffsite().S3.SecretKey
 	}
 	if err := s.Backups.SaveOffsite(in); err != nil {
-		writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadRequest, capitalize(err.Error()))
 		return
 	}
 	if list := s.Backups.List(); len(list) > 0 {
 		if err := s.Backups.CopyOffsite(r.Context(), list[0].Name); err != nil {
-			writeErr(w, http.StatusBadGateway, "Saved, but copying the newest backup failed: "+err.Error()+".")
+			writeErr(w, http.StatusBadGateway, "Saved, but unable to copy the newest backup: "+err.Error())
 			return
 		}
 	}
@@ -48,11 +48,11 @@ func (s *Server) backupCreate(w http.ResponseWriter, r *http.Request, _ *store.U
 	b, err := s.Backups.Create("manual")
 	if err != nil {
 		s.Log.Error("backup", "err", err)
-		writeErr(w, http.StatusInternalServerError, "Couldn't save a backup: "+err.Error()+".")
+		writeErr(w, http.StatusInternalServerError, "Unable to save a backup: "+err.Error())
 		return
 	}
 	if err := s.Backups.CopyOffsite(r.Context(), b.Name); err != nil {
-		writeErr(w, http.StatusBadGateway, "Saved here, but the offsite copy failed: "+err.Error()+".")
+		writeErr(w, http.StatusBadGateway, "Saved, but there was an issue with the offsite copy: "+err.Error())
 		return
 	}
 	writeJSON(w, http.StatusCreated, b)
@@ -63,7 +63,7 @@ func (s *Server) backupSettings(w http.ResponseWriter, r *http.Request, u *store
 		Keep int `json:"keep"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in); err != nil || in.Keep < 1 || in.Keep > 60 {
-		writeErr(w, http.StatusBadRequest, "Keep between 1 and 60 backups.")
+		writeErr(w, http.StatusBadRequest, "Must keep between 1 and 60 backups")
 		return
 	}
 	s.Store.SetSetting(backup.KeyKeep, strconv.Itoa(in.Keep))
@@ -73,7 +73,7 @@ func (s *Server) backupSettings(w http.ResponseWriter, r *http.Request, u *store
 func (s *Server) backupDownload(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	p, err := s.Backups.Path(r.PathValue("name"))
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "No such backup.")
+		writeErr(w, http.StatusNotFound, "This backup no longer exists")
 		return
 	}
 	w.Header().Set("Content-Type", "application/vnd.sqlite3")
@@ -83,7 +83,7 @@ func (s *Server) backupDownload(w http.ResponseWriter, r *http.Request, _ *store
 
 func (s *Server) backupDelete(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	if err := s.Backups.Delete(r.PathValue("name")); err != nil {
-		writeErr(w, http.StatusNotFound, "No such backup.")
+		writeErr(w, http.StatusNotFound, "This backup no longer exists")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -94,7 +94,7 @@ func (s *Server) backupDelete(w http.ResponseWriter, r *http.Request, _ *store.U
 func (s *Server) backupRestore(w http.ResponseWriter, r *http.Request, u *store.User) {
 	name := r.PathValue("name")
 	if err := s.Backups.PrepareRestore(name); err != nil {
-		writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadRequest, capitalize(err.Error()))
 		return
 	}
 	s.Log.Warn("restoring a backup and restarting", "backup", name, "by", u.Username)

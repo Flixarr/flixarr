@@ -25,7 +25,7 @@ func (s *Server) plexWeb(w http.ResponseWriter, r *http.Request, _ *store.User) 
 		URL string `json:"url"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	if _, err := s.Library.SetWebURL(in.URL); err != nil {
@@ -49,7 +49,7 @@ func (s *Server) plexConnect(w http.ResponseWriter, r *http.Request, _ *store.Us
 		ID string `json:"id"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil || in.ID == "" {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	st, err := s.Library.Connect(r.Context(), in.ID)
@@ -77,7 +77,7 @@ func (s *Server) plexAddress(w http.ResponseWriter, r *http.Request, _ *store.Us
 		URI string `json:"uri"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	st, err := s.Library.SetAddress(r.Context(), in.URI)
@@ -90,7 +90,7 @@ func (s *Server) plexAddress(w http.ResponseWriter, r *http.Request, _ *store.Us
 
 func (s *Server) plexDisconnect(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	if err := s.Library.Disconnect(); err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	st, _ := s.Library.Status(r.Context())
@@ -102,14 +102,14 @@ func (s *Server) plexLibraries(w http.ResponseWriter, r *http.Request, _ *store.
 		Keys []string `json:"keys"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	if in.Keys == nil {
 		in.Keys = []string{}
 	}
 	if err := s.Library.SetSections(in.Keys); err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	s.Jobs.RunNow(s.BaseCtx, "plex-full") // pick up (or drop) the changed libraries

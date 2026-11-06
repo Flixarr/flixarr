@@ -21,12 +21,12 @@ func (s *Server) seerrClient(w http.ResponseWriter, r *http.Request) (*seerr.Cli
 		Key string `json:"key"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return nil, false
 	}
 	c, err := seerr.NewClient(in.URL, in.Key)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadRequest, capitalize(err.Error()))
 		return nil, false
 	}
 	return c, true
@@ -43,7 +43,7 @@ func (s *Server) seerrPreview(w http.ResponseWriter, r *http.Request, _ *store.U
 	}
 	p, _, _, err := s.Seerr.Plan(r.Context(), c)
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error()))
 		return
 	}
 	writeJSON(w, http.StatusOK, p)
@@ -55,7 +55,7 @@ func (s *Server) seerrImport(w http.ResponseWriter, r *http.Request, _ *store.Us
 		return
 	}
 	if err := s.Seerr.Start(c, nil); err != nil {
-		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
+		writeErr(w, http.StatusConflict, capitalize(err.Error()))
 		return
 	}
 	writeJSON(w, http.StatusAccepted, s.Seerr.State())
@@ -86,12 +86,12 @@ func (s *Server) seerrFilePreview(w http.ResponseWriter, r *http.Request, _ *sto
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<30)
 	mr, err := r.MultipartReader()
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, "Upload Seerr's db.sqlite3.")
+		writeErr(w, http.StatusBadRequest, "No file uploaded (e.g. Seerr's db.sqlite3)")
 		return
 	}
 	db, settings := s.seerrFiles()
 	if err := os.MkdirAll(filepath.Dir(db), 0o700); err != nil {
-		writeErr(w, http.StatusInternalServerError, "Couldn't save the upload.")
+		writeErr(w, http.StatusInternalServerError, "Unable to save the upload")
 		return
 	}
 	os.Remove(settings) // a settings.json from an earlier upload doesn't belong to this one
@@ -102,7 +102,7 @@ func (s *Server) seerrFilePreview(w http.ResponseWriter, r *http.Request, _ *sto
 			break
 		}
 		if err != nil {
-			writeErr(w, http.StatusBadRequest, "The upload stopped part way. Try again.")
+			writeErr(w, http.StatusBadRequest, "The upload stopped part way")
 			return
 		}
 		var to string
@@ -115,18 +115,18 @@ func (s *Server) seerrFilePreview(w http.ResponseWriter, r *http.Request, _ *sto
 			continue
 		}
 		if err := saveUpload(to, part); err != nil {
-			writeErr(w, http.StatusBadRequest, "The upload stopped part way. Try again.")
+			writeErr(w, http.StatusBadRequest, "The upload stopped part way")
 			return
 		}
 	}
 	if !gotDB {
-		writeErr(w, http.StatusBadRequest, "Upload Seerr's db.sqlite3.")
+		writeErr(w, http.StatusBadRequest, "No file uploaded (e.g. Seerr's db.sqlite3)")
 		return
 	}
 	src, _ := s.seerrFileSource()
 	p, _, _, err := s.Seerr.Plan(r.Context(), src)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadRequest, capitalize(err.Error()))
 		return
 	}
 	writeJSON(w, http.StatusOK, p)
@@ -151,12 +151,12 @@ func saveUpload(to string, from io.Reader) error {
 func (s *Server) seerrFileImport(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	src, err := s.seerrFileSource()
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadRequest, capitalize(err.Error()))
 		return
 	}
 	db, settings := s.seerrFiles()
 	if err := s.Seerr.Start(src, func() { os.Remove(db); os.Remove(settings) }); err != nil {
-		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
+		writeErr(w, http.StatusConflict, capitalize(err.Error()))
 		return
 	}
 	writeJSON(w, http.StatusAccepted, s.Seerr.State())

@@ -38,7 +38,7 @@ func (s *Server) myLocale(w http.ResponseWriter, r *http.Request, u *store.User)
 		return
 	}
 	if s.Store.Setting(store.KeyLocaleLocked, "") == "true" {
-		writeErr(w, http.StatusForbidden, "An admin set the region and language for everyone.")
+		writeErr(w, http.StatusForbidden, "Region and language are set by an admin")
 		return
 	}
 	var in struct {
@@ -47,11 +47,11 @@ func (s *Server) myLocale(w http.ResponseWriter, r *http.Request, u *store.User)
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in); err != nil ||
 		(in.Region != "" && !regionRe.MatchString(in.Region)) || (in.Language != "" && !languageRe.MatchString(in.Language)) {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	if err := s.Store.SetUserLocale(u.ID, in.Region, in.Language); err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	u.Region, u.Language = in.Region, in.Language

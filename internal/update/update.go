@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/big"
@@ -121,7 +122,7 @@ func (c *Checker) Check(ctx context.Context) (*Result, error) {
 	req.Header.Set("User-Agent", "Flixarr/"+version.Full())
 	res, err := c.HTTP.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, errors.New("Unable to check for updates: no response")
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {

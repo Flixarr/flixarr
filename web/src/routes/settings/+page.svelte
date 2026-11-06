@@ -81,7 +81,7 @@
 			upd = await api<UpdateStatus>('/update/settings', { method: 'PUT', body: JSON.stringify({ enabled: on }) });
 			notify(on ? 'Daily update checks are on.' : 'Update checks are off. Nothing is sent.', on ? 'green' : 'orange');
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to save these settings', 'orange');
 		}
 	}
 	async function checkNow() {
@@ -90,7 +90,7 @@
 			upd = await api<UpdateStatus>('/update/check', { method: 'POST' });
 			notify(upd.available ? 'An update is available.' : "You're up to date.");
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Check failed.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to check for updates', 'orange');
 		} finally {
 			busy = false;
 		}

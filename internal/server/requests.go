@@ -21,7 +21,7 @@ func (s *Server) requestList(w http.ResponseWriter, r *http.Request, u *store.Us
 	// and counts them itself. A Seerr import alone brings thousands.
 	list, err := s.Store.Requests(0, 1_000_000)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	admin := u.Can("manageRequests")
@@ -61,29 +61,29 @@ func issuesForViewer(list []store.Issue, u *store.User) []store.Issue {
 func (s *Server) requestCreate(w http.ResponseWriter, r *http.Request, u *store.User) {
 	var in requests.New
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16384)).Decode(&in); err != nil {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	req, err := s.Requests.Create(r.Context(), u, in)
 	var limit requests.LimitError
 	if errors.As(err, &limit) {
-		writeErr(w, http.StatusConflict, capitalize(limit.Msg)+".")
+		writeErr(w, http.StatusConflict, capitalize(limit.Msg))
 		return
 	}
 	if errors.Is(err, requests.ErrNotAllowed) {
-		writeErr(w, http.StatusForbidden, "You can't request "+map[string]string{"movie": "movies", "series": "series"}[in.Type]+".")
+		writeErr(w, http.StatusForbidden, "You can't request "+map[string]string{"movie": "movies", "series": "series"}[in.Type])
 		return
 	}
 	if errors.Is(err, requests.ErrBlocked) {
-		writeErr(w, http.StatusForbidden, "That title can't be requested.")
+		writeErr(w, http.StatusForbidden, "This title can't be requested")
 		return
 	}
 	if errors.Is(err, requests.ErrInPlex) {
-		writeErr(w, http.StatusConflict, "That's already on Plex.")
+		writeErr(w, http.StatusConflict, "This is already in the library")
 		return
 	}
 	if errors.Is(err, requests.ErrAlready) {
-		writeErr(w, http.StatusConflict, "That's already been requested.")
+		writeErr(w, http.StatusConflict, "This has already been requested")
 		return
 	}
 	if err != nil {
@@ -103,7 +103,7 @@ func (s *Server) requestStatus(w http.ResponseWriter, r *http.Request, _ *store.
 	}
 	out, err := s.briefs(keys)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -172,7 +172,7 @@ func (s *Server) requestByID(w http.ResponseWriter, r *http.Request) (store.Requ
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	req, err := s.Store.Request(id)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "That request doesn't exist.")
+		writeErr(w, http.StatusNotFound, "This request doesn't exist")
 		return req, false
 	}
 	return req, true
@@ -184,7 +184,7 @@ func (s *Server) requestApprove(w http.ResponseWriter, r *http.Request, u *store
 		return
 	}
 	if req.Status != "pending" && req.Status != "declined" {
-		writeErr(w, http.StatusConflict, "Only waiting or declined requests can be approved.")
+		writeErr(w, http.StatusConflict, "Only waiting or declined requests can be approved")
 		return
 	}
 	s.Store.DecideRequest(req.ID, u.ID, "approved")
@@ -203,7 +203,7 @@ func (s *Server) requestDecline(w http.ResponseWriter, r *http.Request, u *store
 		return
 	}
 	if req.Status != "pending" {
-		writeErr(w, http.StatusConflict, "Only waiting requests can be declined.")
+		writeErr(w, http.StatusConflict, "Only waiting requests can be declined")
 		return
 	}
 	var in struct {
@@ -232,7 +232,7 @@ func (s *Server) requestRetry(w http.ResponseWriter, r *http.Request, u *store.U
 		return
 	}
 	if req.Status != "failed" {
-		writeErr(w, http.StatusConflict, "Only failed requests can be tried again.")
+		writeErr(w, http.StatusConflict, "Only failed requests can be tried again")
 		return
 	}
 	s.Store.AddFixSteps(req.Type, req.TmdbID, req.ID, "Tried again", u.ID)
@@ -269,7 +269,7 @@ func (s *Server) redownload(w http.ResponseWriter, r *http.Request, u *store.Use
 		Poster  string `json:"poster"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil || (in.Type != "movie" && in.Type != "series") || in.TmdbID <= 0 {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	// Before the redownload, so the request it makes doesn't get the step too.
@@ -293,11 +293,11 @@ func (s *Server) requestDelete(w http.ResponseWriter, r *http.Request, u *store.
 		return
 	}
 	if !u.Can("manageRequests") && (req.UserID != u.ID || req.Status != "pending") {
-		writeErr(w, http.StatusForbidden, "You can only cancel your own requests while they're waiting.")
+		writeErr(w, http.StatusForbidden, "You can only cancel your own requests while they're waiting")
 		return
 	}
 	if err := s.Store.DeleteRequest(req.ID); err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	req.Status = "deleted"
@@ -315,7 +315,7 @@ func (s *Server) requestSettings(w http.ResponseWriter, r *http.Request, _ *stor
 			TVModes          *requests.TVModes `json:"tvModes"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in); err != nil {
-			writeErr(w, http.StatusBadRequest, "Bad request.")
+			writeErr(w, http.StatusBadRequest, "Invalid request")
 			return
 		}
 		s.Store.SetSetting(requests.KeyApproval, strconv.FormatBool(in.ApprovalRequired))

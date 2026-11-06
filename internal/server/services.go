@@ -91,7 +91,7 @@ func (s *Server) services(w http.ResponseWriter, r *http.Request, _ *store.User)
 	for kind := range arr.Kinds {
 		v, ok, err := s.Store.FirstServer(kind)
 		if err != nil {
-			writeErr(w, http.StatusInternalServerError, "Database error.")
+			writeErr(w, http.StatusInternalServerError, "Database error")
 			return
 		}
 		out[kind] = nil
@@ -130,7 +130,7 @@ func (s *Server) serviceClient(kind string, in serviceInput) (*arr.Client, store
 func decodeService(w http.ResponseWriter, r *http.Request) (serviceInput, bool) {
 	var in serviceInput
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return in, false
 	}
 	return in, true
@@ -169,7 +169,7 @@ func (s *Server) serviceSave(w http.ResponseWriter, r *http.Request, _ *store.Us
 	}
 	info, err := c.Test(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, "Not saved: "+err.Error()+".")
+		writeErr(w, http.StatusBadGateway, "Unable to save: "+err.Error())
 		return
 	}
 	v := saved
@@ -183,7 +183,7 @@ func (s *Server) serviceSave(w http.ResponseWriter, r *http.Request, _ *store.Us
 	v.WebURL = ""
 	if strings.TrimSpace(in.WebURL) != "" {
 		if v.WebURL, err = arr.NormalizeURL(in.WebURL); err != nil {
-			writeErr(w, http.StatusBadRequest, "Web address: "+err.Error()+".")
+			writeErr(w, http.StatusBadRequest, capitalize(err.Error()))
 			return
 		}
 	}
@@ -203,11 +203,11 @@ func (s *Server) serviceSave(w http.ResponseWriter, r *http.Request, _ *store.Us
 		}
 	}
 	if v.RootFolder == "" {
-		writeErr(w, http.StatusBadRequest, "Pick a root folder.")
+		writeErr(w, http.StatusBadRequest, "Root folder is required")
 		return
 	}
 	if v.QualityProfileID == 0 && in.DefaultProfile == "" {
-		writeErr(w, http.StatusBadRequest, "Pick a default quality.")
+		writeErr(w, http.StatusBadRequest, "Default quality is required")
 		return
 	}
 	if v.QualityProfileID == 0 && len(info.Profiles) > 0 { // replaced by the Flixarr profile below
@@ -215,7 +215,7 @@ func (s *Server) serviceSave(w http.ResponseWriter, r *http.Request, _ *store.Us
 	}
 	v, err = s.Store.SaveServer(v)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	s.Log.Info("service saved", "kind", kind, "url", v.URL)
@@ -247,7 +247,7 @@ func (s *Server) serviceSave(w http.ResponseWriter, r *http.Request, _ *store.Us
 func (s *Server) serviceDiscover(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	kind := r.PathValue("kind")
 	if _, known := arr.Kinds[kind]; !known {
-		writeErr(w, http.StatusNotFound, "Unknown service.")
+		writeErr(w, http.StatusNotFound, "Unknown service")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"found": nonNil(arr.Discover(r.Context(), kind))})
@@ -264,7 +264,7 @@ func nonNil(f []arr.Found) []arr.Found {
 func (s *Server) serviceProfilesAdd(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	v, ok, err := s.Store.FirstServer(r.PathValue("kind"))
 	if err != nil || !ok {
-		writeErr(w, http.StatusNotFound, "Not connected.")
+		writeErr(w, http.StatusNotFound, "Not connected")
 		return
 	}
 	var in struct {
@@ -282,7 +282,7 @@ func (s *Server) serviceProfilesAdd(w http.ResponseWriter, r *http.Request, _ *s
 func (s *Server) serviceProfileUseFlixarr(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	v, ok, err := s.Store.FirstServer(r.PathValue("kind"))
 	if err != nil || !ok {
-		writeErr(w, http.StatusNotFound, "Not connected.")
+		writeErr(w, http.StatusNotFound, "Not connected")
 		return
 	}
 	if err := s.Profiles.UseFlixarrVersion(r.Context(), v, r.PathValue("key")); err != nil {
@@ -296,7 +296,7 @@ func (s *Server) serviceProfileUseFlixarr(w http.ResponseWriter, r *http.Request
 func (s *Server) serviceProfileSkip(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	v, ok, err := s.Store.FirstServer(r.PathValue("kind"))
 	if err != nil || !ok {
-		writeErr(w, http.StatusNotFound, "Not connected.")
+		writeErr(w, http.StatusNotFound, "Not connected")
 		return
 	}
 	if err := s.Profiles.Skip(v, r.PathValue("key")); err != nil {
@@ -310,7 +310,7 @@ func (s *Server) serviceProfileSkip(w http.ResponseWriter, r *http.Request, _ *s
 func (s *Server) serviceProfileChanges(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	v, ok, err := s.Store.FirstServer(r.PathValue("kind"))
 	if err != nil || !ok {
-		writeErr(w, http.StatusNotFound, "Not connected.")
+		writeErr(w, http.StatusNotFound, "Not connected")
 		return
 	}
 	c, err := s.Profiles.Changes(r.Context(), v, r.PathValue("key"))
@@ -387,7 +387,7 @@ func (s *Server) profilesInfo(w http.ResponseWriter, r *http.Request, _ *store.U
 func (s *Server) serviceRefresh(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	v, ok, err := s.Store.FirstServer(r.PathValue("kind"))
 	if err != nil || !ok {
-		writeErr(w, http.StatusNotFound, "Not connected.")
+		writeErr(w, http.StatusNotFound, "Not connected")
 		return
 	}
 	s.Arr.RefreshOne(r.Context(), v)
@@ -398,17 +398,17 @@ func (s *Server) serviceRefresh(w http.ResponseWriter, r *http.Request, _ *store
 func (s *Server) serviceDelete(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	kind := r.PathValue("kind")
 	if _, known := arr.Kinds[kind]; !known {
-		writeErr(w, http.StatusNotFound, "Unknown service.")
+		writeErr(w, http.StatusNotFound, "Unknown service")
 		return
 	}
 	v, ok, err := s.Store.FirstServer(kind)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	if ok {
 		if err := s.Store.DeleteServer(v.ID); err != nil {
-			writeErr(w, http.StatusInternalServerError, "Database error.")
+			writeErr(w, http.StatusInternalServerError, "Database error")
 			return
 		}
 		s.Arr.Forget(v)

@@ -44,7 +44,7 @@ func (s *Server) webhookInfo(w http.ResponseWriter, r *http.Request, _ *store.Us
 // Sonarr {"eventType", "series": {"id"}}.
 func (s *Server) webhook(w http.ResponseWriter, r *http.Request) {
 	if subtle.ConstantTimeCompare([]byte(r.PathValue("token")), []byte(s.webhookToken())) != 1 {
-		writeErr(w, http.StatusNotFound, "Unknown endpoint.")
+		writeErr(w, http.StatusNotFound, "Unknown endpoint")
 		return
 	}
 	var in struct {
@@ -58,7 +58,7 @@ func (s *Server) webhook(w http.ResponseWriter, r *http.Request) {
 		} `json:"series"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&in); err != nil {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	s.Store.SetSetting("webhook_last", time.Now().UTC().Format(time.RFC3339)+" "+in.InstanceName+" "+in.EventType)
@@ -113,12 +113,12 @@ func arrWebhook(ctx context.Context, c *arr.Client, token string) (map[string]an
 func (s *Server) webhookStatus(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	v, ok, err := s.Store.FirstServer(r.PathValue("kind"))
 	if err != nil || !ok {
-		writeErr(w, http.StatusNotFound, "Not connected.")
+		writeErr(w, http.StatusNotFound, "Not connected")
 		return
 	}
 	n, err := arrWebhook(r.Context(), &arr.Client{Kind: v.Kind, URL: v.URL, APIKey: v.APIKey}, s.webhookToken())
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error()))
 		return
 	}
 	url := ""
@@ -136,32 +136,32 @@ func (s *Server) webhookStatus(w http.ResponseWriter, r *http.Request, _ *store.
 // matter for requests and health, then has Radarr/Sonarr test it.
 func (s *Server) webhookAdd(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	if testinstall.On {
-		writeErr(w, http.StatusConflict, "Instant updates aren't added from a dev install: it shares Radarr and Sonarr with the real one.")
+		writeErr(w, http.StatusConflict, "Instant updates aren't added from a dev install")
 		return
 	}
 	v, ok, err := s.Store.FirstServer(r.PathValue("kind"))
 	if err != nil || !ok {
-		writeErr(w, http.StatusNotFound, "Not connected.")
+		writeErr(w, http.StatusNotFound, "Not connected")
 		return
 	}
 	var in struct {
 		Base string `json:"base"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2048)).Decode(&in); err != nil || !strings.HasPrefix(in.Base, "http") {
-		writeErr(w, http.StatusBadRequest, "Enter the address Radarr and Sonarr use to reach Flixarr, like http://192.168.1.10:7575.")
+		writeErr(w, http.StatusBadRequest, "Flixarr's address is required (e.g. http://192.168.1.10:7575)")
 		return
 	}
 	hook := strings.TrimRight(in.Base, "/") + "/api/webhook/" + s.webhookToken()
 	c := &arr.Client{Kind: v.Kind, URL: v.URL, APIKey: v.APIKey}
 	n, err := arrWebhook(r.Context(), c, s.webhookToken())
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error()))
 		return
 	}
 	if n == nil {
 		var schema []map[string]any
 		if err := c.Get(r.Context(), "notification/schema", &schema); err != nil {
-			writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+			writeErr(w, http.StatusBadGateway, capitalize(err.Error()))
 			return
 		}
 		for _, sc := range schema {
@@ -170,7 +170,7 @@ func (s *Server) webhookAdd(w http.ResponseWriter, r *http.Request, _ *store.Use
 			}
 		}
 		if n == nil {
-			writeErr(w, http.StatusBadGateway, "This version doesn't offer webhooks.")
+			writeErr(w, http.StatusBadGateway, "This version doesn't offer webhooks")
 			return
 		}
 	}
@@ -191,7 +191,7 @@ func (s *Server) webhookAdd(w http.ResponseWriter, r *http.Request, _ *store.Use
 	}
 	// The Test button in Radarr/Sonarr first: it fails with a clear message when the address is wrong.
 	if err := c.Post(r.Context(), "notification/test", n, nil); err != nil {
-		writeErr(w, http.StatusBadGateway, arr.Kinds[v.Kind]+" couldn't reach Flixarr at "+in.Base+". Use the address "+arr.Kinds[v.Kind]+" can reach (often the local IP and port).")
+		writeErr(w, http.StatusBadGateway, arr.Kinds[v.Kind]+" is unable to connect to Flixarr at "+in.Base)
 		return
 	}
 	if id, _ := n["id"].(float64); id > 0 {
@@ -200,7 +200,7 @@ func (s *Server) webhookAdd(w http.ResponseWriter, r *http.Request, _ *store.Use
 		err = c.Post(r.Context(), "notification", n, nil)
 	}
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error()))
 		return
 	}
 	s.Store.SetSetting("webhook_base", in.Base)

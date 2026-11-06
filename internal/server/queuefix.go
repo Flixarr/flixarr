@@ -16,20 +16,20 @@ import (
 // "remove"}. For people who manage requests, and people with Fix and redownload.
 func (s *Server) queueFix(w http.ResponseWriter, r *http.Request, u *store.User) {
 	if !u.Can("manageRequests") && !u.Can("redownload") {
-		writeErr(w, http.StatusForbidden, "Only people who manage requests can fix downloads.")
+		writeErr(w, http.StatusForbidden, "Only people who manage requests can fix downloads")
 		return
 	}
 	kind := r.PathValue("kind")
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if (kind != "radarr" && kind != "sonarr") || err != nil || id <= 0 {
-		writeErr(w, http.StatusNotFound, "Not found.")
+		writeErr(w, http.StatusNotFound, "Not found")
 		return
 	}
 	var in struct {
 		Action string `json:"action"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in); err != nil {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	f, err := s.Requests.FixDownload(r.Context(), kind, id, in.Action)
@@ -62,7 +62,7 @@ func (s *Server) requestAttention(w http.ResponseWriter, r *http.Request, u *sto
 	manage := u.Can("manageRequests")
 	list, err := s.Store.RequestsIn("failed", "pending", "sent", "grabbed", "downloading", "importing")
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	stuck := s.stuckDownloads()

@@ -101,17 +101,17 @@ func (s *Server) localLogin(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil || strings.TrimSpace(in.Username) == "" || in.Password == "" {
-		writeErr(w, http.StatusBadRequest, "Enter your username and password.")
+		writeErr(w, http.StatusBadRequest, "Username and password are required")
 		return
 	}
 	if s.signIn() == "plex" {
-		writeErr(w, http.StatusForbidden, "Sign in with Plex.")
+		writeErr(w, http.StatusForbidden, "Username sign-in is disabled")
 		return
 	}
 	name := strings.ToLower(strings.TrimSpace(in.Username))
 	byName, byIP := "name:"+name, "ip:"+clientIP(r)
 	if s.fails.locked(byName, byIP) {
-		writeErr(w, http.StatusTooManyRequests, "Too many wrong passwords. Try again in 15 minutes.")
+		writeErr(w, http.StatusTooManyRequests, "Too many incorrect passwords. Sign-in is paused for 15 minutes.")
 		return
 	}
 	u, hash, err := s.Store.LocalLogin(name)
@@ -122,13 +122,13 @@ func (s *Server) localLogin(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		s.fails.add(byName, byIP)
 		s.Log.Info("local sign-in refused", "user", name, "from", clientIP(r))
-		writeErr(w, http.StatusUnauthorized, "That username and password don't match.")
+		writeErr(w, http.StatusUnauthorized, "Incorrect username or password")
 		return
 	}
 	s.fails.clear(byName)
 	token, err := s.Store.CreateSession(u.ID)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Couldn't start a session.")
+		writeErr(w, http.StatusInternalServerError, "Unable to start a session")
 		return
 	}
 	s.setSession(w, r, token)
@@ -147,12 +147,12 @@ func (s *Server) userAddLocal(w http.ResponseWriter, r *http.Request, _ *store.U
 		Password string `json:"password"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	in.Username, in.Email = strings.TrimSpace(in.Username), strings.TrimSpace(in.Email)
 	if in.Username == "" || len(in.Username) > 64 {
-		writeErr(w, http.StatusBadRequest, "Enter a username (up to 64 characters).")
+		writeErr(w, http.StatusBadRequest, "Username is required (up to 64 characters)")
 		return
 	}
 	if in.Role != "Trusted" {
@@ -160,16 +160,16 @@ func (s *Server) userAddLocal(w http.ResponseWriter, r *http.Request, _ *store.U
 	}
 	hash, err := password.Hash(in.Password)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, "Password: "+err.Error()+".")
+		writeErr(w, http.StatusBadRequest, capitalize(err.Error()))
 		return
 	}
 	u, err := s.Store.CreateLocalUser(in.Username, in.Email, in.Role, hash)
 	if errors.Is(err, store.ErrNameTaken) {
-		writeErr(w, http.StatusConflict, "That username is taken.")
+		writeErr(w, http.StatusConflict, "Username already taken")
 		return
 	}
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	writeJSON(w, http.StatusCreated, u)
@@ -180,7 +180,7 @@ func (s *Server) userSetPassword(w http.ResponseWriter, r *http.Request, _ *stor
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	u, err := s.Store.UserByID(id)
 	if err != nil || !u.Local {
-		writeErr(w, http.StatusNotFound, "That isn't a local account.")
+		writeErr(w, http.StatusNotFound, "This isn't a local account")
 		return
 	}
 	var in struct {
@@ -189,11 +189,11 @@ func (s *Server) userSetPassword(w http.ResponseWriter, r *http.Request, _ *stor
 	json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in)
 	hash, err := password.Hash(in.Password)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, "Password: "+err.Error()+".")
+		writeErr(w, http.StatusBadRequest, capitalize(err.Error()))
 		return
 	}
 	if err := s.Store.SetPassword(id, hash); err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -203,7 +203,7 @@ func (s *Server) userSetPassword(w http.ResponseWriter, r *http.Request, _ *stor
 // one gets a fresh session.
 func (s *Server) myPassword(w http.ResponseWriter, r *http.Request, u *store.User) {
 	if !u.Local {
-		writeErr(w, http.StatusBadRequest, "Plex accounts sign in with Plex.")
+		writeErr(w, http.StatusBadRequest, "This account signs in with Plex")
 		return
 	}
 	var in struct {
@@ -212,16 +212,16 @@ func (s *Server) myPassword(w http.ResponseWriter, r *http.Request, u *store.Use
 	}
 	json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in)
 	if !checkPassword(in.Current, s.Store.PasswordHash(u.ID)) {
-		writeErr(w, http.StatusForbidden, "Your current password isn't right.")
+		writeErr(w, http.StatusForbidden, "Incorrect current password")
 		return
 	}
 	hash, err := password.Hash(in.New)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, "New password: "+err.Error()+".")
+		writeErr(w, http.StatusBadRequest, capitalize(err.Error()))
 		return
 	}
 	if err := s.Store.SetPassword(u.ID, hash); err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	token, err := s.Store.CreateSession(u.ID)

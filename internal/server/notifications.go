@@ -65,7 +65,7 @@ func (s *Server) merged(w http.ResponseWriter, r *http.Request, id string) (noti
 		ClearAuth bool `json:"clearAuth"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16384)).Decode(&in); err != nil {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return notify.Channel{}, false
 	}
 	c := in.Channel
@@ -76,14 +76,14 @@ func (s *Server) merged(w http.ResponseWriter, r *http.Request, id string) (noti
 	if id != "" {
 		saved, ok := s.Notify.Get(id)
 		if !ok {
-			writeErr(w, http.StatusNotFound, "That channel is gone.")
+			writeErr(w, http.StatusNotFound, "This channel no longer exists")
 			return notify.Channel{}, false
 		}
 		old = saved
 	}
 	c.ID, c.Service = id, old.Service
 	if !slices.Contains(notify.Services, c.Service) {
-		writeErr(w, http.StatusNotFound, "Unknown service.")
+		writeErr(w, http.StatusNotFound, "Unknown service")
 		return notify.Channel{}, false
 	}
 	if c.WebhookURL == "" {

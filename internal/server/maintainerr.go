@@ -51,12 +51,12 @@ func (s *Server) maintainerrSet(w http.ResponseWriter, r *http.Request, _ *store
 		ProtectDays *int   `json:"protectDays"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	if in.ProtectDays != nil {
 		if *in.ProtectDays < 0 || *in.ProtectDays > 365 {
-			writeErr(w, http.StatusBadRequest, "Pick 0 to 365 days.")
+			writeErr(w, http.StatusBadRequest, "Must be between 0 and 365 days")
 			return
 		}
 		s.Store.SetSetting(maintainerr.KeyProtect, strconv.Itoa(*in.ProtectDays))
@@ -94,7 +94,7 @@ func (s *Server) maintainerrTest(w http.ResponseWriter, r *http.Request, _ *stor
 		APIKey string `json:"apiKey"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil || strings.TrimSpace(in.URL) == "" {
-		writeErr(w, http.StatusBadRequest, "Enter the address.")
+		writeErr(w, http.StatusBadRequest, "Address is required")
 		return
 	}
 	st, err := s.maintainerrClient(in.URL, in.APIKey, false).Status(r.Context())
@@ -177,12 +177,12 @@ func (s *Server) maintainerrWebhook(w http.ResponseWriter, r *http.Request, _ *s
 	json.NewDecoder(http.MaxBytesReader(w, r.Body, 2048)).Decode(&in)
 	c, ok := s.Maint.Client()
 	if !ok {
-		writeErr(w, http.StatusBadRequest, "Connect Maintainerr first.")
+		writeErr(w, http.StatusBadRequest, "Maintainerr isn't connected")
 		return
 	}
 	base := strings.TrimRight(strings.TrimSpace(in.Base), "/")
 	if !strings.HasPrefix(base, "http://") && !strings.HasPrefix(base, "https://") {
-		writeErr(w, http.StatusBadRequest, "Enter the address Maintainerr can reach Flixarr on, like http://192.168.1.10:7575.")
+		writeErr(w, http.StatusBadRequest, "Flixarr's address is required (e.g. http://192.168.1.10:7575)")
 		return
 	}
 	if err := c.AddWebhook(r.Context(), base+"/api/webhook/maintainerr/"+s.webhookToken()); err != nil {
@@ -197,7 +197,7 @@ func (s *Server) maintainerrWebhook(w http.ResponseWriter, r *http.Request, _ *s
 // so read the collections again now.
 func (s *Server) maintainerrHook(w http.ResponseWriter, r *http.Request) {
 	if subtle.ConstantTimeCompare([]byte(r.PathValue("token")), []byte(s.webhookToken())) != 1 {
-		writeErr(w, http.StatusNotFound, "Unknown endpoint.")
+		writeErr(w, http.StatusNotFound, "Unknown endpoint")
 		return
 	}
 	var in struct {
@@ -237,7 +237,7 @@ func (s *Server) leaving(w http.ResponseWriter, r *http.Request, u *store.User) 
 	}
 	now, err := s.Store.LeavingNow(s.Maint.Seen())
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "Database error.")
+		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	asks, _ := s.Store.KeepAsks()
@@ -305,20 +305,20 @@ func (s *Server) leavingAct(w http.ResponseWriter, r *http.Request, u *store.Use
 	typ, act := r.PathValue("type"), r.PathValue("act")
 	id, _ := strconv.Atoi(r.PathValue("id"))
 	if (typ != "movie" && typ != "series") || id <= 0 {
-		writeErr(w, http.StatusBadRequest, "Bad request.")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	var err error
 	switch act {
 	case "ask":
 		if !u.Can(map[string]string{"movie": "requestMovies", "series": "requestTv"}[typ]) {
-			writeErr(w, http.StatusForbidden, "You can't ask to keep this.")
+			writeErr(w, http.StatusForbidden, "You can't ask to keep this")
 			return
 		}
 		err = s.Maint.Ask(typ, id, u.ID)
 	case "keep", "letgo", "postpone":
 		if !u.Can("manageRequests") {
-			writeErr(w, http.StatusForbidden, "Only people who manage requests can do that.")
+			writeErr(w, http.StatusForbidden, "Only people who manage requests can do that")
 			return
 		}
 		switch act {
@@ -337,7 +337,7 @@ func (s *Server) leavingAct(w http.ResponseWriter, r *http.Request, u *store.Use
 			err = s.Maint.Postpone(r.Context(), typ, id, in.Days)
 		}
 	default:
-		writeErr(w, http.StatusNotFound, "Unknown endpoint.")
+		writeErr(w, http.StatusNotFound, "Unknown endpoint")
 		return
 	}
 	if err != nil {
