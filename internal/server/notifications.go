@@ -115,7 +115,7 @@ func (s *Server) notifyAdd(w http.ResponseWriter, r *http.Request, _ *store.User
 	c.ID = ""
 	c, err := s.Notify.Add(c)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadRequest, capitalize(err.Error()))
 		return
 	}
 	writeJSON(w, http.StatusOK, viewOf(c))
@@ -127,7 +127,7 @@ func (s *Server) notifySave(w http.ResponseWriter, r *http.Request, _ *store.Use
 		return
 	}
 	if err := s.Notify.Update(c); err != nil {
-		writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadRequest, capitalize(err.Error()))
 		return
 	}
 	saved, _ := s.Notify.Get(c.ID)
@@ -136,7 +136,7 @@ func (s *Server) notifySave(w http.ResponseWriter, r *http.Request, _ *store.Use
 
 func (s *Server) notifyDelete(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	if err := s.Notify.Delete(r.PathValue("id")); err != nil {
-		writeErr(w, http.StatusNotFound, capitalize(err.Error())+".")
+		writeErr(w, http.StatusNotFound, capitalize(err.Error()))
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -150,7 +150,7 @@ func (s *Server) notifyTest(w http.ResponseWriter, r *http.Request, u *store.Use
 	}
 	c.TestTo, c.TestUser = u.Email, u.ID // the test goes to whoever pressed it
 	if err := s.Notify.Test(r.Context(), c.Service, c.Config); err != nil {
-		writeErr(w, http.StatusBadGateway, "Test not sent: "+err.Error()+".")
+		writeErr(w, http.StatusBadGateway, "Unable to send the test: "+err.Error())
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

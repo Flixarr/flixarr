@@ -33,7 +33,7 @@
 			notify(device ? 'Notifications are on for this device.' : 'Notifications are off for this device.');
 		} catch (e) {
 			device = await subscribed();
-			notify(e instanceof Error ? e.message : 'Could not change it.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to change this', 'orange');
 		} finally {
 			pushBusy = false;
 		}
@@ -69,7 +69,7 @@
 			prefs = await api<Prefs>('/me/notifications', { method: 'PUT', body: JSON.stringify({ accounts: acct }) });
 			notify('Saved.');
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to save these settings', 'orange');
 		}
 	}
 	const acctDirty = $derived(!!prefs && shownAcct.some(([a]) => (acct[a] ?? '') !== (prefs!.accounts[a] ?? '')));
@@ -99,7 +99,7 @@
 		try {
 			prefs = await api<Prefs>('/me/notifications', { method: 'PUT', body: JSON.stringify({ off }) });
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to save these settings', 'orange');
 		}
 	}
 
@@ -113,7 +113,7 @@
 			pw = { current: '', next: '' };
 			notify('Password changed. Other devices are signed out.');
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not change it.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to change this', 'orange');
 		} finally {
 			pwBusy = false;
 		}
@@ -129,7 +129,7 @@
 			forgetMeta();
 			notify('Saved. Pages you open from now on use it.');
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to save these settings', 'orange');
 		}
 	}
 
@@ -140,7 +140,7 @@
 			watch = await api<Watch>('/me/watchlist', { method: 'PUT', body: JSON.stringify({ on }) });
 			notify(on ? 'Your Plex Watchlist is being requested now, and new additions within 15 minutes.' : 'Plex Watchlist requests are off.');
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to save these settings', 'orange');
 		}
 	}
 </script>

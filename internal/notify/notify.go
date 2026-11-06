@@ -199,7 +199,7 @@ func (n *Notifier) Add(c Channel) (Channel, error) {
 	list := n.channels()
 	if c.Service == "push" && slices.ContainsFunc(list, func(x Channel) bool { return x.Service == "push" }) {
 		// Web Push has no settings of its own, so a second one would only send everything twice.
-		return c, errors.New("Web Push is already set up; change its events there")
+		return c, errors.New("Web Push is already set up")
 	}
 	c.ID = newID()
 	return c, n.save(append(list, c))
@@ -220,7 +220,7 @@ func (n *Notifier) Update(c Channel) error {
 			return n.save(list)
 		}
 	}
-	return errors.New("that channel is gone")
+	return errors.New("This channel no longer exists")
 }
 
 // Delete removes a channel.
@@ -230,7 +230,7 @@ func (n *Notifier) Delete(id string) error {
 	list := n.channels()
 	out := slices.DeleteFunc(slices.Clone(list), func(c Channel) bool { return c.ID == id })
 	if len(out) == len(list) {
-		return errors.New("that channel is gone")
+		return errors.New("This channel no longer exists")
 	}
 	return n.save(out)
 }
@@ -241,7 +241,7 @@ func (c *Channel) check() error {
 		c.Name = Labels[c.Service]
 	}
 	if len(c.Name) > 60 {
-		return errors.New("keep the name under 60 characters")
+		return errors.New("Name must be under 60 characters")
 	}
 	if c.Events == nil {
 		c.Events = []string{}
@@ -395,7 +395,7 @@ func (n *Notifier) SetAccounts(userID int64, in map[string]string) error {
 	for _, s := range AccountServices {
 		v := strings.TrimSpace(in[s])
 		if v != "" && !accountPattern[s].MatchString(v) {
-			return fmt.Errorf("that doesn't look like a %s", accountWhat[s])
+			return fmt.Errorf("Invalid %s", accountWhat[s])
 		}
 		clean[s] = v
 	}
@@ -417,7 +417,7 @@ func (n *Notifier) accountsOn(m Message, ch string) []string {
 // SetOff saves what a person has switched off (unknown channels and events are dropped).
 func (n *Notifier) SetOff(userID int64, off map[string][]string) error {
 	if n.OffLocked() {
-		return errors.New("an admin set which notifications everyone gets")
+		return errors.New("Notifications are set by an admin")
 	}
 	b, _ := json.Marshal(cleanOff(off))
 	return n.Store.SetSetting(offKey(userID), string(b))
@@ -462,13 +462,13 @@ func (c Config) validate(ch string) error {
 	check := func(raw, what string) error {
 		if raw == "" {
 			if c.On {
-				return fmt.Errorf("enter the %s first", what)
+				return fmt.Errorf("%s is required", upperFirst(what))
 			}
 			return nil
 		}
 		u, err := url.Parse(raw)
 		if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-			return fmt.Errorf("that %s doesn't look right", what)
+			return fmt.Errorf("Invalid %s", what)
 		}
 		return nil
 	}
@@ -481,21 +481,21 @@ func (c Config) validate(ch string) error {
 			return err
 		}
 		if c.WebhookURL != "" && !strings.Contains(c.WebhookURL, "/api/webhooks/") {
-			return errors.New("that isn't a Discord webhook URL; copy it from the channel's Integrations, Webhooks")
+			return errors.New("Invalid Discord webhook URL (e.g. https://discord.com/api/webhooks/…)")
 		}
 	case "email":
 		if c.Security != "starttls" && c.Security != "tls" && c.Security != "none" {
-			return errors.New("pick how to connect: STARTTLS, SSL/TLS or none")
+			return errors.New("Invalid connection type")
 		}
 		if c.On && (strings.TrimSpace(c.Host) == "" || c.Port <= 0 || c.Port > 65535) {
-			return errors.New("enter the SMTP server and port first")
+			return errors.New("SMTP server and port are required")
 		}
 		if c.On && !strings.Contains(c.From, "@") {
-			return errors.New("enter the From address")
+			return errors.New("From address is required")
 		}
 	case "webhook":
 		if c.Method != "POST" && c.Method != "PUT" {
-			return errors.New("the method has to be POST or PUT")
+			return errors.New("Method must be POST or PUT")
 		}
 		return check(c.URL, "webhook URL")
 	}
@@ -678,11 +678,11 @@ func (n *Notifier) Test(ctx context.Context, ch string, c Config) error {
 	}
 	if ch == "push" {
 		if subs, _ := n.Store.PushSubs(c.TestUser); len(subs) == 0 {
-			return errors.New("turn on notifications for this device in your Profile first")
+			return errors.New("Notifications aren't enabled on this device")
 		}
 	}
 	if ch == "email" && !strings.Contains(c.TestTo, "@") {
-		return errors.New("there's no email address to send the test to")
+		return errors.New("No email address to send the test to")
 	}
 	m := Message{Event: "test", Title: "Flixarr is connected", Text: "Notifications from Flixarr will show up here.", Link: n.Store.Setting("app_url", "")}
 	return n.deliver(ctx, ch, c, m)
@@ -827,12 +827,12 @@ func (n *Notifier) post(ctx context.Context, method, to, auth string, body any) 
 	}
 	res, err := hc.Do(req)
 	if err != nil {
-		return errors.New("couldn't reach it")
+		return errors.New("no response")
 	}
 	defer res.Body.Close()
 	if res.StatusCode >= 300 {
 		msg, _ := io.ReadAll(io.LimitReader(res.Body, 300))
-		return fmt.Errorf("it answered %s %s", res.Status, strings.TrimSpace(string(msg)))
+		return answerErr(res.StatusCode, string(msg))
 	}
 	return nil
 }
@@ -851,4 +851,20 @@ func PartsText(parts [][2]int) string {
 		out = append(out[:6], fmt.Sprintf("%d more", len(out)-6))
 	}
 	return strings.Join(out, ", ")
+}
+
+// upperFirst starts a field name with a capital ("Webhook URL is required").
+func upperFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// answerErr is a service's error answer as the reason: its own text with the code, or just the code.
+func answerErr(code int, body string) error {
+	if m := strings.TrimSpace(body); m != "" {
+		return fmt.Errorf("%s (%d)", m, code)
+	}
+	return fmt.Errorf("error (%d)", code)
 }

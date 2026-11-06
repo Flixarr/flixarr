@@ -63,7 +63,7 @@
 			reset();
 			notify(`Saved ${saved.username}.`);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to save these settings', 'orange');
 		} finally {
 			saving = false;
 		}
@@ -75,7 +75,7 @@
 			notify(`Removed ${u!.username}.`);
 			goto('/users');
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not remove.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to remove this user', 'orange');
 		}
 	}
 	async function setPassword() {
@@ -85,7 +85,7 @@
 			notify(`New password set for ${u!.username}. They're signed out everywhere.`);
 			newPassword = '';
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not set it.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to set the password', 'orange');
 		} finally {
 			saving = false;
 		}

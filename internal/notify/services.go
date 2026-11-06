@@ -45,7 +45,7 @@ func textOf(m Message) (head, body string) {
 func (c Config) validateSimple(ch string) error {
 	need := func(v, what string) error {
 		if c.On && strings.TrimSpace(v) == "" {
-			return fmt.Errorf("enter the %s first", what)
+			return fmt.Errorf("%s is required", upperFirst(what))
 		}
 		return nil
 	}
@@ -55,7 +55,7 @@ func (c Config) validateSimple(ch string) error {
 		}
 		u, err := url.Parse(c.Server)
 		if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-			return fmt.Errorf("that %s doesn't look right; it should be like https://example.com", what)
+			return fmt.Errorf("Invalid %s (e.g. https://example.com)", what)
 		}
 		return nil
 	}
@@ -64,7 +64,7 @@ func (c Config) validateSimple(ch string) error {
 		return errors.Join(need(c.Token, "bot token"), need(c.Target, "chat ID"))
 	case "slack":
 		if c.Token != "" && !strings.HasPrefix(c.Token, "https://hooks.slack.com/") {
-			return errors.New("that isn't a Slack webhook URL; it starts with https://hooks.slack.com/")
+			return errors.New("Invalid Slack webhook URL (e.g. https://hooks.slack.com/…)")
 		}
 		return need(c.Token, "Slack webhook URL")
 	case "pushover":

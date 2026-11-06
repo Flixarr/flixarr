@@ -26,13 +26,13 @@ func sendMail(ctx context.Context, c Config, to []string, m Message) error {
 		conn, err = d.DialContext(ctx, "tcp", addr)
 	}
 	if err != nil {
-		return errors.New("couldn't reach the SMTP server")
+		return errors.New("no response")
 	}
 	conn.SetDeadline(time.Now().Add(30 * time.Second))
 	cl, err := smtp.NewClient(conn, c.Host)
 	if err != nil {
 		conn.Close()
-		return fmt.Errorf("the SMTP server didn't answer: %w", err)
+		return errors.New("no response")
 	}
 	defer cl.Close()
 	if c.Security == "starttls" {
@@ -42,15 +42,15 @@ func sendMail(ctx context.Context, c Config, to []string, m Message) error {
 	}
 	if c.Username != "" {
 		if err := cl.Auth(smtp.PlainAuth("", c.Username, c.Password, c.Host)); err != nil {
-			return fmt.Errorf("the SMTP server refused the sign-in: %w", err)
+			return fmt.Errorf("sign-in rejected: %w", err)
 		}
 	}
 	for _, rcpt := range to {
 		if err := cl.Mail(c.From); err != nil {
-			return fmt.Errorf("the SMTP server refused the From address: %w", err)
+			return fmt.Errorf("From address rejected: %w", err)
 		}
 		if err := cl.Rcpt(rcpt); err != nil {
-			return fmt.Errorf("the SMTP server refused %s: %w", rcpt, err)
+			return fmt.Errorf("%s rejected: %w", rcpt, err)
 		}
 		w, err := cl.Data()
 		if err != nil {

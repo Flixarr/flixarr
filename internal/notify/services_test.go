@@ -63,7 +63,7 @@ func TestTextServices(t *testing.T) {
 		t.Fatalf("pushbullet: %+v", h)
 	}
 	// Turning one on without its fields says what's missing.
-	if err := (Config{On: true, Token: "x"}).validate("telegram"); err == nil || !strings.Contains(err.Error(), "chat ID") {
+	if err := (Config{On: true, Token: "x"}).validate("telegram"); err == nil || !strings.Contains(err.Error(), "Chat ID is required") {
 		t.Fatalf("telegram without a chat: %v", err)
 	}
 	if err := (Config{On: true, Token: "https://example.com/x"}).validate("slack"); err == nil {

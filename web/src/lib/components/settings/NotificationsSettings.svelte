@@ -105,7 +105,7 @@
 			open = false;
 			notify(c.on ? `${c.name} saved.` : `${c.name} saved. It's off.`);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to save this channel', 'orange');
 		} finally {
 			busy = '';
 		}
@@ -119,7 +119,7 @@
 			confirmDelete = false;
 			notify(`${n} deleted.`);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not delete.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to delete this channel', 'orange');
 		} finally {
 			busy = '';
 		}
@@ -130,7 +130,7 @@
 			await api('/notifications/test', { method: 'POST', body: body() });
 			notify('Test sent. Check that it arrived.', 'green');
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Test not sent.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to send the test', 'orange');
 		} finally {
 			busy = '';
 		}

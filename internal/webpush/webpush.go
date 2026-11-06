@@ -169,7 +169,7 @@ func Send(ctx context.Context, hc *http.Client, keys Keys, subject string, sub S
 	}
 	res, err := hc.Do(req)
 	if err != nil {
-		return errors.New("couldn't reach the push service")
+		return errors.New("no response")
 	}
 	defer res.Body.Close()
 	if res.StatusCode == http.StatusNotFound || res.StatusCode == http.StatusGone {
@@ -177,7 +177,10 @@ func Send(ctx context.Context, hc *http.Client, keys Keys, subject string, sub S
 	}
 	if res.StatusCode >= 300 {
 		msg, _ := io.ReadAll(io.LimitReader(res.Body, 200))
-		return fmt.Errorf("the push service answered %s %s", res.Status, strings.TrimSpace(string(msg)))
+		if m := strings.TrimSpace(string(msg)); m != "" {
+			return fmt.Errorf("%s (%d)", m, res.StatusCode)
+		}
+		return fmt.Errorf("error (%d)", res.StatusCode)
 	}
 	return nil
 }
