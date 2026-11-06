@@ -65,7 +65,7 @@ func (s *Service) sonarrSeries(ctx context.Context, tmdbID int) (*arr.Client, ma
 		return nil, nil, errors.New("Sonarr isn't connected")
 	}
 	c := client(v)
-	sr, err := inArr(ctx, c, "series", tmdbID)
+	sr, err := s.inArr(ctx, c, "series", tmdbID)
 	if err != nil {
 		return nil, nil, err
 	}

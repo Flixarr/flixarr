@@ -2,6 +2,7 @@ package requests
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -14,13 +15,13 @@ func ArrName(typ string) string { return arr.Kinds[kindOf(typ)] }
 
 // inArr is the title as Radarr/Sonarr have it, or nil when it isn't there. (A series lookup also finds
 // shows Sonarr doesn't have; those have id 0.)
-func inArr(ctx context.Context, c *arr.Client, typ string, tmdbID int) (map[string]any, error) {
+func (s *Service) inArr(ctx context.Context, c *arr.Client, typ string, tmdbID int) (map[string]any, error) {
 	var found []map[string]any
 	var err error
 	if typ == "movie" {
 		err = c.Get(ctx, fmt.Sprintf("movie?tmdbId=%d", tmdbID), &found)
 	} else {
-		found, err = seriesLookup(ctx, c, tmdbID)
+		found, err = s.seriesLookup(ctx, c, tmdbID)
 	}
 	if err != nil || len(found) == 0 || num(found[0]["id"]) == 0 {
 		return nil, err
@@ -28,10 +29,27 @@ func inArr(ctx context.Context, c *arr.Client, typ string, tmdbID int) (map[stri
 	return found[0], nil
 }
 
-// seriesLookup asks Sonarr for a series by TMDB ID. Sonarr falls back to a TVDB ID match when its
+// seriesLookup asks Sonarr for a series. Sonarr is built on TheTVDB, so it goes by the show's TheTVDB ID
+// when TMDB knows it (#214): TheTVDB doesn't always have the TMDB ID (Friday Night Tykes: Steel Country
+// wasn't found by it at all). Otherwise by TMDB ID, where Sonarr falls back to a TVDB ID match when its
 // metadata doesn't know the TMDB ID (TMDB 71962 came back as Wings, TVDB 71962), so only results with
 // that tmdbId count.
-func seriesLookup(ctx context.Context, c *arr.Client, tmdbID int) ([]map[string]any, error) {
+func (s *Service) seriesLookup(ctx context.Context, c *arr.Client, tmdbID int) ([]map[string]any, error) {
+	if tvdb := s.tvdbID(ctx, tmdbID); tvdb > 0 {
+		var found []map[string]any
+		if err := c.Get(ctx, fmt.Sprintf("series/lookup?term=tvdb:%d", tvdb), &found); err != nil {
+			return nil, err
+		}
+		out := []map[string]any{}
+		for _, x := range found {
+			if num(x["tvdbId"]) == tvdb {
+				out = append(out, x)
+			}
+		}
+		if len(out) > 0 {
+			return out, nil
+		}
+	}
 	var found []map[string]any
 	if err := c.Get(ctx, "series/lookup?term="+url.QueryEscape(fmt.Sprintf("tmdb:%d", tmdbID)), &found); err != nil {
 		return nil, err
@@ -43,6 +61,25 @@ func seriesLookup(ctx context.Context, c *arr.Client, tmdbID int) ([]map[string]
 		}
 	}
 	return out, nil
+}
+
+// tvdbID is a series' TheTVDB ID from the Flixarr API (TMDB's own link), 0 when it has none or the API
+// can't be asked.
+func (s *Service) tvdbID(ctx context.Context, tmdbID int) int {
+	if s.Meta == nil {
+		return 0
+	}
+	body, status, err := s.Meta.Get(ctx, fmt.Sprintf("series/%d/ids", tmdbID), url.Values{})
+	if err != nil || status != 200 {
+		return 0
+	}
+	var ids struct {
+		TvdbID int `json:"tvdbId"`
+	}
+	if json.Unmarshal(body, &ids) != nil {
+		return 0
+	}
+	return ids.TvdbID
 }
 
 // RemoveFromArr takes a title out of Radarr/Sonarr with its files (Seerr's "Remove from Radarr"). It
@@ -57,7 +94,7 @@ func (s *Service) RemoveFromArr(ctx context.Context, typ string, tmdbID int) (fo
 		return false, fmt.Errorf("%s isn't connected", ArrName(typ))
 	}
 	c := client(v)
-	item, err := inArr(ctx, c, typ, tmdbID)
+	item, err := s.inArr(ctx, c, typ, tmdbID)
 	if err != nil || item == nil {
 		return false, err
 	}

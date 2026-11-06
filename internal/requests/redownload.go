@@ -65,7 +65,7 @@ func (s *Service) Redownload(ctx context.Context, typ string, tmdbID int, season
 }
 
 func (s *Service) redownloadMovie(ctx context.Context, c *arr.Client, tmdbID int) (string, int, error) {
-	m, err := inArr(ctx, c, "movie", tmdbID)
+	m, err := s.inArr(ctx, c, "movie", tmdbID)
 	if err != nil {
 		return "", 0, err
 	}
@@ -105,7 +105,7 @@ func (s *Service) redownloadMovie(ctx context.Context, c *arr.Client, tmdbID int
 }
 
 func (s *Service) redownloadSeries(ctx context.Context, c *arr.Client, v store.Server, tmdbID int, seasons []int) (string, int, error) {
-	sr, err := inArr(ctx, c, "series", tmdbID)
+	sr, err := s.inArr(ctx, c, "series", tmdbID)
 	if err != nil {
 		return "", 0, err
 	}

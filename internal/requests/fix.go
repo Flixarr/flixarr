@@ -108,7 +108,7 @@ func (s *Service) fixSeries(ctx context.Context, v store.Server, r *store.Reques
 		return nil, err
 	}
 	if err != nil {
-		found, err := seriesLookup(ctx, c, r.TmdbID)
+		found, err := s.seriesLookup(ctx, c, r.TmdbID)
 		if err != nil {
 			return nil, err
 		}

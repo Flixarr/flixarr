@@ -127,7 +127,7 @@ func (s *Service) LiveFor(ctx context.Context, typ string, tmdbID, arrID int, se
 		}
 		if err != nil {
 			var e error
-			if m, e = inArr(ctx, c, "movie", tmdbID); e != nil || m == nil {
+			if m, e = s.inArr(ctx, c, "movie", tmdbID); e != nil || m == nil {
 				if e != nil {
 					l.Error = e.Error()
 				}
@@ -166,7 +166,7 @@ func (s *Service) LiveFor(ctx context.Context, typ string, tmdbID, arrID int, se
 		err = c.Get(ctx, fmt.Sprintf("series/%d", arrID), &sr)
 	}
 	if err != nil {
-		found, e := inArr(ctx, c, "series", tmdbID)
+		found, e := s.inArr(ctx, c, "series", tmdbID)
 		if e != nil || found == nil {
 			if e != nil {
 				l.Error = e.Error()
@@ -402,7 +402,7 @@ func (s *Service) FixTitle(ctx context.Context, typ string, tmdbID int) (string,
 	}
 	c := client(v)
 	if typ == "movie" {
-		m, err := inArr(ctx, c, "movie", tmdbID)
+		m, err := s.inArr(ctx, c, "movie", tmdbID)
 		if err != nil {
 			return "", fmt.Errorf("Unable to find this in Radarr: %w", err)
 		}
@@ -413,7 +413,7 @@ func (s *Service) FixTitle(ctx context.Context, typ string, tmdbID int) (string,
 		notes, err := s.fixMovie(ctx, v, &r)
 		return sentences(notes), err
 	}
-	found, err := inArr(ctx, c, "series", tmdbID)
+	found, err := s.inArr(ctx, c, "series", tmdbID)
 	if err != nil {
 		return "", fmt.Errorf("Unable to find this in Sonarr: %w", err)
 	}

@@ -419,7 +419,7 @@ func (s *Service) sendMovie(ctx context.Context, v store.Server, r *store.Reques
 
 func (s *Service) sendSeries(ctx context.Context, v store.Server, r *store.Request) error {
 	c := client(v)
-	found, err := seriesLookup(ctx, c, r.TmdbID)
+	found, err := s.seriesLookup(ctx, c, r.TmdbID)
 	if err != nil {
 		return fmt.Errorf("Unable to find this in Sonarr: %w", err)
 	}

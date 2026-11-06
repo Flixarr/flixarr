@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -911,8 +912,38 @@ func TestSeriesLookupIgnoresOtherShows(t *testing.T) {
 		w.Write([]byte(`[{"title":"Wings","tmdbId":2506,"tvdbId":71962,"id":394}]`)) // Sonarr's TVDB fallback
 	}))
 	defer srv.Close()
-	got, err := seriesLookup(context.Background(), &arr.Client{URL: srv.URL, APIKey: "k"}, 71962)
+	got, err := (&Service{}).seriesLookup(context.Background(), &arr.Client{URL: srv.URL, APIKey: "k"}, 71962)
 	if err != nil || len(got) != 0 {
 		t.Fatalf("matched another show: %v %v", got, err)
+	}
+}
+
+type fakeMeta map[string]string
+
+func (f fakeMeta) Get(_ context.Context, path string, _ url.Values) ([]byte, int, error) {
+	if b, ok := f[path]; ok {
+		return []byte(b), 200, nil
+	}
+	return nil, 404, nil
+}
+
+// TheTVDB has the show but no TMDB link, so only its TheTVDB ID finds it (#214).
+func TestSeriesLookupByTvdbID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("term") {
+		case "tvdb:309011":
+			w.Write([]byte(`[{"title":"Friday Night Tykes: Steel Country","tmdbId":0,"tvdbId":309011,"id":0}]`))
+		default:
+			w.Write([]byte(`[]`))
+		}
+	}))
+	defer srv.Close()
+	c := &arr.Client{URL: srv.URL, APIKey: "k"}
+	s := &Service{Meta: fakeMeta{"series/70002/ids": `{"tmdbId":70002,"tvdbId":309011}`}}
+	if got, err := s.seriesLookup(context.Background(), c, 70002); err != nil || len(got) != 1 || num(got[0]["tvdbId"]) != 309011 {
+		t.Fatalf("by TheTVDB ID: %v %v", got, err)
+	}
+	if got, _ := (&Service{}).seriesLookup(context.Background(), c, 70002); len(got) != 0 {
+		t.Fatalf("by TMDB ID only: %v", got)
 	}
 }
