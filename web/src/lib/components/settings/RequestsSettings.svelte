@@ -17,7 +17,7 @@
 			info = await api<Info>('/settings/requests', { method: 'PUT', body: JSON.stringify({ ...info, ...change }) });
 			notify(msg);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to save these settings', 'orange');
 		}
 	}
 	const MODES: [keyof Omit<Modes, 'default'>, string, string][] = [
@@ -28,7 +28,7 @@
 	function setMode(k: keyof Omit<Modes, 'default'>, on: boolean) {
 		const m = { ...info!.tvModes, [k]: on };
 		if (!m.whole && !m.seasons && !m.episodes) {
-			notify('Keep at least one way to request series.', 'orange');
+			notify('At least one way to request series must stay on', 'orange');
 			// The switch already flipped on screen: flip it back by re-drawing it.
 			const keep = info!;
 			info = null;

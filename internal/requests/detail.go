@@ -90,7 +90,7 @@ func (s *Service) Detail(ctx context.Context, r store.Request, admin bool) Detai
 		}
 	}
 	d.Live = s.LiveFor(ctx, r.Type, r.TmdbID, r.ArrID, seasons, admin)
-	d.Hint = hintFor(r, d.Live)
+	d.Hint = hintFor(r, d.Live, admin)
 	d.Request = ForViewer(r, admin)
 	for i := range d.Events {
 		if st := d.Events[i].Status; st == "failed" || st == "expired" || st == "removed" {
@@ -282,7 +282,7 @@ func queue(ctx context.Context, c *arr.Client, path string, seasons map[int]bool
 		}
 		if d.State == "failed" || d.State == "warning" {
 			d.QueueID = num(it["id"])
-			d.Problem = "Hit a problem. Someone who manages requests can sort it out."
+			d.Problem = "There was an issue downloading this file"
 			if admin {
 				d.Detail = statusMessages(it)
 			}
@@ -325,26 +325,29 @@ func statusMessages(it map[string]any) string {
 // NotReleased is the warning on a request for something that isn't out yet (#151).
 const NotReleased = "Not released yet. It won't download until it's out."
 
-// hintFor says what's going on with a request, in plain words (the same for everyone).
-func hintFor(r store.Request, l Live) string {
+// hintFor says what's going on with a request, in plain words; people who manage requests get the app names.
+func hintFor(r store.Request, l Live, admin bool) string {
 	switch r.Status {
 	case "pending":
-		return "Waiting for someone who manages requests to approve it."
+		return "Waiting for approval"
 	case "declined":
 		if r.Error != "" {
 			return "Declined: " + r.Error
 		}
-		return "Declined."
+		return "Declined"
 	case "failed", "expired", "removed":
 		return PlainError(r)
 	case "available":
 		return ""
 	}
 	if l.Error != "" {
-		return "Can't check on it right now. It updates on its own."
+		return "Unable to check on this request right now"
 	}
 	if l.PlexMatch != nil {
-		return "Plex matched the file to the wrong movie."
+		if admin {
+			return "Plex matched the file to the wrong movie"
+		}
+		return "There was an issue adding this to the library"
 	}
 	for _, d := range l.Queue {
 		if d.Problem != "" {
@@ -357,11 +360,14 @@ func hintFor(r store.Request, l Live) string {
 	case len(l.Queue) == 0 && r.Unreleased && (r.Status == "sent" || r.Status == "approved"):
 		return NotReleased
 	case len(l.Queue) == 0 && (r.Status == "sent" || r.Status == "approved"):
-		return "Still looking for a download. It starts as soon as one turns up."
+		return "Looking for a download"
 	case r.Status == "grabbed":
-		return "Found a download. It starts in a moment."
+		return "Download found, starting soon"
 	case r.Status == "importing" && len(l.Queue) == 0:
-		return "Downloaded. It shows up in Plex in a moment."
+		if admin {
+			return "Downloaded, waiting for Plex"
+		}
+		return "Downloaded, almost ready to watch"
 	}
 	return ""
 }
@@ -394,21 +400,21 @@ func (s *Service) FixTitle(ctx context.Context, typ string, tmdbID int) (string,
 	if typ == "movie" {
 		m, err := inArr(ctx, c, "movie", tmdbID)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("Unable to find this in Radarr: %w", err)
 		}
 		if m == nil {
-			return "", errors.New("it isn't in Radarr; request it instead")
+			return "", errors.New("This isn't in Radarr")
 		}
 		r := store.Request{Type: "movie", TmdbID: tmdbID, ArrID: num(m["id"])}
 		notes, err := s.fixMovie(ctx, v, &r)
-		return strings.Join(notes, " "), err
+		return sentences(notes), err
 	}
 	found, err := inArr(ctx, c, "series", tmdbID)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("Unable to find this in Sonarr: %w", err)
 	}
 	if found == nil {
-		return "", errors.New("it isn't in Sonarr; request it instead")
+		return "", errors.New("This isn't in Sonarr")
 	}
 	// Nobody asked for particular seasons: leave which seasons are monitored as they are; make sure the
 	// series itself is, and search for what's monitored.
@@ -416,19 +422,19 @@ func (s *Service) FixTitle(ctx context.Context, typ string, tmdbID int) (string,
 	var notes []string
 	var sr map[string]any
 	if err := c.Get(ctx, fmt.Sprintf("series/%d", id), &sr); err != nil {
-		return "", err
+		return "", fmt.Errorf("Unable to read this series from Sonarr: %w", err)
 	}
 	if sr["monitored"] != true {
 		sr["monitored"] = true
 		if err := c.Put(ctx, fmt.Sprintf("series/%d", id), sr, nil); err != nil {
-			return "", fmt.Errorf("Sonarr didn't turn it back on: %w", err)
+			return "", fmt.Errorf("Unable to enable monitoring in Sonarr: %w", err)
 		}
 		notes = append(notes, "It wasn't monitored in Sonarr; now it is.")
 	}
 	if err := c.Post(ctx, "command", map[string]any{"name": "SeriesSearch", "seriesId": id}, nil); err != nil {
-		return "", fmt.Errorf("Sonarr didn't start a search: %w", err)
+		return "", fmt.Errorf("Unable to start a search in Sonarr: %w", err)
 	}
-	return strings.Join(append(notes, "Started a search for its monitored episodes."), " "), nil
+	return sentences(append(notes, "Search started for the monitored episodes")), nil
 }
 
 // PlainError is a request's reason in plain words for regular users (no Radarr, Sonarr or error codes).
@@ -436,14 +442,14 @@ func (s *Service) FixTitle(ctx context.Context, typ string, tmdbID int) (string,
 func PlainError(r store.Request) string {
 	switch r.Status {
 	case "removed":
-		return "Removed from Plex. Request it again to get it back."
+		return "Removed from the library"
 	case "failed":
-		return "It couldn't be added. Someone who manages requests can look into it."
+		return "Unable to add this request"
 	case "expired":
 		if store.EndedOnImport(r.Status, r.Error) {
-			return "Brought over from Seerr as ended. Request it again to get it."
+			return "Imported as ended"
 		}
-		return "Removed from Plex to make room. Request it again to get it back."
+		return "Removed from the library to free up space"
 	case "declined":
 		return r.Error // the admin's own words
 	}

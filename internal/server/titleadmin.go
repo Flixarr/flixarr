@@ -89,7 +89,7 @@ func (s *Server) titleFix(w http.ResponseWriter, r *http.Request, u *store.User)
 	done, err := s.Requests.FixTitle(r.Context(), typ, id)
 	if err != nil {
 		s.Store.DropFixSteps(steps)
-		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
+		writeProblem(w, http.StatusConflict, err, u, "Unable to fix this")
 		return
 	}
 	s.Store.AddTitleEvent(typ, id, "fix", "Searched again", u.ID, "")
@@ -104,7 +104,7 @@ func (s *Server) titlePlexOrder(w http.ResponseWriter, r *http.Request, u *store
 		return
 	}
 	if err := s.Requests.UseSonarrOrder(r.Context(), id); err != nil {
-		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
+		writeProblem(w, http.StatusConflict, err, u, "Unable to fix this")
 		return
 	}
 	s.Store.AddTitleEvent(typ, id, "fix", "Fixed the episode numbering in Plex", u.ID, "")
@@ -140,7 +140,7 @@ func (s *Server) titleDelete(w http.ResponseWriter, r *http.Request, u *store.Us
 		}
 		found, err := s.Requests.RemoveFromArr(ctx, typ, id)
 		if err != nil {
-			writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
+			writeProblem(w, http.StatusConflict, err, u, "Unable to delete this")
 			return
 		}
 		if !found {
@@ -167,7 +167,7 @@ func (s *Server) titleDelete(w http.ResponseWriter, r *http.Request, u *store.Us
 }
 
 // titleEpisodes is the Fix episodes window: a series' episodes in Sonarr and Plex.
-func (s *Server) titleEpisodes(w http.ResponseWriter, r *http.Request, _ *store.User) {
+func (s *Server) titleEpisodes(w http.ResponseWriter, r *http.Request, u *store.User) {
 	_, id, ok := titleParams(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, "Bad request.")
@@ -176,7 +176,7 @@ func (s *Server) titleEpisodes(w http.ResponseWriter, r *http.Request, _ *store.
 	inPlex, _ := s.Library.Episodes(r.Context(), id)
 	eps, err := s.Requests.Episodes(r.Context(), id, inPlex)
 	if err != nil {
-		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
+		writeProblem(w, http.StatusConflict, err, u, "Unable to load the episodes")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"episodes": eps})
@@ -199,7 +199,7 @@ func (s *Server) titleFixEpisodes(w http.ResponseWriter, r *http.Request, u *sto
 	done, err := s.Requests.FixEpisodes(r.Context(), id, in.Episodes, requests.For{UserID: u.ID, Title: in.Title, Year: in.Year, Poster: in.Poster})
 	if err != nil {
 		s.Store.DropFixSteps(steps)
-		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
+		writeProblem(w, http.StatusConflict, err, u, "Unable to fix these episodes")
 		return
 	}
 	s.Store.AddTitleEvent("series", id, "redownload", plexParts(in.Episodes), u.ID, "")

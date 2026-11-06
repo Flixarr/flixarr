@@ -36,7 +36,7 @@
 			notify(done);
 			info = (await api<{ titles?: Record<string, Info> }>(`/leaving?keys=${key}`)).titles?.[key] ?? null;
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not do that.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to do that', 'orange');
 		} finally {
 			busy = '';
 		}

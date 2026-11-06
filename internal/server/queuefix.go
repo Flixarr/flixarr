@@ -34,7 +34,7 @@ func (s *Server) queueFix(w http.ResponseWriter, r *http.Request, u *store.User)
 	}
 	f, err := s.Requests.FixDownload(r.Context(), kind, id, in.Action)
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		writeProblem(w, http.StatusBadGateway, err, u, "Unable to fix this download")
 		return
 	}
 	if f.TmdbID > 0 {

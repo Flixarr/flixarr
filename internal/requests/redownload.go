@@ -70,25 +70,25 @@ func (s *Service) redownloadMovie(ctx context.Context, c *arr.Client, tmdbID int
 		return "", 0, err
 	}
 	if m == nil {
-		return "", 0, errors.New("it isn't in Radarr")
+		return "", 0, errors.New("This isn't in Radarr")
 	}
 	id := num(m["id"])
 	file, _ := m["movieFile"].(map[string]any)
 	if b, _ := m["hasFile"].(bool); !b || file == nil {
-		return "", 0, errors.New("Radarr has no file for it")
+		return "", 0, errors.New("Radarr has no file for this")
 	}
 	var hist []map[string]any
 	c.Get(ctx, fmt.Sprintf("history/movie?movieId=%d", id), &hist) // read before the delete adds to it
 	// Order matters: delete first (a search while the old file is there finds nothing better), monitor
 	// it again (Radarr can unmonitor movies whose file was deleted), then mark the grab failed.
 	if err := c.Delete(ctx, fmt.Sprintf("moviefile/%d", num(file["id"]))); err != nil {
-		return "", 0, fmt.Errorf("Radarr didn't delete the file: %w", err)
+		return "", 0, fmt.Errorf("Unable to delete the file in Radarr: %w", err)
 	}
 	var movie map[string]any
 	if err := c.Get(ctx, fmt.Sprintf("movie/%d", id), &movie); err == nil && movie["monitored"] != true {
 		movie["monitored"] = true
 		if err := c.Put(ctx, fmt.Sprintf("movie/%d", id), movie, nil); err != nil {
-			return "", 0, fmt.Errorf("Radarr didn't turn it back on: %w", err)
+			return "", 0, fmt.Errorf("Unable to enable monitoring in Radarr: %w", err)
 		}
 	}
 	marked := markFailed(ctx, c, hist, func(map[string]any) bool { return true })
@@ -98,7 +98,7 @@ func (s *Service) redownloadMovie(ctx context.Context, c *arr.Client, tmdbID int
 	}
 	if marked == 0 || !autoRedownload(ctx, c) {
 		if err := c.Post(ctx, "command", map[string]any{"name": "MoviesSearch", "movieIds": []int{id}}, nil); err != nil {
-			return "", 0, fmt.Errorf("Radarr didn't start a search: %w", err)
+			return "", 0, fmt.Errorf("Unable to start a search in Radarr: %w", err)
 		}
 	}
 	return strings.Join(append(notes, "Radarr is looking for a new copy."), " "), id, nil
@@ -110,7 +110,7 @@ func (s *Service) redownloadSeries(ctx context.Context, c *arr.Client, v store.S
 		return "", 0, err
 	}
 	if sr == nil {
-		return "", 0, errors.New("it isn't in Sonarr")
+		return "", 0, errors.New("This isn't in Sonarr")
 	}
 	id := num(sr["id"])
 	eps, err := episodeList(ctx, c, id, false)
@@ -140,16 +140,16 @@ func (s *Service) redownloadSeries(ctx context.Context, c *arr.Client, v store.S
 		}
 	}
 	if len(files) == 0 {
-		return "", 0, errors.New("Sonarr has no files for that")
+		return "", 0, errors.New("Sonarr has no files for this")
 	}
 	var hist []map[string]any
 	c.Get(ctx, fmt.Sprintf("history/series?seriesId=%d", id), &hist)
 	// Delete, monitor again (Sonarr can unmonitor episodes whose files were deleted), then mark failed.
 	if err := c.Delete(ctx, "episodefile/bulk", map[string]any{"episodeFileIds": files}); err != nil {
-		return "", 0, fmt.Errorf("Sonarr didn't delete the files: %w", err)
+		return "", 0, fmt.Errorf("Unable to delete the files in Sonarr: %w", err)
 	}
 	if err := c.Put(ctx, "episode/monitor", map[string]any{"episodeIds": hadFile, "monitored": true}, nil); err != nil {
-		return "", 0, fmt.Errorf("Sonarr didn't turn the episodes back on: %w", err)
+		return "", 0, fmt.Errorf("Unable to enable monitoring for these episodes in Sonarr: %w", err)
 	}
 	slices.Sort(picked)
 	set := map[int]bool{}

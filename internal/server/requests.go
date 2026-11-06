@@ -87,7 +87,7 @@ func (s *Server) requestCreate(w http.ResponseWriter, r *http.Request, u *store.
 		return
 	}
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
+		writeProblem(w, http.StatusBadRequest, err, u, "Unable to request this")
 		return
 	}
 	writeJSON(w, http.StatusCreated, requests.ForViewer(req, u.Can("manageRequests")))
@@ -251,7 +251,7 @@ func (s *Server) requestFix(w http.ResponseWriter, r *http.Request, u *store.Use
 	fixed, done, err := s.Requests.Fix(r.Context(), req)
 	if err != nil {
 		s.Store.DropFixSteps(steps)
-		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
+		writeProblem(w, http.StatusConflict, err, u, "Unable to fix this")
 		return
 	}
 	s.Store.AddTitleEvent(req.Type, req.TmdbID, "fix", "Searched again", u.ID, "")
@@ -277,7 +277,7 @@ func (s *Server) redownload(w http.ResponseWriter, r *http.Request, u *store.Use
 	done, err := s.Requests.Redownload(r.Context(), in.Type, in.TmdbID, in.Seasons, requests.For{UserID: u.ID, Title: in.Title, Year: in.Year, Poster: in.Poster})
 	if err != nil {
 		s.Store.DropFixSteps(steps)
-		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
+		writeProblem(w, http.StatusConflict, err, u, "Unable to redownload this")
 		return
 	}
 	s.Log.Info("redownload asked", "by", u.Username, "type", in.Type, "tmdb", in.TmdbID)
@@ -321,7 +321,7 @@ func (s *Server) requestSettings(w http.ResponseWriter, r *http.Request, _ *stor
 		s.Store.SetSetting(requests.KeyApproval, strconv.FormatBool(in.ApprovalRequired))
 		if in.TVModes != nil {
 			if _, err := s.Requests.SetModes(*in.TVModes); err != nil {
-				writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
+				writeErr(w, http.StatusBadRequest, capitalize(err.Error()))
 				return
 			}
 		}
@@ -368,4 +368,14 @@ func (s *Server) requestOptions(w http.ResponseWriter, r *http.Request, u *store
 	}
 	out["profiles"] = list
 	writeJSON(w, http.StatusOK, out)
+}
+
+// writeProblem sends an error from requests: in full to people who manage requests, in plain words (its
+// requests.Problem text, or fallback) to everyone else.
+func writeProblem(w http.ResponseWriter, code int, err error, u *store.User, fallback string) {
+	msg := capitalize(err.Error())
+	if !u.Can("manageRequests") {
+		msg = requests.Plain(err, fallback)
+	}
+	writeErr(w, code, msg)
 }

@@ -70,7 +70,7 @@ func (s *Service) sonarrSeries(ctx context.Context, tmdbID int) (*arr.Client, ma
 		return nil, nil, err
 	}
 	if sr == nil {
-		return nil, nil, errors.New("it isn't in Sonarr")
+		return nil, nil, errors.New("This isn't in Sonarr")
 	}
 	return c, sr, nil
 }
@@ -80,7 +80,7 @@ func (s *Service) sonarrSeries(ctx context.Context, tmdbID int) (*arr.Client, ma
 // follow it again, and a title nobody requested gets its own request (like Redownload).
 func (s *Service) FixEpisodes(ctx context.Context, tmdbID int, picked [][2]int, by For) (string, error) {
 	if len(picked) == 0 {
-		return "", errors.New("pick at least one episode")
+		return "", plain("No episodes selected")
 	}
 	c, sr, err := s.sonarrSeries(ctx, tmdbID)
 	if err != nil {
@@ -113,7 +113,7 @@ func (s *Service) FixEpisodes(ctx context.Context, tmdbID int, picked [][2]int, 
 		}
 	}
 	if len(ids) == 0 {
-		return "", errors.New("Sonarr doesn't have those episodes")
+		return "", errors.New("Sonarr doesn't have these episodes")
 	}
 	notes := []string{}
 	marked := 0
@@ -121,7 +121,7 @@ func (s *Service) FixEpisodes(ctx context.Context, tmdbID int, picked [][2]int, 
 		var hist []map[string]any
 		c.Get(ctx, fmt.Sprintf("history/series?seriesId=%d", id), &hist) // read before the delete adds to it
 		if err := c.Delete(ctx, "episodefile/bulk", map[string]any{"episodeFileIds": files}); err != nil {
-			return "", fmt.Errorf("Sonarr didn't delete the files: %w", err)
+			return "", fmt.Errorf("Unable to delete the files in Sonarr: %w", err)
 		}
 		marked = markFailed(ctx, c, hist, func(h map[string]any) bool { return withFile[num(h["episodeId"])] })
 		notes = append(notes, fmt.Sprintf("Deleted %d file%s.", len(files), plural(len(files))))
@@ -140,7 +140,7 @@ func (s *Service) FixEpisodes(ctx context.Context, tmdbID int, picked [][2]int, 
 		}
 	}
 	if err := c.Put(ctx, "episode/monitor", map[string]any{"episodeIds": ids, "monitored": true}, nil); err != nil {
-		return "", fmt.Errorf("Sonarr didn't turn the episodes on: %w", err)
+		return "", fmt.Errorf("Unable to enable monitoring for these episodes in Sonarr: %w", err)
 	}
 	search := ids
 	if marked > 0 && autoRedownload(ctx, c) {
@@ -148,7 +148,7 @@ func (s *Service) FixEpisodes(ctx context.Context, tmdbID int, picked [][2]int, 
 	}
 	if len(search) > 0 {
 		if err := c.Post(ctx, "command", map[string]any{"name": "EpisodeSearch", "episodeIds": search}, nil); err != nil {
-			return "", fmt.Errorf("Sonarr didn't start a search: %w", err)
+			return "", fmt.Errorf("Unable to start a search in Sonarr: %w", err)
 		}
 	}
 	if missing := len(ids) - len(withFile); missing > 0 {

@@ -45,7 +45,7 @@
 		try {
 			info = await api<Info>(`/titles/${item.type}/${item.id}/admin`);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not load it.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to load this', 'orange');
 		}
 	}
 	$effect(() => {
@@ -81,7 +81,7 @@
 			notify(d.done || 'Checked it and started a search.');
 			load();
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not fix it.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to fix this', 'orange');
 		} finally {
 			busy = '';
 		}
@@ -94,7 +94,7 @@
 			notify('Resolved. The person who reported it is told.');
 			load();
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not resolve it.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to resolve this', 'orange');
 		} finally {
 			busy = '';
 		}
@@ -108,7 +108,7 @@
 			replyTo = 0;
 			load();
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not send it.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to send this request', 'orange');
 		} finally {
 			busy = '';
 		}
@@ -160,7 +160,7 @@
 			notify(on ? `${item.title} is blocked.` : `${item.title} can be requested again.`);
 			load();
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not change it.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to change this', 'orange');
 		} finally {
 			busy = '';
 		}

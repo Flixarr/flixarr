@@ -67,7 +67,7 @@ func (s *Service) RemoveFromArr(ctx context.Context, typ string, tmdbID int) (fo
 		path = fmt.Sprintf("series/%d?deleteFiles=true&addImportListExclusion=false", id)
 	}
 	if err := c.Delete(ctx, path); err != nil && !errors.Is(err, arr.ErrNotFound) {
-		return true, fmt.Errorf("%s didn't remove it: %w", ArrName(typ), err)
+		return true, fmt.Errorf("Unable to remove this from %s: %w", ArrName(typ), err)
 	}
 	s.mu.Lock()
 	reqs, _ := s.Store.RequestsForTitle(typ, tmdbID)

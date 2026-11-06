@@ -42,7 +42,7 @@
 			issues = d.issues ?? {};
 			approval = d.approvalRequired;
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not load requests.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to load requests', 'orange');
 		}
 	}
 	$effect(() => {
@@ -104,9 +104,9 @@
 		try {
 			const next = await api<Request>(`/requests/${r.id}/approve`, { method: 'POST', body: '{}' });
 			list = list!.map((x) => (x.id === r.id ? next : x));
-			notify(next.status === 'failed' ? `Couldn't send it: ${next.error}` : 'Approved and sent.', next.status === 'failed' ? 'orange' : 'green');
+			notify(next.status === 'failed' ? next.error : 'Approved and sent', next.status === 'failed' ? 'orange' : 'green');
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not approve it.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to approve this request', 'orange');
 		} finally {
 			busy = 0;
 		}
@@ -173,12 +173,12 @@
 				picked.delete(id);
 				done++;
 			} catch (e) {
-				failed ||= e instanceof Error ? e.message : 'Something went wrong.';
+				failed ||= e instanceof Error ? e.message : 'Unable to do that';
 			}
 		}
 		running = '';
 		const of = ids.length > 1 ? ` of ${ids.length}` : '';
-		notify(done ? `${DONE[a]} ${done}${of}.${failed ? ` ${failed}` : ''}` : failed, failed ? 'orange' : 'green');
+		notify(done ? `${DONE[a]} ${done}${of}${failed ? `: ${failed}` : ''}` : failed, failed ? 'orange' : 'green');
 	}
 </script>
 

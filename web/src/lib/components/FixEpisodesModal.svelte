@@ -28,7 +28,7 @@
 				// Seasons with something missing start open, so the gaps are in view.
 				for (const s of seasons) if (s.missing) shown[s.n] = true;
 			})
-			.catch((e) => (error = e instanceof Error ? e.message : 'Could not load the episodes.'));
+			.catch((e) => (error = e instanceof Error ? e.message : 'Unable to load the episodes'));
 	});
 
 	const k = (e: Ep) => `${e.season}:${e.episode}`;
@@ -78,7 +78,7 @@
 			open = false;
 			ondone?.();
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not fix them.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to fix these episodes', 'orange');
 		} finally {
 			busy = false;
 		}

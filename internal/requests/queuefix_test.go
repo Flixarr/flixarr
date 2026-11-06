@@ -61,7 +61,7 @@ func TestFixDownload(t *testing.T) {
 	if c := last(); !strings.HasPrefix(c, "POST command") || !strings.Contains(c, `"DownloadedEpisodesScan"`) || !strings.Contains(c, "/downloads/Jackass.S01E02") || !strings.Contains(c, "SAB_1") {
 		t.Errorf("retry: %s", c)
 	}
-	if _, err := s.FixDownload(ctx, "sonarr", 99, "different"); err == nil || !strings.Contains(err.Error(), "isn't in the queue") {
+	if _, err := s.FixDownload(ctx, "sonarr", 99, "different"); err == nil || !strings.Contains(err.Error(), "no longer in the queue") {
 		t.Errorf("gone: %v", err)
 	}
 	if _, err := s.FixDownload(ctx, "sonarr", 41, "explode"); err == nil {

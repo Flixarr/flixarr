@@ -42,7 +42,7 @@
 			d = await api<Detail>(`/requests/${id}/detail`);
 			if (!title) meta<Title>(`${d.request.type}/${d.request.tmdbId}`).then((t) => (title = t)).catch(() => {});
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not load it.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to load this', 'orange');
 			open = false;
 		}
 	}
@@ -93,17 +93,17 @@
 		try {
 			if (what === 'fix') {
 				const x = await api<{ request: Request; done: string }>(`/requests/${id}/fix`, { method: 'POST' });
-				notify(x.done || 'Asked for a search.');
+				notify(x.done || 'Search started');
 				onchanged?.(x.request);
 			} else {
 				const x = await api<Request>(`/requests/${id}/${what}`, { method: 'POST', body: JSON.stringify(body) });
-				notify(x.status === 'failed' ? `Couldn't send it: ${x.error}` : what === 'decline' ? 'Declined.' : 'Sent.', x.status === 'failed' ? 'orange' : 'green');
+				notify(x.status === 'failed' ? x.error : what === 'decline' ? 'Declined' : 'Sent', x.status === 'failed' ? 'orange' : 'green');
 				onchanged?.(x);
 			}
 			declining = false;
 			await load();
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not do that.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to do that', 'orange');
 		} finally {
 			busy = '';
 		}
@@ -116,7 +116,7 @@
 			onchanged?.(null);
 			open = false;
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not remove it.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to remove this', 'orange');
 		} finally {
 			busy = '';
 		}

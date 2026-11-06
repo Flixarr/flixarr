@@ -35,7 +35,7 @@
 			got(await api<Info>('/settings/issues', { method: 'PUT', body: JSON.stringify(body) }));
 			notify(msg);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to save these settings', 'orange');
 		} finally {
 			saving = false;
 		}

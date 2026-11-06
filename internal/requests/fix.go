@@ -16,9 +16,9 @@ import (
 func (s *Service) Fix(ctx context.Context, r store.Request) (store.Request, string, error) {
 	switch r.Status {
 	case "pending", "declined":
-		return r, "", errors.New("it hasn't been approved")
+		return r, "", errors.New("This request hasn't been approved")
 	case "available":
-		return r, "", errors.New("it's already available")
+		return r, "", errors.New("This is already available")
 	}
 	v, ok, err := s.Store.FirstServer(kindOf(r.Type))
 	if err != nil {
@@ -47,7 +47,7 @@ func (s *Service) Fix(ctx context.Context, r store.Request) (store.Request, stri
 	s.mu.Unlock()
 	s.Publish(r)
 	s.Log.Info("request fixed", "title", r.Title, "done", strings.Join(notes, " "))
-	return r, strings.Join(notes, " "), nil
+	return r, sentences(notes), nil
 }
 
 func (s *Service) fixMovie(ctx context.Context, v store.Server, r *store.Request) ([]string, error) {
@@ -82,7 +82,7 @@ func (s *Service) fixMovie(ctx context.Context, v store.Server, r *store.Request
 	if on, _ := movie["monitored"].(bool); !on {
 		movie["monitored"] = true
 		if err := c.Put(ctx, fmt.Sprintf("movie/%d", r.ArrID), movie, nil); err != nil {
-			return nil, fmt.Errorf("Radarr didn't turn it back on: %w", err)
+			return nil, fmt.Errorf("Unable to enable monitoring in Radarr: %w", err)
 		}
 		notes = append(notes, "It wasn't monitored in Radarr; now it is.")
 	}
@@ -91,9 +91,9 @@ func (s *Service) fixMovie(ctx context.Context, v store.Server, r *store.Request
 
 func (s *Service) searchMovie(ctx context.Context, c *arr.Client, id int) string {
 	if err := c.Post(ctx, "command", map[string]any{"name": "MoviesSearch", "movieIds": []int{id}}, nil); err != nil {
-		return "Radarr didn't start a search: " + err.Error() + "."
+		return "Unable to start a search in Radarr: " + err.Error()
 	}
-	return "Started a search."
+	return "Search started"
 }
 
 func (s *Service) fixSeries(ctx context.Context, v store.Server, r *store.Request) ([]string, error) {
@@ -154,7 +154,7 @@ func (s *Service) fixSeries(ctx context.Context, v store.Server, r *store.Reques
 	if changed {
 		sr["monitored"] = true
 		if err := c.Put(ctx, fmt.Sprintf("series/%d", r.ArrID), sr, nil); err != nil {
-			return nil, fmt.Errorf("Sonarr didn't update the series: %w", err)
+			return nil, fmt.Errorf("Unable to update the series in Sonarr: %w", err)
 		}
 		notes = append(notes, "Some of what was asked for wasn't monitored in Sonarr; now it is.")
 	}
@@ -190,7 +190,7 @@ func (s *Service) searchSeries(ctx context.Context, c *arr.Client, r *store.Requ
 		err = c.Post(ctx, "command", map[string]any{"name": "SeriesSearch", "seriesId": r.ArrID}, nil)
 	}
 	if err != nil {
-		return "Sonarr didn't start a search: " + err.Error() + "."
+		return "Unable to start a search in Sonarr: " + err.Error()
 	}
-	return "Started a search."
+	return "Search started"
 }

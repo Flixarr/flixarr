@@ -78,7 +78,7 @@ func (s *Service) FixDownload(ctx context.Context, kind string, queueID int, act
 		}
 	}
 	if !found {
-		return Fixed{}, errors.New("that download isn't in the queue anymore")
+		return Fixed{}, plain("This download is no longer in the queue")
 	}
 	switch action {
 	case "different":
@@ -87,7 +87,7 @@ func (s *Service) FixDownload(ctx context.Context, kind string, queueID int, act
 		err = c.Delete(ctx, fmt.Sprintf("queue/%d?removeFromClient=true&blocklist=false&skipRedownload=true", queueID))
 	case "retry":
 		if path == "" {
-			return f, errors.New("Radarr or Sonarr doesn't say where its files are yet; try again in a minute")
+			return f, fmt.Errorf("%s hasn't reported where the files are yet", arr.Kinds[kind])
 		}
 		name := "DownloadedMoviesScan"
 		if kind == "sonarr" {
@@ -104,7 +104,7 @@ func (s *Service) FixDownload(ctx context.Context, kind string, queueID int, act
 // files go in anyway, replacing what's there.
 func forceImport(ctx context.Context, c *arr.Client, kind, download string, arrID int) error {
 	if download == "" {
-		return errors.New("Radarr or Sonarr doesn't say which download it is")
+		return fmt.Errorf("%s hasn't said which download this is", arr.Kinds[kind])
 	}
 	var items []map[string]any
 	if err := c.Get(ctx, "manualimport?downloadId="+url.QueryEscape(download)+"&filterExistingFiles=false", &items); err != nil {
@@ -131,7 +131,7 @@ func forceImport(ctx context.Context, c *arr.Client, kind, download string, arrI
 		files = append(files, file)
 	}
 	if len(files) == 0 {
-		return errors.New("there's no file in that download to import")
+		return plain("There's no file in this download to import")
 	}
 	return c.Post(ctx, "command", map[string]any{"name": "ManualImport", "files": files, "importMode": "auto"}, nil)
 }

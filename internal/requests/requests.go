@@ -126,7 +126,7 @@ func (s *Service) Modes() TVModes {
 // SetModes saves the series request modes; at least one stays on, and the default is one that's on.
 func (s *Service) SetModes(m TVModes) (TVModes, error) {
 	if !m.Whole && !m.Seasons && !m.Episodes {
-		return m, errors.New("keep at least one way to request series")
+		return m, plain("At least one way to request series must stay on")
 	}
 	on := map[string]bool{"whole": m.Whole, "seasons": m.Seasons, "episodes": m.Episodes}
 	if !on[m.Default] {
@@ -243,7 +243,7 @@ func (s *Service) Create(ctx context.Context, u *store.User, in New) (store.Requ
 		return store.Request{}, err
 	}
 	if !ok || !v.Enabled {
-		return store.Request{}, fmt.Errorf("%s isn't connected yet (Settings → Services)", arr.Kinds[kindOf(in.Type)])
+		return store.Request{}, &Problem{Plain: "Unable to request this right now", Err: fmt.Errorf("%s isn't connected", arr.Kinds[kindOf(in.Type)])}
 	}
 	profileID, profileName := v.QualityProfileID, v.QualityProfileName
 	if in.ProfileID != 0 && in.ProfileID != profileID {
@@ -252,7 +252,7 @@ func (s *Service) Create(ctx context.Context, u *store.User, in New) (store.Requ
 			Name string `json:"name"`
 		}
 		if err := client(v).Get(ctx, "qualityprofile", &list); err != nil {
-			return store.Request{}, err
+			return store.Request{}, &Problem{Plain: "Unable to request this right now", Err: fmt.Errorf("Unable to read the quality profiles from %s: %w", arr.Kinds[v.Kind], err)}
 		}
 		found := false
 		for _, p := range list {
@@ -261,7 +261,7 @@ func (s *Service) Create(ctx context.Context, u *store.User, in New) (store.Requ
 			}
 		}
 		if !found {
-			return store.Request{}, errors.New("that quality isn't on the server anymore")
+			return store.Request{}, &Problem{Plain: "This quality option is no longer available", Err: fmt.Errorf("This quality profile no longer exists in %s", arr.Kinds[v.Kind])}
 		}
 	}
 	mode, seasons, episodes := "all", []int{}, [][2]int{}
@@ -273,7 +273,7 @@ func (s *Service) Create(ctx context.Context, u *store.User, in New) (store.Requ
 	if in.Type == "series" {
 		modes := s.Modes()
 		if (mode == "all" && !modes.Whole) || (mode == "seasons" && !modes.Seasons) || (mode == "episodes" && !modes.Episodes) {
-			return store.Request{}, errors.New("that way of requesting series is turned off")
+			return store.Request{}, plain("This way of requesting series is turned off")
 		}
 	}
 	count := 0
@@ -390,19 +390,19 @@ func (s *Service) sendMovie(ctx context.Context, v store.Server, r *store.Reques
 		if on, _ := movie["monitored"].(bool); !on {
 			movie["monitored"] = true
 			if err := c.Put(ctx, fmt.Sprintf("movie/%d", r.ArrID), movie, nil); err != nil {
-				return fmt.Errorf("Radarr didn't turn it back on: %w", err)
+				return fmt.Errorf("Unable to enable monitoring in Radarr: %w", err)
 			}
 		}
 		if v.SearchOnAdd {
 			if err := c.Post(ctx, "command", map[string]any{"name": "MoviesSearch", "movieIds": []int{r.ArrID}}, nil); err != nil {
-				return fmt.Errorf("Radarr didn't start a search: %w", err)
+				return fmt.Errorf("Unable to start a search in Radarr: %w", err)
 			}
 		}
 		return nil
 	}
 	var movie map[string]any
 	if err := c.Get(ctx, fmt.Sprintf("movie/lookup/tmdb?tmdbId=%d", r.TmdbID), &movie); err != nil {
-		return fmt.Errorf("Radarr couldn't find it: %w", err)
+		return fmt.Errorf("Unable to find this in Radarr: %w", err)
 	}
 	movie["qualityProfileId"] = r.ProfileID
 	movie["rootFolderPath"] = v.RootFolder
@@ -411,7 +411,7 @@ func (s *Service) sendMovie(ctx context.Context, v store.Server, r *store.Reques
 	movie["addOptions"] = map[string]any{"searchForMovie": v.SearchOnAdd}
 	var added map[string]any
 	if err := c.Post(ctx, "movie", movie, &added); err != nil {
-		return fmt.Errorf("Radarr didn't add it: %w", err)
+		return fmt.Errorf("Unable to add this to Radarr: %w", err)
 	}
 	r.ArrID, r.Status = num(added["id"]), "sent"
 	return nil
@@ -421,10 +421,10 @@ func (s *Service) sendSeries(ctx context.Context, v store.Server, r *store.Reque
 	c := client(v)
 	found, err := seriesLookup(ctx, c, r.TmdbID)
 	if err != nil {
-		return fmt.Errorf("Sonarr couldn't find it: %w", err)
+		return fmt.Errorf("Unable to find this in Sonarr: %w", err)
 	}
 	if len(found) == 0 {
-		return errors.New("Sonarr couldn't find this series")
+		return errors.New("Unable to find this series in Sonarr")
 	}
 	series := found[0]
 	want := map[int]bool{}
@@ -469,7 +469,7 @@ func (s *Service) sendSeries(ctx context.Context, v store.Server, r *store.Reque
 	}
 	var added map[string]any
 	if err := c.Post(ctx, "series", series, &added); err != nil {
-		return fmt.Errorf("Sonarr didn't add it: %w", err)
+		return fmt.Errorf("Unable to add this to Sonarr: %w", err)
 	}
 	if r.Mode == "episodes" {
 		r.ArrID, r.Status = num(added["id"]), "sent"
@@ -485,7 +485,7 @@ func (s *Service) sendSeries(ctx context.Context, v store.Server, r *store.Reque
 func (s *Service) monitorSeasons(ctx context.Context, c *arr.Client, v store.Server, id int, all bool, want map[int]bool) error {
 	var sr map[string]any
 	if err := c.Get(ctx, fmt.Sprintf("series/%d", id), &sr); err != nil {
-		return fmt.Errorf("Sonarr couldn't read the series: %w", err)
+		return fmt.Errorf("Unable to read this series from Sonarr: %w", err)
 	}
 	var added []int
 	if seasons, ok := sr["seasons"].([]any); ok {
@@ -507,7 +507,7 @@ func (s *Service) monitorSeasons(ctx context.Context, c *arr.Client, v store.Ser
 		sr["monitorNewItems"] = "all"
 	}
 	if err := c.Put(ctx, fmt.Sprintf("series/%d", id), sr, nil); err != nil {
-		return fmt.Errorf("Sonarr didn't update the series: %w", err)
+		return fmt.Errorf("Unable to update the series in Sonarr: %w", err)
 	}
 	if v.SearchOnAdd {
 		for _, n := range added {
@@ -541,7 +541,7 @@ func episodeList(ctx context.Context, c *arr.Client, seriesID int, wait bool) ([
 func (s *Service) monitorEpisodes(ctx context.Context, c *arr.Client, v store.Server, seriesID int, want [][2]int) error {
 	eps, err := episodeList(ctx, c, seriesID, true)
 	if err != nil {
-		return fmt.Errorf("Sonarr couldn't list the episodes: %w", err)
+		return fmt.Errorf("Unable to list the episodes in Sonarr: %w", err)
 	}
 	asked := map[[2]int]bool{}
 	for _, e := range want {
@@ -554,10 +554,10 @@ func (s *Service) monitorEpisodes(ctx context.Context, c *arr.Client, v store.Se
 		}
 	}
 	if len(ids) == 0 {
-		return errors.New("Sonarr doesn't have those episodes listed yet")
+		return errors.New("Sonarr hasn't listed these episodes yet")
 	}
 	if err := c.Put(ctx, "episode/monitor", map[string]any{"episodeIds": ids, "monitored": true}, nil); err != nil {
-		return fmt.Errorf("Sonarr didn't turn the episodes on: %w", err)
+		return fmt.Errorf("Unable to enable monitoring for these episodes in Sonarr: %w", err)
 	}
 	if v.SearchOnAdd {
 		c.Post(ctx, "command", map[string]any{"name": "EpisodeSearch", "episodeIds": ids}, nil)

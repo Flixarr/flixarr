@@ -51,7 +51,7 @@
 			open = false;
 			notify('Issue reported. Thanks, someone will look at it.');
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not report it.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to report this', 'orange');
 		} finally {
 			sending = false;
 		}

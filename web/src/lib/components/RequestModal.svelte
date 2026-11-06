@@ -52,7 +52,7 @@
 			profileId = o.defaultProfileId ?? 0;
 			mode = o.tvModes?.[o.tvModes.default] ? o.tvModes.default : (['whole', 'seasons', 'episodes'] as Mode[]).find((m) => o.tvModes?.[m]) ?? 'whole';
 			if (more && o.tvModes?.seasons) mode = 'seasons'; // asking for more: start on the seasons left
-		}).catch((e) => notify(e instanceof Error ? e.message : 'Could not load.', 'orange'));
+		}).catch((e) => notify(e instanceof Error ? e.message : 'Unable to load this', 'orange'));
 	});
 
 	function toggle(n: number) {
@@ -69,12 +69,12 @@
 			});
 			open = false;
 			onrequested?.(r);
-			if (r.status === 'failed') notify(`Request saved, but it couldn't be added. ${r.error}`, 'orange');
+			if (r.status === 'failed') notify(r.detail || `Unable to add ${item.title}`, 'orange');
 			else if (r.status === 'pending') notify('Requested. It waits for an admin to approve it.');
 			else if (r.status === 'available') notify(`${item.title} is already in your library.`);
 			else notify(`Requested. You'll see it here as it downloads.`);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not request it.', 'orange');
+			notify(e instanceof Error ? e.message : `Unable to request ${item.title}`, 'orange');
 		} finally {
 			sending = false;
 		}

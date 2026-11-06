@@ -33,7 +33,7 @@
 			open = false;
 			notify(d.done);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not redownload it.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to redownload this', 'orange');
 		} finally {
 			sending = false;
 		}

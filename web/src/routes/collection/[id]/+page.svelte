@@ -34,7 +34,7 @@
 			opts = await api<Options>('/requests/options?type=movie');
 			profileId = opts.defaultProfileId ?? 0;
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not load.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to load this', 'orange');
 		}
 	}
 	async function send() {
@@ -48,7 +48,7 @@
 				if (r.status === 'failed') { failed++; firstErr ||= r.error; } else ok++;
 			} catch (e) {
 				failed++;
-				firstErr ||= e instanceof Error ? e.message : 'Could not request it.';
+				firstErr ||= e instanceof Error ? e.message : 'Unable to request this';
 			}
 		}
 		sending = false;

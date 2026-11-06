@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -710,7 +711,7 @@ func TestFix(t *testing.T) {
 	radarr.cmds = nil
 	// In Radarr but not monitored: turned on, then searched.
 	r, done, err := s.Fix(ctx, r)
-	if err != nil || !strings.Contains(done, "monitored") || !strings.Contains(done, "Started a search") || len(radarr.cmds) != 1 {
+	if err != nil || !strings.Contains(done, "monitored") || !strings.Contains(done, "Search started") || len(radarr.cmds) != 1 {
 		t.Fatalf("fix: %q %v cmds %v", done, err, radarr.cmds)
 	}
 	// Gone from Radarr: added again.
@@ -722,7 +723,7 @@ func TestFix(t *testing.T) {
 	// A whole-show request: monitoring for later seasons comes back too, and the show is searched.
 	sr, _ := s.Create(ctx, admin, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad"})
 	sonarr.cmds = nil
-	if _, done, err = s.Fix(ctx, sr); err != nil || !strings.Contains(done, "Started a search") || len(sonarr.cmds) != 1 || sonarr.cmds[0]["name"] != "SeriesSearch" {
+	if _, done, err = s.Fix(ctx, sr); err != nil || !strings.Contains(done, "Search started") || len(sonarr.cmds) != 1 || sonarr.cmds[0]["name"] != "SeriesSearch" {
 		t.Fatalf("series: %q %v %v", done, err, sonarr.cmds)
 	}
 	// Waiting for approval: nothing to fix.
@@ -757,7 +758,7 @@ func TestExpiredByMaintainerr(t *testing.T) {
 
 func TestPlainWordsForUsers(t *testing.T) {
 	removed := store.Request{Status: "removed", Error: "Removed from Plex and Sonarr."}
-	if got := ForViewer(removed, false).Error; strings.Contains(got, "Sonarr") || !strings.Contains(got, "Removed from Plex") {
+	if got := ForViewer(removed, false).Error; strings.Contains(got, "Sonarr") || got != "Removed from the library" {
 		t.Fatalf("removed: %q", got)
 	}
 	if got := ForViewer(removed, true); got.Error != ForViewer(removed, false).Error || got.Detail != removed.Error {
@@ -774,9 +775,31 @@ func TestPlainWordsForUsers(t *testing.T) {
 		t.Fatalf("declined keeps the admin's words: %q", got)
 	}
 	for _, l := range []Live{{Error: "couldn't reach it"}, {InArr: false}, {InArr: true, Monitored: false}} {
-		if h := hintFor(store.Request{Type: "movie", Status: "sent"}, l); strings.Contains(h, "Radarr") || strings.Contains(h, "Fix") {
+		if h := hintFor(store.Request{Type: "movie", Status: "sent"}, l, false); strings.Contains(h, "Radarr") || strings.Contains(h, "Fix") {
 			t.Fatalf("hint for a user: %q", h)
 		}
+	}
+}
+
+func TestPlainProblems(t *testing.T) {
+	err := fmt.Errorf("wrapped: %w", &Problem{Plain: "Unable to request this right now", Err: errors.New("Radarr isn't connected")})
+	if got := Plain(err, "fallback"); got != "Unable to request this right now" {
+		t.Fatalf("problem: %q", got)
+	}
+	if got := Plain(errors.New("Unable to add this to Radarr: it answered with an error (400)"), "Unable to request this"); got != "Unable to request this" {
+		t.Fatalf("not a problem: %q", got)
+	}
+	if got := sentences([]string{"Search started."}); got != "Search started" {
+		t.Fatalf("one note: %q", got)
+	}
+	if got := sentences([]string{"It wasn't monitored in Radarr; now it is.", "Search started"}); got != "It wasn't monitored in Radarr; now it is. Search started." {
+		t.Fatalf("notes: %q", got)
+	}
+	if h := hintFor(store.Request{Type: "movie", Status: "importing"}, Live{InArr: true, Monitored: true}, false); h != "Downloaded, almost ready to watch" {
+		t.Fatalf("user hint: %q", h)
+	}
+	if h := hintFor(store.Request{Type: "movie", Status: "importing"}, Live{InArr: true, Monitored: true}, true); h != "Downloaded, waiting for Plex" {
+		t.Fatalf("admin hint: %q", h)
 	}
 }
 
