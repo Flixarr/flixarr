@@ -53,7 +53,7 @@
 		}
 		sending = false;
 		open = false;
-		if (failed) notify(`Requested ${ok} of ${ok + failed}.$' Someone who manages requests can look into the rest.'`, 'orange');
+		if (failed) notify(`Requested ${ok} of ${ok + failed}`, 'orange');
 		else notify(`Requested ${ok} ${ok === 1 ? 'movie' : 'movies'}.${opts?.approval ? ' They wait for an admin to approve them.' : ''}`);
 	}
 	$effect(() => {
