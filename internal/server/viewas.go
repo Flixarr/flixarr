@@ -35,7 +35,7 @@ func viewAs(r *http.Request, u *store.User) (*store.User, error) {
 	v := *u
 	v.Perms, v.Role, v.ViewAs, v.Owner = slices.Clone(perms), c.Value, c.Value, false
 	if r.Method != http.MethodGet && (strings.HasPrefix(r.URL.Path, "/api/users") || strings.HasPrefix(r.URL.Path, "/api/me/")) {
-		return nil, errors.New("leave View as first: people can't be changed while viewing as someone else")
+		return nil, errors.New("People can't be changed while viewing as someone else")
 	}
 	return &v, nil
 }

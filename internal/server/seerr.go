@@ -73,7 +73,7 @@ func (s *Server) seerrFiles() (db, settings string) {
 func (s *Server) seerrFileSource() (*seerr.File, error) {
 	db, settings := s.seerrFiles()
 	if _, err := os.Stat(db); err != nil {
-		return nil, errors.New("upload Seerr's database first")
+		return nil, errors.New("No Seerr database uploaded")
 	}
 	f := &seerr.File{DB: db}
 	f.Settings, _ = os.ReadFile(settings)

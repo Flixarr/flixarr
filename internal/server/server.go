@@ -552,7 +552,7 @@ func (s *Server) spa() http.Handler {
 		}
 		shell, err := fs.ReadFile(s.Web, "200.html")
 		if err != nil {
-			http.Error(w, "Web app not built.", http.StatusServiceUnavailable)
+			http.Error(w, "Web app not built", http.StatusServiceUnavailable)
 			return
 		}
 		if b := buildBadge(); b != "" {

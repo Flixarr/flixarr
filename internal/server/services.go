@@ -115,14 +115,14 @@ func (s *Server) serviceClient(kind string, in serviceInput) (*arr.Client, store
 	}
 	saved, ok, err := s.Store.FirstServer(kind)
 	if err != nil {
-		return nil, store.Server{}, false, errors.New("database error")
+		return nil, store.Server{}, false, errors.New("Database error")
 	}
 	key := strings.TrimSpace(in.APIKey)
 	if key == "" && ok && saved.URL == u {
 		key = saved.APIKey
 	}
 	if key == "" {
-		return nil, store.Server{}, false, errors.New("enter the API key (" + arr.Kinds[kind] + " → Settings → General)")
+		return nil, store.Server{}, false, errors.New("API key is required (" + arr.Kinds[kind] + " → Settings → General)")
 	}
 	return &arr.Client{Kind: kind, URL: u, APIKey: key}, saved, ok, nil
 }
