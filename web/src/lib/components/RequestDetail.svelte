@@ -153,7 +153,7 @@
 		<div class="space-y-5 p-5 text-sm">
 			{#if d.live.orderMismatch}<EpisodesMismatch tmdbId={r.tmdbId} ondone={load} />{/if}
 			{#if d.hint}<p class="rounded-lg px-3 py-2 ring-1 {r.status === 'failed' ? 'bg-red-500/10 text-red-200 ring-red-500/30' : 'bg-gray-800/60 text-gray-300 ring-gray-700/60'}">{d.hint}</p>{/if}
-			{#if admin && r.detail}<p class="-mt-3 text-[11px] text-gray-500">{d.live.server || 'Radarr / Sonarr'} said: {r.detail}</p>{/if}
+			{#if admin && r.detail}<p class="-mt-3 text-[11px] text-gray-500">{r.detail}</p>{/if}
 
 			<!-- Who asked for what -->
 			<section>
