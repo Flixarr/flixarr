@@ -42,7 +42,7 @@ var needed = map[string][]string{
 }
 
 // ErrNotSeerr: the file isn't a Seerr database (or isn't a database at all).
-var ErrNotSeerr = errors.New("that file isn't a Seerr database (it's db.sqlite3 in Seerr's config folder, under db)")
+var ErrNotSeerr = errors.New("This file isn't a Seerr database (it's db/db.sqlite3 in Seerr's config folder)")
 
 // Fetch reads the database.
 func (f *File) Fetch(ctx context.Context) (*Data, error) {
@@ -194,7 +194,7 @@ func (f *File) Fetch(ctx context.Context) (*Data, error) {
 			Sonarr []Server `json:"sonarr"`
 		}
 		if err := json.Unmarshal(f.Settings, &s); err != nil {
-			return nil, errors.New("that settings.json can't be read; leave it out and add Radarr and Sonarr by hand")
+			return nil, errors.New("Unable to read this settings.json")
 		}
 		d.Radarr, d.Sonarr = s.Radarr, s.Sonarr
 	}
@@ -210,14 +210,14 @@ func checkLayout(ctx context.Context, db *sql.DB) (int64, error) {
 	for table, cols := range needed {
 		for _, c := range cols {
 			if !hasColumn(ctx, db, table, c) {
-				return 0, fmt.Errorf("this Seerr database is laid out in a way Flixarr doesn't know (%s.%s is missing). Start Seerr once and import through its API instead", table, c)
+				return 0, fmt.Errorf("This Seerr database's layout isn't supported (%s.%s is missing)", table, c)
 			}
 		}
 	}
 	var newest sql.NullInt64
 	db.QueryRowContext(ctx, `SELECT MAX(timestamp) FROM migrations`).Scan(&newest)
 	if newest.Int64 > newestLayout {
-		return 0, errors.New("this Seerr database is newer than this version of Flixarr knows. Update Flixarr, or start Seerr once and import through its API")
+		return 0, errors.New("This Seerr database is newer than this version of Flixarr supports")
 	}
 	return newest.Int64, nil
 }

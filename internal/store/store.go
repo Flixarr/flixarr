@@ -222,7 +222,7 @@ func (s *Store) CreateUser(u User) (*User, error) {
 }
 
 // ErrNameTaken: a local account already has that username.
-var ErrNameTaken = errors.New("that username is taken")
+var ErrNameTaken = errors.New("Username already taken")
 
 // CreateLocalUser adds a username-and-password account; hash comes from the password package.
 func (s *Store) CreateLocalUser(username, email, role, hash string) (*User, error) {

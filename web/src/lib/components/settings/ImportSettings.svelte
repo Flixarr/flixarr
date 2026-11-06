@@ -65,7 +65,7 @@
 				preview = await api<Preview>('/import/seerr/file/preview', { method: 'POST', body: fd });
 			} else preview = await api<Preview>('/import/seerr/preview', { method: 'POST', body: body() });
 		} catch (e) {
-			notify(e instanceof Error ? e.message : "Couldn't read Seerr.", 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to read Seerr', 'orange');
 		} finally {
 			busy = '';
 		}
@@ -75,7 +75,7 @@
 		try {
 			st = mode === 'file' ? await api<State>('/import/seerr/file', { method: 'POST' }) : await api<State>('/import/seerr', { method: 'POST', body: body() });
 		} catch (e) {
-			notify(e instanceof Error ? e.message : "Couldn't start the import.", 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to start the import', 'orange');
 		} finally {
 			busy = '';
 		}

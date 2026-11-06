@@ -25,7 +25,7 @@ var b64 = base64.RawStdEncoding
 // Hash returns the stored form of a password.
 func Hash(pw string) (string, error) {
 	if len(pw) < MinLength {
-		return "", fmt.Errorf("use at least %d characters", MinLength)
+		return "", fmt.Errorf("Password must be at least %d characters", MinLength)
 	}
 	salt := make([]byte, 16)
 	if _, err := rand.Read(salt); err != nil {

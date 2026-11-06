@@ -23,7 +23,7 @@ func parseField(src string, lo, hi int, set *[64]bool) error {
 		if hasStep {
 			n, err := strconv.Atoi(stepStr)
 			if err != nil || n < 1 {
-				return fmt.Errorf("%q isn't valid", part)
+				return fmt.Errorf("Invalid value %s", part)
 			}
 			step = n
 		}
@@ -32,19 +32,19 @@ func parseField(src string, lo, hi int, set *[64]bool) error {
 			as, bs, isRange := strings.Cut(rng, "-")
 			var err error
 			if a, err = strconv.Atoi(as); err != nil {
-				return fmt.Errorf("%q isn't valid", part)
+				return fmt.Errorf("Invalid value %s", part)
 			}
 			b = a
 			if isRange {
 				if b, err = strconv.Atoi(bs); err != nil {
-					return fmt.Errorf("%q isn't valid", part)
+					return fmt.Errorf("Invalid value %s", part)
 				}
 			} else if hasStep {
 				b = hi
 			}
 		}
 		if a < lo || b > hi || a > b {
-			return fmt.Errorf("%q is out of range (%d–%d)", part, lo, hi)
+			return fmt.Errorf("%s is out of range (%d to %d)", part, lo, hi)
 		}
 		for v := a; v <= b; v += step {
 			set[v] = true
@@ -57,7 +57,7 @@ func parseField(src string, lo, hi int, set *[64]bool) error {
 func Parse(expr string) (*Schedule, error) {
 	f := strings.Fields(expr)
 	if len(f) != 5 {
-		return nil, fmt.Errorf("a schedule needs 5 parts: minute hour day month weekday")
+		return nil, fmt.Errorf("A schedule needs 5 parts: minute hour day month weekday")
 	}
 	s := &Schedule{domAny: f[2] == "*", dowAny: f[4] == "*"}
 	sets := []*[64]bool{&s.min, &s.hour, &s.dom, &s.month, &s.dow}

@@ -8,11 +8,11 @@ function field(src: string, [lo, hi]: [number, number]) {
 	const out = new Set<number>();
 	for (const part of src.split(',')) {
 		const m = part.match(/^(\*|\d+(?:-\d+)?)(?:\/(\d+))?$/);
-		if (!m) throw new Error(`“${part}” isn't valid`);
+		if (!m) throw new Error(`Invalid value ${part}`);
 		let [a, b] = m[1] === '*' ? [lo, hi] : m[1].split('-').map(Number);
 		if (b === undefined) b = m[2] ? hi : a;
 		const step = m[2] ? +m[2] : 1;
-		if (a < lo || b > hi || a > b || step < 1) throw new Error(`“${part}” is out of range (${lo}–${hi})`);
+		if (a < lo || b > hi || a > b || step < 1) throw new Error(`${part} is out of range (${lo} to ${hi})`);
 		for (let v = a; v <= b; v += step) out.add(v);
 	}
 	return out;

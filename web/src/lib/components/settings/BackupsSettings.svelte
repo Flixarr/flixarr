@@ -37,7 +37,7 @@
 			secret = '';
 			notify(off.folder || off.s3.endpoint ? 'Saved. The newest backup was copied there.' : 'Offsite copies are off.', 'green');
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to save these settings', 'orange');
 			load();
 		} finally {
 			busy = '';
@@ -54,7 +54,7 @@
 			await load();
 			notify('Backup saved.', 'green');
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not back up.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to back up', 'orange');
 		} finally {
 			busy = '';
 		}
@@ -65,7 +65,7 @@
 			keep = d.keep;
 			notify(`Keeping the newest ${n} backups.`);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to save these settings', 'orange');
 		}
 	}
 	async function restore() {
@@ -85,9 +85,9 @@
 					// still restarting
 				}
 			}
-			notify('Flixarr is taking a while to come back. Reload the page in a moment.', 'orange');
+			notify('Flixarr is taking longer than usual to restart', 'orange');
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not restore.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to restore', 'orange');
 		} finally {
 			busy = '';
 		}
@@ -99,7 +99,7 @@
 			list = list!.filter((b) => b.name !== target!.name);
 			notify('Backup deleted.');
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not delete.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to delete this backup', 'orange');
 		}
 	}
 	const KIND: Record<Backup['kind'], string> = { scheduled: 'Daily', manual: 'Manual', 'before-restore': 'Before a restore' };

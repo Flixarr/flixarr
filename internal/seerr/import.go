@@ -115,7 +115,7 @@ func readLibrary(ctx context.Context, st *store.Store, radarr, sonarr *store.Ser
 			HasFile bool `json:"hasFile"`
 		}
 		if err := (&arr.Client{Kind: "radarr", URL: radarr.URL, APIKey: radarr.APIKey}).Get(ctx, "movie", &list); err != nil {
-			return nil, fmt.Errorf("Radarr: %w", err)
+			return nil, fmt.Errorf("Unable to read Radarr's library: %w", err)
 		}
 		for _, m := range list {
 			l.movies[m.TmdbID] = arrMovie{m.ID, m.HasFile}
@@ -135,7 +135,7 @@ func readLibrary(ctx context.Context, st *store.Store, radarr, sonarr *store.Ser
 			} `json:"seasons"`
 		}
 		if err := (&arr.Client{Kind: "sonarr", URL: sonarr.URL, APIKey: sonarr.APIKey}).Get(ctx, "series", &list); err != nil {
-			return nil, fmt.Errorf("Sonarr: %w", err)
+			return nil, fmt.Errorf("Unable to read Sonarr's library: %w", err)
 		}
 		for _, s := range list {
 			a := arrSeries{ID: s.ID, Seasons: map[int]int{}}
@@ -541,7 +541,7 @@ func (im *Importer) Start(src Source, done func()) error {
 	im.mu.Lock()
 	if im.state.Running {
 		im.mu.Unlock()
-		return fmt.Errorf("an import is already running")
+		return fmt.Errorf("An import is already running")
 	}
 	im.state = State{Running: true, Stage: "Reading Seerr"}
 	im.mu.Unlock()
@@ -589,7 +589,7 @@ func (im *Importer) Run(ctx context.Context, src Source) (*Result, error) {
 		}
 		sv, err := im.Store.SaveServer(toServer(sp.Kind, sp.server))
 		if err != nil {
-			return nil, fmt.Errorf("couldn't add %s: %w", label(sp.Kind), err)
+			return nil, fmt.Errorf("Unable to add %s: %w", label(sp.Kind), err)
 		}
 		if sp.Kind == "radarr" {
 			lib.radarrID = sv.ID
@@ -625,7 +625,7 @@ func (im *Importer) Run(ctx context.Context, src Source) (*Result, error) {
 				nu.Role = store.RoleOf(nu.Perms)
 				f, err := im.Store.ImportUser(nu, u.ID)
 				if err != nil {
-					return nil, fmt.Errorf("couldn't add %s: %w", u.Name(), err)
+					return nil, fmt.Errorf("Unable to add %s: %w", u.Name(), err)
 				}
 				users[u.ID] = f.ID
 				res.Users++
@@ -665,7 +665,7 @@ func (im *Importer) Run(ctx context.Context, src Source) (*Result, error) {
 			fr, events, decider := im.request(r, pl, t, lib, users, now)
 			fr.UserID = uid
 			if _, err := im.Store.ImportRequest(fr, r.ID, decider, events); err != nil {
-				return nil, fmt.Errorf("couldn't save a request for %s: %w", t.Title, err)
+				return nil, fmt.Errorf("Unable to save a request for %s: %w", t.Title, err)
 			}
 			res.Requests++
 		}
@@ -712,7 +712,7 @@ func (im *Importer) Run(ctx context.Context, src Source) (*Result, error) {
 				resolver = users[is.ModifiedBy.ID]
 			}
 			if _, err := im.Store.ImportIssue(fi, is.ID, resolver, comments); err != nil {
-				return nil, fmt.Errorf("couldn't save an issue for %s: %w", t.Title, err)
+				return nil, fmt.Errorf("Unable to save an issue for %s: %w", t.Title, err)
 			}
 			res.Issues++
 		}

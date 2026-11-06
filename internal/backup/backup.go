@@ -69,7 +69,7 @@ func (m *Manager) Create(kind string) (Backup, error) {
 			return b, nil
 		}
 	}
-	return Backup{}, errors.New("backup disappeared")
+	return Backup{}, errors.New("There was an issue saving the backup: the file is missing")
 }
 
 // Run is the daily "Backup" job.
@@ -83,7 +83,7 @@ func (m *Manager) Run() (string, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
 		if err := m.CopyOffsite(ctx, b.Name); err != nil {
-			return msg, fmt.Errorf("saved, but the offsite copy failed: %w", err)
+			return msg, fmt.Errorf("Backup saved, but there was an issue copying it offsite: %w", err)
 		}
 		msg += ", copied offsite"
 	}
@@ -128,11 +128,11 @@ func (m *Manager) prune() {
 // Path returns a backup's file, refusing anything that isn't one.
 func (m *Manager) Path(name string) (string, error) {
 	if !nameRe.MatchString(name) || strings.ContainsAny(name, `/\`) {
-		return "", errors.New("no such backup")
+		return "", errors.New("This backup no longer exists")
 	}
 	p := filepath.Join(m.dir(), name)
 	if _, err := os.Stat(p); err != nil {
-		return "", errors.New("no such backup")
+		return "", errors.New("This backup no longer exists")
 	}
 	return p, nil
 }
@@ -154,7 +154,7 @@ func (m *Manager) PrepareRestore(name string) error {
 		return err
 	}
 	if _, err := m.Create("before-restore"); err != nil {
-		return fmt.Errorf("couldn't save the current database first: %w", err)
+		return fmt.Errorf("Unable to back up the current database first: %w", err)
 	}
 	return copyFile(p, filepath.Join(m.DataDir, "restore.db"))
 }

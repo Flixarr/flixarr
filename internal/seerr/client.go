@@ -30,10 +30,10 @@ func NewClient(raw, key string) (*Client, error) {
 	}
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return nil, errors.New("that address doesn't look right")
+		return nil, errors.New("Invalid address (e.g. http://192.168.1.10:5055)")
 	}
 	if strings.TrimSpace(key) == "" {
-		return nil, errors.New("enter the API key")
+		return nil, errors.New("API key is required")
 	}
 	base := strings.TrimRight(u.Scheme+"://"+u.Host+u.Path, "/")
 	base = strings.TrimSuffix(base, "/api/v1")
@@ -49,19 +49,19 @@ func (c *Client) get(ctx context.Context, path string, out any) error {
 	req.Header.Set("Accept", "application/json")
 	res, err := c.HTTP.Do(req)
 	if err != nil {
-		return errors.New("couldn't reach Seerr at that address")
+		return errors.New("Unable to connect: no response")
 	}
 	defer res.Body.Close()
 	switch {
 	case res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden:
-		return errors.New("Seerr refused the API key")
+		return errors.New("Unable to connect: API key rejected (401)")
 	case res.StatusCode == http.StatusNotFound:
-		return errors.New("that address answered, but it isn't Seerr")
+		return errors.New("Seerr isn't at this address")
 	case res.StatusCode != http.StatusOK:
-		return fmt.Errorf("Seerr answered %s", res.Status)
+		return fmt.Errorf("Unable to connect: error (%d)", res.StatusCode)
 	}
 	if err := json.NewDecoder(io.LimitReader(res.Body, 64<<20)).Decode(out); err != nil {
-		return errors.New("that address answered, but it isn't Seerr")
+		return errors.New("Seerr isn't at this address")
 	}
 	return nil
 }
@@ -229,7 +229,7 @@ func (c *Client) Fetch(ctx context.Context) (*Data, error) {
 		return nil, err
 	}
 	if st.Version == "" {
-		return nil, errors.New("that address answered, but it isn't Seerr")
+		return nil, errors.New("Seerr isn't at this address")
 	}
 	d := &Data{Version: st.Version}
 	var err error

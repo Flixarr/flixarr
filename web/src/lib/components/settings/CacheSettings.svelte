@@ -51,7 +51,7 @@
 			if (session.status) session.status.imageCache = st.images.enabled;
 			notify(msg);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to save these settings', 'orange');
 		}
 	}
 
@@ -61,7 +61,7 @@
 			st = await api<CacheState>('/cache/' + kind, { method: 'DELETE' });
 			notify(`${label} cleared.`);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not clear.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to clear the cache', 'orange');
 		} finally {
 			busy = '';
 			confirmAll = false;

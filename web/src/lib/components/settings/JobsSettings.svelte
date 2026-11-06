@@ -47,7 +47,7 @@
 			notify(enabled ? `${editing.name}: ${preview.text.toLowerCase()}.` : `${editing.name} is paused.`);
 			open = false;
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to save this job', 'orange');
 		}
 	}
 
@@ -57,7 +57,7 @@
 			notify(`${j.name} started.`);
 			setTimeout(load, 1500);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not start.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to start this job', 'orange');
 		}
 	}
 

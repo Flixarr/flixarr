@@ -75,7 +75,7 @@ func splitPerms(s string) []string {
 }
 
 // ErrOwner is returned when a change would lock the owner out.
-var ErrOwner = errors.New("the owner always stays an admin")
+var ErrOwner = errors.New("The owner must stay an admin")
 
 // Users lists everyone who can sign in, owner first, with how many requests each has made.
 func (s *Store) Users() ([]UserRow, error) {

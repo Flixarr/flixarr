@@ -16,4 +16,4 @@ import (
 var On = os.Getenv("FLIXARR_TEST_INSTALL") == "true"
 
 // ErrBlocked is returned by writes a test install doesn't make.
-var ErrBlocked = errors.New("not done from a dev install (it shares its servers with the real one)")
+var ErrBlocked = errors.New("This isn't done from a dev install")

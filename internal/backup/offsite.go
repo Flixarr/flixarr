@@ -69,23 +69,23 @@ func (m *Manager) SaveOffsite(o Offsite) error {
 	o.Folder = strings.TrimSpace(o.Folder)
 	if o.Folder != "" {
 		if !filepath.IsAbs(o.Folder) {
-			return errors.New("the folder has to be a full path, like /backups")
+			return errors.New("Invalid folder (e.g. /backups)")
 		}
 		if filepath.Clean(o.Folder) == filepath.Clean(m.dir()) || filepath.Clean(o.Folder) == filepath.Clean(m.DataDir) {
-			return errors.New("pick a folder outside Flixarr's data folder; the point is a second copy somewhere else")
+			return errors.New("The folder must be outside Flixarr's data folder")
 		}
 		if err := os.MkdirAll(o.Folder, 0o700); err != nil {
-			return fmt.Errorf("can't write to that folder: %w", err)
+			return fmt.Errorf("Unable to write to this folder: %w", err)
 		}
 	}
 	o.S3.Endpoint = strings.TrimRight(strings.TrimSpace(o.S3.Endpoint), "/")
 	if o.S3.Endpoint != "" {
 		u, err := url.Parse(o.S3.Endpoint)
 		if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-			return errors.New("the S3 endpoint should be like https://s3.us-east-1.amazonaws.com")
+			return errors.New("Invalid S3 endpoint (e.g. https://s3.us-east-1.amazonaws.com)")
 		}
 		if o.S3.Bucket == "" || o.S3.AccessKey == "" || o.S3.SecretKey == "" {
-			return errors.New("enter the bucket, access key and secret key")
+			return errors.New("Bucket, access key and secret key are required")
 		}
 		if o.S3.Region == "" {
 			o.S3.Region = "us-east-1"
@@ -138,7 +138,7 @@ func (m *Manager) copyOffsite(ctx context.Context, o Offsite, name string) error
 		if err != nil {
 			errs = append(errs, fmt.Errorf("S3: %w", err))
 		} else if err := o.S3.prune(ctx, m.Keep()); err != nil {
-			errs = append(errs, fmt.Errorf("S3 clean up: %w", err))
+			errs = append(errs, fmt.Errorf("S3 cleanup: %w", err))
 		}
 	}
 	return errors.Join(errs...)
@@ -229,7 +229,7 @@ func (s S3) do(ctx context.Context, method, path string, query url.Values, body 
 	sign(req, body, s.Region, s.AccessKey, s.SecretKey, time.Now().UTC())
 	res, err := s3Client.Do(req)
 	if err != nil {
-		return nil, errors.New("couldn't reach the S3 endpoint")
+		return nil, errors.New("no response")
 	}
 	if res.StatusCode >= 300 {
 		msg, _ := io.ReadAll(io.LimitReader(res.Body, 400))
@@ -239,9 +239,9 @@ func (s S3) do(ctx context.Context, method, path string, query url.Values, body 
 			Message string `xml:"Message"`
 		}
 		if xml.Unmarshal(msg, &e) == nil && e.Code != "" {
-			return nil, fmt.Errorf("%s: %s", e.Code, e.Message)
+			return nil, fmt.Errorf("%s (%s)", e.Message, e.Code)
 		}
-		return nil, fmt.Errorf("it answered %s", res.Status)
+		return nil, fmt.Errorf("error (%d)", res.StatusCode)
 	}
 	return res, nil
 }
