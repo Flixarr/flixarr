@@ -30,11 +30,11 @@ func (l *Library) tvBase() string {
 func (l *Library) Friends(ctx context.Context) ([]Friend, error) {
 	server := l.Store.Setting(keyServerID, "")
 	if server == "" {
-		return nil, errors.New("connect a Plex server first (Settings → Plex)")
+		return nil, errors.New("No Plex server connected")
 	}
 	tok := l.Store.SecretSetting(keyAdminToken, "")
 	if tok == "" {
-		return nil, errors.New("sign in with Plex again so Flixarr can see who your server is shared with")
+		return nil, errors.New("Unable to list who your server is shared with: Plex sign-in missing")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, l.tvBase()+"/api/users", nil)
 	if err != nil {
@@ -45,11 +45,11 @@ func (l *Library) Friends(ctx context.Context) ([]Friend, error) {
 	req.Header.Set("X-Plex-Product", "Flixarr")
 	res, err := l.client().Do(req)
 	if err != nil {
-		return nil, errors.New("couldn't reach plex.tv")
+		return nil, errors.New("Unable to connect to plex.tv")
 	}
 	defer res.Body.Close()
 	if res.StatusCode >= 300 {
-		return nil, fmt.Errorf("plex.tv answered %s", res.Status)
+		return nil, fmt.Errorf("Unable to connect to plex.tv: %w", answerErr(res.StatusCode))
 	}
 	var doc struct {
 		Users []struct {
@@ -65,7 +65,7 @@ func (l *Library) Friends(ctx context.Context) ([]Friend, error) {
 		} `xml:"User"`
 	}
 	if err := xml.NewDecoder(res.Body).Decode(&doc); err != nil {
-		return nil, errors.New("plex.tv sent something unexpected")
+		return nil, errors.New("Unable to read the user list from plex.tv")
 	}
 	out := []Friend{}
 	for _, u := range doc.Users {

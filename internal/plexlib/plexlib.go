@@ -35,7 +35,21 @@ const (
 	keyAddrPicked = "plex_address_set"  // "true" when an admin picked or typed the address (#114); else Automatic
 )
 
-var errNotFound = errors.New("Plex answered 404 Not Found")
+var (
+	errNotFound   = errors.New("not found (404)")
+	errNoResponse = errors.New("no response")
+)
+
+// answerErr is a Plex or plex.tv error code as the short reason shown after a colon.
+func answerErr(code int) error {
+	switch code {
+	case http.StatusUnauthorized:
+		return errors.New("sign-in expired (401)")
+	case http.StatusNotFound:
+		return errNotFound
+	}
+	return fmt.Errorf("error (%d)", code)
+}
 
 // Library keeps the Plex connection and syncs its items.
 type Library struct {
@@ -94,17 +108,11 @@ func (l *Library) do(ctx context.Context, method, base, path, token string, out 
 	req.Header.Set("X-Plex-Client-Identifier", l.ClientID)
 	res, err := l.client().Do(req)
 	if err != nil {
-		return errors.New("couldn't reach it")
+		return errNoResponse
 	}
 	defer res.Body.Close()
-	if res.StatusCode == http.StatusUnauthorized {
-		return errors.New("Plex refused the sign-in; sign in with Plex again")
-	}
-	if res.StatusCode == http.StatusNotFound {
-		return errNotFound
-	}
 	if res.StatusCode >= 300 {
-		return fmt.Errorf("Plex answered %s", res.Status)
+		return answerErr(res.StatusCode)
 	}
 	if err := json.NewDecoder(res.Body).Decode(out); err != nil && !errors.Is(err, io.EOF) {
 		return err
@@ -136,7 +144,7 @@ type Server struct {
 func (l *Library) Servers(ctx context.Context) ([]Server, error) {
 	tok := l.Store.SecretSetting(keyAdminToken, "")
 	if tok == "" {
-		return nil, errors.New("sign in with Plex again so Flixarr can see your servers")
+		return nil, errors.New("Unable to list your Plex servers: Plex sign-in missing")
 	}
 	base := l.TVBaseURL
 	if base == "" {
@@ -151,7 +159,7 @@ func (l *Library) Servers(ctx context.Context) ([]Server, error) {
 		Connections      []Connection `json:"connections"`
 	}
 	if err := l.get(ctx, base, "/api/v2/resources?includeHttps=1&includeRelay=1", tok, &res); err != nil {
-		return nil, fmt.Errorf("plex.tv: %w", err)
+		return nil, fmt.Errorf("Unable to list your Plex servers: %w", err)
 	}
 	out := []Server{}
 	for _, r := range res {
@@ -189,7 +197,7 @@ func (l *Library) Connect(ctx context.Context, id string) (Status, error) {
 		}
 		best := fastest(l.probeAll(ctx, candidates(s.Connections), s.token, s.ID))
 		if best == "" {
-			return Status{}, fmt.Errorf("couldn't reach %s from Flixarr on any of its addresses", s.Name)
+			return Status{}, fmt.Errorf("Unable to connect to %s: none of its addresses answered", s.Name)
 		}
 		l.Store.SetSetting(keyServerID, s.ID)
 		l.Store.SetSetting(keyServerName, s.Name)
@@ -199,7 +207,7 @@ func (l *Library) Connect(ctx context.Context, id string) (Status, error) {
 		l.Log.Info("plex server connected", "name", s.Name, "via", best)
 		return l.Status(ctx)
 	}
-	return Status{}, errors.New("that server isn't on your Plex account")
+	return Status{}, errors.New("This server isn't on your Plex account")
 }
 
 // ---------- which address (#114) ----------
@@ -252,7 +260,7 @@ func (l *Library) probe(ctx context.Context, uri, token, id string) (time.Durati
 		return 0, err
 	}
 	if ident.MediaContainer.MachineIdentifier != id {
-		return 0, errors.New("a different Plex server answered there")
+		return 0, errors.New("a different Plex server answered")
 	}
 	return max(time.Since(start), time.Millisecond), nil
 }
@@ -300,7 +308,7 @@ func (l *Library) Addresses(ctx context.Context) (list []Address, auto bool, err
 	id := l.Store.Setting(keyServerID, "")
 	_, token, ok := l.conn()
 	if !ok {
-		return nil, false, errors.New("connect a Plex server first")
+		return nil, false, errors.New("No Plex server connected")
 	}
 	servers, err := l.Servers(ctx)
 	if err != nil {
@@ -323,7 +331,7 @@ func (l *Library) SetAddress(ctx context.Context, uri string) (Status, error) {
 	id := l.Store.Setting(keyServerID, "")
 	_, token, ok := l.conn()
 	if !ok {
-		return Status{}, errors.New("connect a Plex server first")
+		return Status{}, errors.New("No Plex server connected")
 	}
 	uri = strings.TrimRight(strings.TrimSpace(uri), "/")
 	if uri == "" {
@@ -332,16 +340,16 @@ func (l *Library) SetAddress(ctx context.Context, uri string) (Status, error) {
 			return Status{}, err
 		}
 		if uri = fastest(list); uri == "" {
-			return Status{}, errors.New("none of the server's addresses answered")
+			return Status{}, errors.New("Unable to connect: none of the server's addresses answered")
 		}
 		l.Store.SetSetting(keyAddrPicked, "")
 	} else {
 		u, err := url.Parse(uri)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			return Status{}, errors.New("that address doesn't look right; it should be like http://192.168.1.10:32400")
+			return Status{}, errors.New("Invalid address (e.g. http://192.168.1.10:32400)")
 		}
 		if _, err := l.probe(ctx, uri, token, id); err != nil {
-			return Status{}, fmt.Errorf("the server didn't answer there: %w", err)
+			return Status{}, fmt.Errorf("Unable to connect at this address: %w", err)
 		}
 		l.Store.SetSetting(keyAddrPicked, "true")
 	}
@@ -408,7 +416,7 @@ func (l *Library) enabled() map[string]bool {
 func (l *Library) Sections(ctx context.Context) ([]Section, error) {
 	base, tok, ok := l.conn()
 	if !ok {
-		return nil, errors.New("no Plex server connected")
+		return nil, errors.New("No Plex server connected")
 	}
 	var res struct {
 		MediaContainer struct {
@@ -452,7 +460,7 @@ func (l *Library) Status(ctx context.Context) (Status, error) {
 	st.Connected, st.ID, st.Name, st.URL, st.LastFull = true, l.Store.Setting(keyServerID, ""), l.Store.Setting(keyServerName, ""), l.Store.Setting(keyServerURL, ""), l.Store.Setting(keyLastFull, "")
 	secs, err := l.Sections(ctx)
 	if err != nil {
-		st.Error = err.Error()
+		st.Error = "Unable to connect: " + err.Error()
 	} else {
 		st.Sections = secs
 	}
@@ -528,7 +536,7 @@ func (l *Library) FullScan(ctx context.Context) (string, error) {
 			}
 			path := fmt.Sprintf("/library/sections/%s/all?includeGuids=1&X-Plex-Container-Start=%d&X-Plex-Container-Size=500", url.PathEscape(sec.Key), start)
 			if err := l.get(ctx, base, path, tok, &res); err != nil {
-				return "", fmt.Errorf("%s: %w", sec.Title, err)
+				return "", fmt.Errorf("There was an issue scanning %s: %w", sec.Title, err)
 			}
 			for _, m := range res.MediaContainer.Metadata {
 				if sec.Type == "movie" && m.DeletedAt == 0 {
@@ -586,7 +594,7 @@ func (l *Library) RecentScan(ctx context.Context) (string, error) {
 		// Newest first. For TV that's when the show itself arrived; later episodes don't matter here.
 		path := fmt.Sprintf("/library/sections/%s/all?includeGuids=1&sort=addedAt:desc&X-Plex-Container-Start=0&X-Plex-Container-Size=50", url.PathEscape(sec.Key))
 		if err := l.get(ctx, base, path, tok, &res); err != nil {
-			return "", fmt.Errorf("%s: %w", sec.Title, err)
+			return "", fmt.Errorf("There was an issue scanning %s: %w", sec.Title, err)
 		}
 		for _, m := range res.MediaContainer.Metadata {
 			if id := m.tmdb(); id > 0 && m.DeletedAt == 0 {
@@ -644,7 +652,7 @@ func (l *Library) SetWebURL(raw string) (string, error) {
 	}
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return "", errors.New("that address doesn't look right; it should be like https://plex.example.com")
+		return "", errors.New("Invalid address (e.g. https://plex.example.com)")
 	}
 	p := strings.TrimRight(u.Path, "/")
 	p = strings.TrimSuffix(strings.TrimSuffix(p, "/index.html"), "/web")

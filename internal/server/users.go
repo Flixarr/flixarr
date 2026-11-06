@@ -216,7 +216,7 @@ func (s *Server) userDelete(w http.ResponseWriter, r *http.Request, me *store.Us
 func (s *Server) userPlexList(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	friends, err := s.Library.Friends(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error()))
 		return
 	}
 	type row struct {
@@ -245,7 +245,7 @@ func (s *Server) userPlexImport(w http.ResponseWriter, r *http.Request, _ *store
 	}
 	friends, err := s.Library.Friends(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error()))
 		return
 	}
 	added := 0

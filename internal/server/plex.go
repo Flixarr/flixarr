@@ -13,7 +13,7 @@ import (
 func (s *Server) plexStatus(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	st, err := s.Library.Status(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error()))
 		return
 	}
 	writeJSON(w, http.StatusOK, st)
@@ -29,7 +29,7 @@ func (s *Server) plexWeb(w http.ResponseWriter, r *http.Request, _ *store.User) 
 		return
 	}
 	if _, err := s.Library.SetWebURL(in.URL); err != nil {
-		writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadRequest, capitalize(err.Error()))
 		return
 	}
 	s.plexStatus(w, r, nil)
@@ -38,7 +38,7 @@ func (s *Server) plexWeb(w http.ResponseWriter, r *http.Request, _ *store.User) 
 func (s *Server) plexServers(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	list, err := s.Library.Servers(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error()))
 		return
 	}
 	writeJSON(w, http.StatusOK, list)
@@ -54,7 +54,7 @@ func (s *Server) plexConnect(w http.ResponseWriter, r *http.Request, _ *store.Us
 	}
 	st, err := s.Library.Connect(r.Context(), in.ID)
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error()))
 		return
 	}
 	s.Jobs.RunNow(s.BaseCtx, "plex-full")
@@ -65,7 +65,7 @@ func (s *Server) plexConnect(w http.ResponseWriter, r *http.Request, _ *store.Us
 func (s *Server) plexAddresses(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	list, auto, err := s.Library.Addresses(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error()))
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"addresses": list, "auto": auto, "current": s.Store.Setting("plex_server_url", "")})
@@ -82,7 +82,7 @@ func (s *Server) plexAddress(w http.ResponseWriter, r *http.Request, _ *store.Us
 	}
 	st, err := s.Library.SetAddress(r.Context(), in.URI)
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error()))
 		return
 	}
 	writeJSON(w, http.StatusOK, st)

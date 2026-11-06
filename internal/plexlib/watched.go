@@ -3,7 +3,6 @@ package plexlib
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"path"
@@ -101,11 +100,11 @@ func (l *Library) getPage(ctx context.Context, base, p, token string, size int, 
 	req.Header.Set("X-Plex-Container-Size", fmt.Sprint(size))
 	res, err := l.client().Do(req)
 	if err != nil {
-		return errors.New("couldn't reach it")
+		return errNoResponse
 	}
 	defer res.Body.Close()
 	if res.StatusCode >= 300 {
-		return fmt.Errorf("Plex answered %s", res.Status)
+		return answerErr(res.StatusCode)
 	}
 	return json.NewDecoder(res.Body).Decode(out)
 }

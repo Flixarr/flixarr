@@ -96,7 +96,7 @@ func (l *Library) UseSonarrOrder(ctx context.Context, tmdbID int) error {
 	}
 	it, ok := items[fmt.Sprintf("series:%d", tmdbID)]
 	if !ok {
-		return errors.New("the show isn't in Plex")
+		return errors.New("This show isn't in Plex")
 	}
 	item := "/library/metadata/" + url.PathEscape(it.RatingKey)
 	var out any

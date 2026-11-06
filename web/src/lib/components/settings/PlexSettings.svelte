@@ -31,7 +31,7 @@
 			addrs = await api('/plex/addresses');
 		} catch (e) {
 			addrOpen = false;
-			notify(e instanceof Error ? e.message : 'Could not reach Plex.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to connect to Plex', 'orange');
 		}
 	}
 	async function useAddress(uri: string) {
@@ -41,7 +41,7 @@
 			addrOpen = false;
 			notify(uri ? `Flixarr reaches Plex at ${st.url} now.` : `Automatic: Flixarr uses the fastest address, ${st.url} right now.`);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not use that address.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to use this address', 'orange');
 		} finally {
 			busy = '';
 		}
@@ -57,7 +57,7 @@
 			web = st.webUrl;
 			notify(st.webUrl ? `Plex links open on ${st.webUrl}.` : 'Plex links open on app.plex.tv.');
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to save these settings', 'orange');
 		} finally {
 			busy = '';
 		}
@@ -70,7 +70,7 @@
 			web = st.webUrl;
 			if (!st.connected) findServers();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Could not load Plex settings.';
+			error = e instanceof Error ? e.message : 'Unable to load the Plex settings';
 		}
 	}
 	$effect(() => {
@@ -84,7 +84,7 @@
 			servers = await api<Server[]>('/plex/servers');
 		} catch (e) {
 			servers = [];
-			notify(e instanceof Error ? e.message : 'Could not list your Plex servers.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to list your Plex servers', 'orange');
 		}
 	}
 
@@ -96,7 +96,7 @@
 			notify(`Connected to ${s.name}. Reading its libraries now.`, 'green');
 			setTimeout(load, 5000);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not connect.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to connect', 'orange');
 		} finally {
 			busy = '';
 		}
@@ -108,7 +108,7 @@
 			st = await api<Status>('/plex/libraries', { method: 'PUT', body: JSON.stringify({ keys }) });
 			setTimeout(load, 4000);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to save these settings', 'orange');
 		}
 	}
 
@@ -120,7 +120,7 @@
 			await load();
 			notify('Plex libraries scanned.');
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not scan.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to scan', 'orange');
 		} finally {
 			busy = '';
 		}
@@ -133,7 +133,7 @@
 			notify('Plex server disconnected.');
 			findServers();
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not disconnect.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to disconnect', 'orange');
 		}
 	}
 
