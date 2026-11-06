@@ -672,7 +672,12 @@ func (s *Service) refresh(ctx context.Context, reqs []store.Request) error {
 		s.checked[r.ID] = time.Now()
 		if r.Type == "movie" && inPlex(s.Store, r.Type, r.TmdbID) {
 			r.Status, r.Progress = "available", 100 // Plex has it, however it got there
-		} else if err := s.follow(ctx, v, &r); err != nil {
+		} else if err := s.follow(ctx, v, &r); errors.Is(err, arr.ErrNotFound) || errors.Is(err, errUnmonitored) {
+			// Taken out of Radarr/Sonarr (or unmonitored there) by someone else: the request ends, like a
+			// Maintainerr removal, and can be made again.
+			r.Status, r.Progress = "removed", 0
+			r.Error = fmt.Sprintf("Removed from %s outside Flixarr", arr.Kinds[kindOf(r.Type)])
+		} else if err != nil {
 			continue // try again on the next pass
 		}
 		if r.Status != before.Status {
@@ -707,6 +712,11 @@ func (s *Service) removedFromArr(ctx context.Context, v store.Server, r store.Re
 	if err := c.Get(ctx, fmt.Sprintf("series/%d", r.ArrID), &sr); err != nil {
 		return errors.Is(err, arr.ErrNotFound), nil
 	}
+	return seriesDropped(sr, r), nil
+}
+
+// seriesDropped says whether none of what a request asked for is monitored or has files in Sonarr.
+func seriesDropped(sr map[string]any, r store.Request) bool {
 	want := map[int]bool{}
 	for _, n := range r.Seasons {
 		want[n] = true
@@ -724,11 +734,11 @@ func (s *Service) removedFromArr(ctx context.Context, v store.Server, r store.Re
 		}
 		st, _ := m["statistics"].(map[string]any)
 		if on, _ := m["monitored"].(bool); on || num(st["episodeFileCount"]) > 0 {
-			return false, nil // something asked for is still there or still wanted
+			return false // something asked for is still there or still wanted
 		}
 		asked = true
 	}
-	return asked, nil
+	return asked
 }
 
 // Recheck looks again at available requests whose title just left Plex ("movie:603" keys; episodes = some
@@ -849,7 +859,13 @@ func (s *Service) follow(ctx context.Context, v store.Server, r *store.Request) 
 		}
 		out, _ := m["isAvailable"].(bool)
 		r.Unreleased = !out
-		return s.queueProgress(ctx, c, fmt.Sprintf("queue/details?movieId=%d", r.ArrID), r, nil, 0, 0)
+		if err := s.queueProgress(ctx, c, fmt.Sprintf("queue/details?movieId=%d", r.ArrID), r, nil, 0, 0); err != nil {
+			return err
+		}
+		if on, _ := m["monitored"].(bool); !on && r.Status == "sent" {
+			return errUnmonitored
+		}
+		return nil
 	}
 	if r.Mode == "episodes" {
 		eps, err := episodeList(ctx, c, r.ArrID, false)
@@ -920,8 +936,18 @@ func (s *Service) follow(ctx context.Context, v store.Server, r *store.Request) 
 		only = want
 	}
 	r.Unreleased = wanted == 0 // nothing asked for has aired yet
-	return s.queueProgress(ctx, c, fmt.Sprintf("queue/details?seriesId=%d", r.ArrID), r, only, sum(have), wanted)
+	if err := s.queueProgress(ctx, c, fmt.Sprintf("queue/details?seriesId=%d", r.ArrID), r, only, sum(have), wanted); err != nil {
+		return err
+	}
+	if on, _ := sr["monitored"].(bool); r.Status == "sent" && (!on || seriesDropped(sr, *r)) {
+		return errUnmonitored
+	}
+	return nil
 }
+
+// errUnmonitored: a request on its way whose title was unmonitored in Radarr/Sonarr with nothing
+// downloading, so it would never arrive.
+var errUnmonitored = errors.New("unmonitored outside Flixarr")
 
 // queueProgress reads the download queue: grabbed (waiting in the download client), downloading with the
 // progress, or importing (downloaded, Radarr/Sonarr moving the files). For a series, done of want episodes

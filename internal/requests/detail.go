@@ -356,7 +356,11 @@ func hintFor(r store.Request, l Live, admin bool) string {
 	}
 	switch {
 	case !l.InArr || !l.Monitored && len(l.Queue) == 0 && (r.Status == "sent" || r.Status == "approved"):
-		return "Something went wrong with this request. Someone who manages requests can sort it out."
+		// Ends as Removed on the next follow-up pass (refresh).
+		if admin {
+			return "Removed from " + arr.Kinds[kindOf(r.Type)] + " outside Flixarr"
+		}
+		return RemovedOutside
 	case len(l.Queue) == 0 && r.Unreleased && (r.Status == "sent" || r.Status == "approved"):
 		return NotReleased
 	case len(l.Queue) == 0 && (r.Status == "sent" || r.Status == "approved"):
@@ -437,11 +441,18 @@ func (s *Service) FixTitle(ctx context.Context, typ string, tmdbID int) (string,
 	return sentences(append(notes, "Search started for the monitored episodes")), nil
 }
 
+// RemovedOutside is what regular users see when a request's title was removed from Radarr/Sonarr outside
+// Flixarr.
+const RemovedOutside = "This request was removed"
+
 // PlainError is a request's reason in plain words for regular users (no Radarr, Sonarr or error codes).
 // People who manage requests see the stored reason as it is.
 func PlainError(r store.Request) string {
 	switch r.Status {
 	case "removed":
+		if strings.HasSuffix(r.Error, "outside Flixarr") {
+			return RemovedOutside // it never reached the library
+		}
 		return "Removed from the library"
 	case "failed":
 		return "Unable to add this request"

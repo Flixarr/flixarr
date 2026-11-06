@@ -34,6 +34,7 @@ type fakeArr struct {
 	epFile  bool
 	noFile  bool // in the library without a file
 	gone    bool // movie 42 was deleted from Radarr
+	dropped bool // title 42 was unmonitored in Radarr/Sonarr by someone else
 	files   int  // series 42: episodes with files in seasons 1 and 2 (when hasFile is off)
 	deleted []string
 }
@@ -85,16 +86,17 @@ func (f *fakeArr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(`{"title":"Not Found","status":404}`))
 	case p == "movie/42":
-		json.NewEncoder(w).Encode(map[string]any{"id": 42, "hasFile": f.hasFile})
+		json.NewEncoder(w).Encode(map[string]any{"id": 42, "hasFile": f.hasFile, "monitored": !f.dropped})
 	case p == "series/42":
 		have := f.files
 		if f.hasFile {
 			have = 8
 		}
-		json.NewEncoder(w).Encode(map[string]any{"id": 42, "seasons": []any{
-			map[string]any{"seasonNumber": 1, "statistics": map[string]any{"episodeFileCount": have, "episodeCount": 8}},
-			map[string]any{"seasonNumber": 2, "statistics": map[string]any{"episodeFileCount": have, "episodeCount": 8}},
-			map[string]any{"seasonNumber": 3, "statistics": map[string]any{"episodeFileCount": 0, "episodeCount": 8}}}})
+		on := !f.dropped
+		json.NewEncoder(w).Encode(map[string]any{"id": 42, "monitored": on, "seasons": []any{
+			map[string]any{"seasonNumber": 1, "monitored": on, "statistics": map[string]any{"episodeFileCount": have, "episodeCount": 8}},
+			map[string]any{"seasonNumber": 2, "monitored": on, "statistics": map[string]any{"episodeFileCount": have, "episodeCount": 8}},
+			map[string]any{"seasonNumber": 3, "monitored": on, "statistics": map[string]any{"episodeFileCount": 0, "episodeCount": 8}}}})
 	case p == "series/77" && r.Method == http.MethodGet:
 		json.NewEncoder(w).Encode(map[string]any{"id": 77, "monitored": true, "seasons": []any{
 			map[string]any{"seasonNumber": 0, "monitored": false}, map[string]any{"seasonNumber": 1, "monitored": true}, map[string]any{"seasonNumber": 2, "monitored": false}, map[string]any{"seasonNumber": 3, "monitored": false}}})
@@ -708,7 +710,7 @@ func TestFix(t *testing.T) {
 	s, st, radarr, sonarr, admin, _ := setup(t)
 	ctx := context.Background()
 	r, _ := s.Create(ctx, admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix"})
-	radarr.cmds = nil
+	radarr.cmds, radarr.dropped = nil, true
 	// In Radarr but not monitored: turned on, then searched.
 	r, done, err := s.Fix(ctx, r)
 	if err != nil || !strings.Contains(done, "monitored") || !strings.Contains(done, "Search started") || len(radarr.cmds) != 1 {
@@ -778,6 +780,29 @@ func TestPlainWordsForUsers(t *testing.T) {
 		if h := hintFor(store.Request{Type: "movie", Status: "sent"}, l, false); strings.Contains(h, "Radarr") || strings.Contains(h, "Fix") {
 			t.Fatalf("hint for a user: %q", h)
 		}
+	}
+}
+
+func TestRemovedOutsideFlixarr(t *testing.T) {
+	s, st, radarr, sonarr, admin, _ := setup(t)
+	ctx := context.Background()
+	m, _ := s.Create(ctx, admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix"})
+	sr, _ := s.Create(ctx, admin, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad", Seasons: []int{1}})
+	s.checked = nil
+	s.Refresh(ctx)
+	if m, _ = st.Request(m.ID); m.Status != "sent" {
+		t.Fatalf("still wanted: %+v", m)
+	}
+	radarr.dropped, sonarr.dropped = true, true
+	s.checked = nil
+	s.Refresh(ctx)
+	m, _ = st.Request(m.ID)
+	sr, _ = st.Request(sr.ID)
+	if m.Status != "removed" || m.Error != "Removed from Radarr outside Flixarr" || sr.Status != "removed" || sr.Error != "Removed from Sonarr outside Flixarr" {
+		t.Fatalf("unmonitored outside Flixarr: %+v %+v", m, sr)
+	}
+	if got := ForViewer(m, false).Error; got != RemovedOutside {
+		t.Fatalf("users: %q", got)
 	}
 }
 
