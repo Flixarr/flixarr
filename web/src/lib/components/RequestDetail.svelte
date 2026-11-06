@@ -4,6 +4,7 @@
 	// step, the release, the folder and the buttons (approve, decline, try again, search again, open in
 	// Radarr / Sonarr, remove).
 	import { api, fmtDate, ago, meta, timeLeft, fmtBytes } from '#lib/api.ts';
+	import ConfirmPop from './ConfirmPop.svelte';
 	import { notify } from '#lib/toast.svelte.ts';
 	import EpisodesMismatch from './EpisodesMismatch.svelte';
 	import { can, session } from '#lib/session.svelte.ts';
@@ -152,8 +153,12 @@
 	{#if d && r}
 		<div class="space-y-5 p-5 text-sm">
 			{#if d.live.orderMismatch}<EpisodesMismatch tmdbId={r.tmdbId} ondone={load} />{/if}
-			{#if d.hint}<p class="rounded-lg px-3 py-2 ring-1 {r.status === 'failed' ? 'bg-red-500/10 text-red-200 ring-red-500/30' : 'bg-gray-800/60 text-gray-300 ring-gray-700/60'}">{d.hint}</p>{/if}
-			{#if admin && r.detail}<p class="-mt-3 text-[11px] text-gray-500">{r.detail}</p>{/if}
+			{#if d.hint || (admin && r.detail)}
+				<div class="rounded-lg px-3 py-2 ring-1 {r.status === 'failed' ? 'bg-red-500/10 text-red-200 ring-red-500/30' : 'bg-gray-800/60 text-gray-300 ring-gray-700/60'}">
+					{#if d.hint}<p>{d.hint}</p>{/if}
+					{#if admin && r.detail}<p class="mt-0.5 text-xs opacity-70">{r.detail}</p>{/if}
+				</div>
+			{/if}
 
 			<!-- Who asked for what -->
 			<section>
@@ -256,19 +261,15 @@
 					<div class="flex justify-end gap-2"><button class="btn-ghost px-3 py-1 text-xs" onclick={() => (declining = false)}>Cancel</button><button class="btn px-3 py-1 text-xs" disabled={!!busy} onclick={() => act('decline', { reason: reason.trim() })}>Decline</button></div>
 				</div>
 			{/if}
-			{#if removing}
-				<div class="space-y-2 rounded-lg bg-gray-800/50 p-3 text-xs text-gray-300">
-					<p>The request is removed. Anything already downloaded stays.</p>
-					<div class="flex justify-end gap-2"><button class="btn-ghost px-3 py-1 text-xs" onclick={() => (removing = false)}>Keep it</button><button class="btn px-3 py-1 text-xs" disabled={!!busy} onclick={remove}>Remove</button></div>
-				</div>
-			{/if}
 		</div>
 	{:else}
 		<p class="p-5 text-sm text-gray-400">Loading…</p>
 	{/if}
 	{#snippet footer()}
 		{#if r && admin}
-			<button class="mr-auto px-2 text-xs text-gray-500 hover:text-red-300" onclick={() => (removing = true)}>Remove</button>
+			<ConfirmPop bind:open={removing} class="mr-auto" text="The request is removed. Anything already downloaded stays." confirm="Remove" cancel="Keep it" busy={!!busy} onconfirm={remove}>
+				<button class="px-2 text-xs text-gray-500 hover:text-red-300" onclick={() => (removing = !removing)}>Remove</button>
+			</ConfirmPop>
 			{#if d?.live.link}<a href={d.live.link} target="_blank" rel="noopener" class="btn-ghost px-3 py-1.5 text-xs"><img src="/logos/{series ? 'sonarr' : 'radarr'}.svg" alt="" class="size-3.5" />Open in {d.live.server}</a>{/if}
 			{#if r.status === 'pending'}
 				<button class="btn-ghost px-3 py-1.5 text-xs" disabled={!!busy} onclick={() => ((declining = true), (reason = ''))}>Decline</button>
@@ -279,7 +280,9 @@
 				<FixMenu title={r.title} {series} live={d.live} search={() => act('fix')} redownload={() => (redoOpen = true)} ondone={load} />
 			{/if}
 		{:else if r && r.status === 'pending' && r.userId === session.me?.id}
-			<button class="mr-auto px-2 text-xs text-gray-500 hover:text-red-300" onclick={() => (removing = true)}>Cancel request</button>
+			<ConfirmPop bind:open={removing} class="mr-auto" text="The request is removed. Anything already downloaded stays." confirm="Remove" cancel="Keep it" busy={!!busy} onconfirm={remove}>
+				<button class="px-2 text-xs text-gray-500 hover:text-red-300" onclick={() => (removing = !removing)}>Cancel request</button>
+			</ConfirmPop>
 			<button class="btn-ghost" onclick={() => (open = false)}>Close</button>
 		{:else}
 			{#if r && d && fixable && can('redownload')}<span class="mr-auto"><FixMenu title={r.title} {series} live={d.live} redownload={() => (redoOpen = true)} ondone={load} /></span>{/if}
