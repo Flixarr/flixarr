@@ -45,10 +45,10 @@ func TestTest(t *testing.T) {
 	if _, err := (&Client{Kind: "radarr", URL: srv.URL, APIKey: "bad"}).Test(context.Background()); err == nil || !strings.Contains(err.Error(), "API key") {
 		t.Errorf("bad key error = %v", err)
 	}
-	if _, err := (&Client{Kind: "sonarr", URL: srv.URL, APIKey: "good"}).Test(context.Background()); err == nil || !strings.Contains(err.Error(), "that's Radarr, not Sonarr") {
+	if _, err := (&Client{Kind: "sonarr", URL: srv.URL, APIKey: "good"}).Test(context.Background()); err == nil || !strings.Contains(err.Error(), "This is Radarr, not Sonarr") {
 		t.Errorf("wrong app error = %v", err)
 	}
-	if _, err := (&Client{Kind: "radarr", URL: "http://127.0.0.1:1", APIKey: "good"}).Test(context.Background()); err == nil || !strings.Contains(err.Error(), "reach") {
+	if _, err := (&Client{Kind: "radarr", URL: "http://127.0.0.1:1", APIKey: "good"}).Test(context.Background()); err == nil || !strings.Contains(err.Error(), "no response") {
 		t.Errorf("unreachable error = %v", err)
 	}
 }

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -19,7 +18,7 @@ import (
 var Kinds = map[string]string{"radarr": "Radarr", "sonarr": "Sonarr"}
 
 // ErrNotFound: the server answered, but the movie or series asked for isn't on it (anymore).
-var ErrNotFound = errors.New("not on the server")
+var ErrNotFound = errors.New("not found (404)")
 
 // missingItem tells "no such movie/series" (a JSON problem reply with status 404) from a wrong address or
 // URL base, which gets an empty or non-JSON 404.
@@ -72,14 +71,14 @@ type Client struct {
 func NormalizeURL(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return "", errors.New("enter the address")
+		return "", errors.New("Address is required")
 	}
 	if !strings.Contains(raw, "://") {
 		raw = "http://" + raw
 	}
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return "", errors.New("that address doesn't look right; it should be like http://192.168.1.10:7878")
+		return "", errors.New("Invalid address (e.g. http://192.168.1.10:7878)")
 	}
 	u.Path = strings.TrimSuffix(strings.TrimRight(u.Path, "/"), "/api/v3")
 	u.Path = strings.TrimSuffix(u.Path, "/api")
@@ -137,21 +136,17 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 	}
 	res, err := hc.Do(req)
 	if err != nil {
-		var ne net.Error
-		if errors.As(err, &ne) && ne.Timeout() {
-			return errors.New("no answer in time; check the address and that it's running")
-		}
-		return errors.New("couldn't reach it; check the address and that it's running")
+		return errors.New("no response") // down, unreachable or too slow
 	}
 	defer res.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(res.Body, 8<<20))
 	switch {
 	case res.StatusCode == http.StatusUnauthorized:
-		return errors.New("the API key was refused")
+		return errors.New("API key rejected (401)")
 	case res.StatusCode == http.StatusNotFound && method == http.MethodGet && missingItem(body):
 		return ErrNotFound
 	case res.StatusCode == http.StatusNotFound && method == http.MethodGet:
-		return fmt.Errorf("this address doesn't answer like %s; check the address and any URL base", Kinds[c.Kind])
+		return fmt.Errorf("%s isn't at this address (404)", Kinds[c.Kind])
 	case res.StatusCode >= 300:
 		return &StatusError{Code: res.StatusCode, Body: firstMessage(body)}
 	}
@@ -159,7 +154,7 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 		return nil
 	}
 	if err := json.Unmarshal(body, out); err != nil {
-		return fmt.Errorf("this address doesn't answer like %s", Kinds[c.Kind])
+		return fmt.Errorf("%s isn't at this address", Kinds[c.Kind])
 	}
 	return nil
 }
@@ -172,9 +167,9 @@ type StatusError struct {
 
 func (e *StatusError) Error() string {
 	if e.Body != "" {
-		return fmt.Sprintf("it answered with an error (%d): %s", e.Code, e.Body)
+		return fmt.Sprintf("%s (%d)", e.Body, e.Code)
 	}
-	return fmt.Sprintf("it answered with an error (%d)", e.Code)
+	return fmt.Sprintf("error (%d)", e.Code)
 }
 
 // firstMessage pulls a readable message out of an error body: Radarr/Sonarr answer validation
@@ -203,9 +198,9 @@ func (c *Client) Test(ctx context.Context) (Info, error) {
 	}
 	if want := Kinds[c.Kind]; !strings.EqualFold(st.AppName, want) {
 		if st.AppName == "" {
-			return Info{}, fmt.Errorf("this address doesn't answer like %s", want)
+			return Info{}, fmt.Errorf("%s isn't at this address", want)
 		}
-		return Info{}, fmt.Errorf("that's %s, not %s", st.AppName, want)
+		return Info{}, fmt.Errorf("This is %s, not %s", st.AppName, want)
 	}
 	info := Info{Version: st.Version, Name: st.InstanceName, Profiles: []Profile{}, Folders: []Folder{}}
 	if err := c.get(ctx, "qualityprofile", &info.Profiles); err != nil {

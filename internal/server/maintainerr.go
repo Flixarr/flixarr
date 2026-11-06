@@ -30,7 +30,7 @@ func (s *Server) maintainerrGet(w http.ResponseWriter, r *http.Request, _ *store
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	if st, err := c.Status(ctx); err != nil {
-		out["error"] = capitalize(err.Error()) + "."
+		out["error"] = testErr(err)
 	} else {
 		out["version"] = st.Version
 		out["webhook"] = c.HasWebhook(ctx)
@@ -64,7 +64,7 @@ func (s *Server) maintainerrSet(w http.ResponseWriter, r *http.Request, _ *store
 	if in.URL != "" {
 		c := s.maintainerrClient(in.URL, in.APIKey, in.ClearKey)
 		if _, err := c.Status(r.Context()); err != nil {
-			writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+			writeErr(w, http.StatusBadGateway, testErr(err))
 			return
 		}
 		u, key := c.URL, c.APIKey
@@ -99,7 +99,7 @@ func (s *Server) maintainerrTest(w http.ResponseWriter, r *http.Request, _ *stor
 	}
 	st, err := s.maintainerrClient(in.URL, in.APIKey, false).Status(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadGateway, testErr(err))
 		return
 	}
 	writeJSON(w, http.StatusOK, st)
@@ -186,7 +186,7 @@ func (s *Server) maintainerrWebhook(w http.ResponseWriter, r *http.Request, _ *s
 		return
 	}
 	if err := c.AddWebhook(r.Context(), base+"/api/webhook/maintainerr/"+s.webhookToken()); err != nil {
-		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error()))
 		return
 	}
 	s.Store.SetSetting("webhook_base", base)
@@ -341,7 +341,7 @@ func (s *Server) leavingAct(w http.ResponseWriter, r *http.Request, u *store.Use
 		return
 	}
 	if err != nil {
-		writeErr(w, http.StatusConflict, capitalize(err.Error())+".")
+		writeErr(w, http.StatusConflict, capitalize(err.Error()))
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

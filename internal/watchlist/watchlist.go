@@ -76,7 +76,7 @@ func (w *Syncer) Fetch(ctx context.Context, token string) ([]Item, error) {
 		req.Header.Set("X-Plex-Product", "Flixarr")
 		res, err := hc.Do(req)
 		if err != nil {
-			return nil, errors.New("couldn't reach plex.tv")
+			return nil, errors.New("no response")
 		}
 		var page struct {
 			MediaContainer struct {
@@ -93,10 +93,10 @@ func (w *Syncer) Fetch(ctx context.Context, token string) ([]Item, error) {
 		err = json.NewDecoder(res.Body).Decode(&page)
 		res.Body.Close()
 		if res.StatusCode == http.StatusUnauthorized {
-			return nil, errors.New("plex.tv refused the sign-in; sign in to Flixarr again")
+			return nil, errors.New("sign-in expired (401)")
 		}
 		if res.StatusCode >= 300 || err != nil {
-			return nil, fmt.Errorf("plex.tv answered %s", res.Status)
+			return nil, fmt.Errorf("error (%d)", res.StatusCode)
 		}
 		for _, m := range page.MediaContainer.Metadata {
 			typ := map[string]string{"movie": "movie", "show": "series"}[m.Type]
@@ -153,7 +153,7 @@ func (w *Syncer) Run(ctx context.Context) (string, error) {
 		if err != nil {
 			w.Log.Warn("watchlist", "user", u.Username, "err", err)
 			if firstErr == nil {
-				firstErr = fmt.Errorf("%s: %w", u.Username, err)
+				firstErr = fmt.Errorf("There was an issue reading %s's Plex Watchlist: %w", u.Username, err)
 			}
 			continue
 		}

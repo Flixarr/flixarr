@@ -96,7 +96,7 @@ func (c *Client) Read(ctx context.Context, folder string) Snapshot {
 	snap := Snapshot{Health: []string{}, Queue: []QueueRow{}, Clients: []string{}, Folder: folder, UpdatedAt: time.Now().UTC()}
 	var st Status
 	if err := c.get(ctx, "system/status", &st); err != nil {
-		snap.Error = capitalize(err.Error()) + "."
+		snap.Error = "Unable to connect: " + err.Error()
 		return snap
 	}
 	snap.Connected, snap.Version = true, st.Version

@@ -134,7 +134,7 @@ func (s *Server) titleDelete(w http.ResponseWriter, r *http.Request, u *store.Us
 	if in.Files {
 		if _, kept := s.Store.KeepFor(typ, id); kept && s.Maint != nil {
 			if err := s.Maint.LetGo(ctx, typ, id); err != nil {
-				writeErr(w, http.StatusConflict, "Maintainerr didn't let go of it: "+err.Error()+".")
+				writeErr(w, http.StatusConflict, capitalize(err.Error()))
 				return
 			}
 		}

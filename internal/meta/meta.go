@@ -6,7 +6,6 @@ package meta
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -153,11 +152,11 @@ func (c *Client) Config() Config {
 func (c *Client) SetConfig(cfg Config) error {
 	for _, m := range []int{cfg.PagesMin, cfg.ListsMin, cfg.SearchesMin} {
 		if m < 24*60 || m > 30*24*60 {
-			return errors.New("keep times must be between 1 day and 30 days")
+			return errors.New("Keep times must be between 1 and 30 days")
 		}
 	}
 	if cfg.MaxResults < 100 || cfg.MaxResults > 1000000 {
-		return errors.New("the size limit must be between 100 and 1,000,000 results")
+		return errors.New("The size limit must be between 100 and 1,000,000 results")
 	}
 	for k, v := range map[string]string{
 		keyEnabled: strconv.FormatBool(cfg.Enabled), keyAuto: strconv.FormatBool(cfg.Auto), keyPages: strconv.Itoa(cfg.PagesMin), keyLists: strconv.Itoa(cfg.ListsMin),
@@ -324,7 +323,7 @@ func (c *Client) fetch(ctx context.Context, u string) ([]byte, int, time.Duratio
 	}
 	res, err := c.HTTP.Do(req)
 	if err != nil {
-		return nil, 0, 0, fmt.Errorf("Flixarr API: %w", err)
+		return nil, 0, 0, errors.New("Unable to connect to the Flixarr API: no response")
 	}
 	defer res.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(res.Body, 8<<20))

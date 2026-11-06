@@ -18,7 +18,7 @@
 			hide = (await api<{ hide: boolean }>('/settings/blocklist', { method: 'PUT', body: JSON.stringify({ hide: on }) })).hide;
 			notify(on ? 'Blocked titles are hidden from everyone who doesn\'t manage requests.' : "Blocked titles show again, as Can't be requested.");
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to save these settings', 'orange');
 		}
 	}
 	async function unblock(b: Blocked) {
@@ -28,7 +28,7 @@
 			remember(`${b.type}:${b.tmdbId}`, null);
 			notify(`${b.title} can be requested again.`);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not unblock it.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to unblock this', 'orange');
 		}
 	}
 </script>

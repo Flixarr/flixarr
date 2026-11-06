@@ -110,7 +110,7 @@ func (m *Monitor) refresh(ctx context.Context, force bool) (string, error) {
 	if up == len(servers) {
 		return fmt.Sprintf("%d of %d connected", up, len(servers)), nil
 	}
-	return fmt.Sprintf("%d of %d connected", up, len(servers)), fmt.Errorf("%d not reachable", len(servers)-up)
+	return fmt.Sprintf("%d of %d connected", up, len(servers)), fmt.Errorf("There was an issue connecting to %d server%s", len(servers)-up, map[bool]string{true: "s"}[len(servers)-up != 1])
 }
 
 // told is the last problem sent out for a server, and when it cleared.

@@ -27,9 +27,9 @@
 		try {
 			await api(`/services/${k.kind}/webhook`, { method: 'POST', body: JSON.stringify({ base: base.trim() }) });
 			added = { ...added, [k.kind]: true };
-			notify(`${k.name} now tells Flixarr about grabs, imports and problems right away.`);
+			notify(`${k.name} now tells Flixarr about grabs, imports and problems right away`);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not add it.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to add the webhook', 'orange');
 		} finally {
 			busy = '';
 		}

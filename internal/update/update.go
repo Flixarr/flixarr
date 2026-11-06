@@ -108,7 +108,7 @@ func (c *Checker) Payload() map[string]string {
 // Check asks the data server now and stores the answer.
 func (c *Checker) Check(ctx context.Context) (*Result, error) {
 	if !c.Enabled() {
-		return nil, fmt.Errorf("update checks are turned off")
+		return nil, fmt.Errorf("Update checks are disabled")
 	}
 	q := url.Values{}
 	for k, v := range c.Payload() {
@@ -125,7 +125,7 @@ func (c *Checker) Check(ctx context.Context) (*Result, error) {
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("data server answered %s", res.Status)
+		return nil, fmt.Errorf("Unable to check for updates: error (%d)", res.StatusCode)
 	}
 	var r Result
 	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {

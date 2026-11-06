@@ -42,7 +42,7 @@
 			delete changes[`${kind}:${key}`];
 			notify(what === 'skip' ? 'Skipped. The next version will be offered when it comes.' : 'Updated.');
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not do that.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to do that', 'orange');
 		} finally {
 			busy = '';
 		}
@@ -53,7 +53,7 @@
 		try {
 			[info, servers] = await Promise.all([api<Info>('/profiles'), api<Record<ServiceKind, ServiceView | null>>('/services')]);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Could not load the profiles.';
+			error = e instanceof Error ? e.message : 'Unable to load the profiles';
 		}
 	}
 	$effect(() => {
@@ -69,7 +69,7 @@
 			await load();
 			notify('Quality profiles synced.');
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not sync.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to sync', 'orange');
 		} finally {
 			syncing = false;
 		}

@@ -67,15 +67,15 @@ func (m *Manager) Refresh(ctx context.Context) (bool, error) {
 	}
 	res, err := hc.Do(req)
 	if err != nil {
-		return false, fmt.Errorf("couldn't reach the Flixarr API: %w", err)
+		return false, errors.New("Unable to connect to the Flixarr API: no response")
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("the Flixarr API answered %s", res.Status)
+		return false, fmt.Errorf("Unable to connect to the Flixarr API: error (%d)", res.StatusCode)
 	}
 	var d Doc
 	if err := json.NewDecoder(res.Body).Decode(&d); err != nil || d.Version == "" {
-		return false, errors.New("the Flixarr API sent profiles Flixarr can't read")
+		return false, errors.New("Unable to read the profiles from the Flixarr API")
 	}
 	old := m.Doc()
 	changed := old == nil || old.Version != d.Version
@@ -207,7 +207,7 @@ func (m *Manager) ensureFormats(ctx context.Context, s *server, d *Doc, b Body) 
 	for _, fi := range b.FormatItems {
 		want, ok := lib[fi.Name]
 		if !ok {
-			return nil, fmt.Errorf("the profiles are missing custom format %q", fi.Name)
+			return nil, fmt.Errorf("The profiles are missing custom format %s", fi.Name)
 		}
 		h := specHash(want.Specifications)
 		if l, ok := links[fi.Name]; ok {
@@ -215,7 +215,7 @@ func (m *Manager) ensureFormats(ctx context.Context, s *server, d *Doc, b Body) 
 				if l.Owned && specHash(cur.Specifications) != h {
 					body := arrFormat{ID: cur.ID, Name: cur.Name, IncludeCustomFormatWhenRenaming: want.IncludeCustomFormatWhenRenaming, Specifications: want.Specifications}
 					if err := s.c.Put(ctx, fmt.Sprintf("customformat/%d", cur.ID), body, nil); err != nil {
-						return nil, fmt.Errorf("couldn't update custom format %q: %w", cur.Name, err)
+						return nil, fmt.Errorf("Unable to update custom format %s: %w", cur.Name, err)
 					}
 					m.Store.SaveFormatLink(store.FormatLink{ServerID: s.v.ID, Name: fi.Name, ArrID: cur.ID, Owned: true, SpecHash: h})
 				}
@@ -245,7 +245,7 @@ func (m *Manager) ensureFormats(ctx context.Context, s *server, d *Doc, b Body) 
 		} else {
 			body := arrFormat{Name: name, IncludeCustomFormatWhenRenaming: want.IncludeCustomFormatWhenRenaming, Specifications: want.Specifications}
 			if err := s.c.Post(ctx, "customformat", body, &created); err != nil {
-				return nil, fmt.Errorf("couldn't add custom format %q: %w", name, err)
+				return nil, fmt.Errorf("Unable to add custom format %s: %w", name, err)
 			}
 			created.Name = name
 			s.formats = append(s.formats, created)
@@ -260,7 +260,7 @@ func (m *Manager) ensureFormats(ctx context.Context, s *server, d *Doc, b Body) 
 // push adds or replaces one Flixarr profile on the server and records it.
 func (m *Manager) push(ctx context.Context, s *server, d *Doc, p Profile, arrID int) error {
 	if testinstall.On {
-		return errors.New("quality profiles aren't pushed from a dev install: it shares Radarr and Sonarr with the real one")
+		return errors.New("Quality profiles aren't added from a dev install")
 	}
 	ap := p.For(s.v.Kind)
 	if ap == nil {
@@ -276,7 +276,7 @@ func (m *Manager) push(ctx context.Context, s *server, d *Doc, p Profile, arrID 
 	}
 	body, err := buildProfile(ArrName(p), ap.Profile, s.schema, ids, s.formats, s.languages)
 	if err != nil {
-		return fmt.Errorf("%s: %w", p.Label, err)
+		return fmt.Errorf("Unable to add %s: %w", p.Label, err)
 	}
 	var saved arrProfile
 	if arrID == 0 {
@@ -294,7 +294,7 @@ func (m *Manager) push(ctx context.Context, s *server, d *Doc, p Profile, arrID 
 		err = s.c.Put(ctx, fmt.Sprintf("qualityprofile/%d", arrID), body, &saved)
 	}
 	if err != nil {
-		return fmt.Errorf("couldn't save %s in %s: %w", body.Name, arr.Kinds[s.v.Kind], err)
+		return fmt.Errorf("Unable to save %s in %s: %w", body.Name, arr.Kinds[s.v.Kind], err)
 	}
 	// Read it back as Radarr/Sonarr stored it, so later edits there can be spotted.
 	if err := s.c.Get(ctx, fmt.Sprintf("qualityprofile/%d", saved.ID), &saved); err != nil {
@@ -434,7 +434,7 @@ func (m *Manager) SyncAll(ctx context.Context) (string, error) {
 		msg += " (new version)"
 	}
 	if failed > 0 {
-		return msg, fmt.Errorf("%d server(s) couldn't be synced", failed)
+		return msg, fmt.Errorf("There was an issue syncing %d server%s", failed, map[bool]string{true: "s"}[failed != 1])
 	}
 	return msg, nil
 }

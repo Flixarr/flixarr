@@ -54,12 +54,12 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 	}
 	res, err := hc.Do(req)
 	if err != nil {
-		return errors.New("couldn't reach it; check the address and that it's running")
+		return errors.New("no response")
 	}
 	defer res.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(res.Body, 16<<20))
 	if res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden {
-		return errors.New("Maintainerr refused the API key")
+		return errors.New("API key rejected (401)")
 	}
 	if res.StatusCode >= 300 {
 		var m struct {
@@ -67,15 +67,15 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 		}
 		json.Unmarshal(b, &m)
 		if s, ok := m.Message.(string); ok && s != "" {
-			return fmt.Errorf("Maintainerr answered %d: %s", res.StatusCode, s)
+			return fmt.Errorf("%s (%d)", s, res.StatusCode)
 		}
-		return fmt.Errorf("Maintainerr answered %d", res.StatusCode)
+		return fmt.Errorf("error (%d)", res.StatusCode)
 	}
 	if out == nil || len(b) == 0 {
 		return nil
 	}
 	if err := json.Unmarshal(b, out); err != nil {
-		return errors.New("this address doesn't answer like Maintainerr")
+		return errors.New("Maintainerr isn't at this address")
 	}
 	return nil
 }
@@ -90,7 +90,7 @@ func (c *Client) Status(ctx context.Context) (Status, error) {
 	var s Status
 	err := c.do(ctx, http.MethodGet, "/app/status", nil, &s)
 	if err == nil && s.Version == "" {
-		err = errors.New("this address doesn't answer like Maintainerr")
+		err = errors.New("Maintainerr isn't at this address")
 	}
 	return s, err
 }
@@ -184,7 +184,7 @@ func (c *Client) exclusion(ctx context.Context, plexID string, action int) error
 		return err
 	}
 	if res.Code == 0 && res.Result != "" && !strings.Contains(strings.ToLower(res.Result), "success") {
-		return fmt.Errorf("Maintainerr said: %s", res.Result)
+		return errors.New(res.Result)
 	}
 	return nil
 }
@@ -229,7 +229,7 @@ func (c *Client) AddWebhook(ctx context.Context, url string) error {
 		}
 	}
 	if id == 0 {
-		return errors.New("Maintainerr didn't keep the webhook")
+		return errors.New("Unable to add the webhook: Maintainerr didn't save it")
 	}
 	var rules []struct {
 		ID int `json:"id"`

@@ -60,7 +60,7 @@
 			notify(`Connected to Maintainerr ${info.version ?? ''}. Reading its collections now.`);
 			setTimeout(() => load().catch(() => {}), 3000);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not connect.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to connect', 'orange');
 		} finally {
 			busy = '';
 		}
@@ -82,7 +82,7 @@
 			info = await api<Info>('/maintainerr', { method: 'PUT', body: JSON.stringify({ protectDays: days }) });
 			notify(days ? `New requests stay out of Maintainerr's rules for ${days} days after they arrive.` : 'New requests are no longer kept out of the rules.');
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to save these settings', 'orange');
 		}
 	}
 	async function hook() {
@@ -92,7 +92,7 @@
 			info = { ...info!, webhook: true };
 			notify('Maintainerr now tells Flixarr the moment its collections change.');
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not add it.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to add the webhook', 'orange');
 		} finally {
 			busy = '';
 		}

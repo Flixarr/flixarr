@@ -63,7 +63,7 @@
 			saved![k] = await api<ServiceView>(`/services/${k}/refresh`, { method: 'POST' });
 			notify(`${saved![k]!.name} refreshed.`);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not refresh.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to refresh', 'orange');
 		} finally {
 			refreshing = null;
 			more = null;
@@ -175,7 +175,7 @@
 			found = (await api<{ found: { url: string }[] }>(`/services/${kind}/discover`, { method: 'POST' })).found.map((f) => f.url);
 			if (found.length === 1) pick(found[0]);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Search failed.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to search', 'orange');
 		} finally {
 			finding = false;
 		}
@@ -201,7 +201,7 @@
 			await test(true); // the new profile shows up in the default quality list
 			notify(action === 'add' ? 'Profile added.' : "Flixarr's version is back in place.");
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not do that.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to do that', 'orange');
 		} finally {
 			profileBusy = '';
 		}
@@ -236,7 +236,7 @@
 			if (v.warning) notify(v.warning, 'orange');
 			else notify(wasNew && form.addProfiles.length ? `${v.name} added, with Flixarr's quality profiles.` : `${v.name} saved.`);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not save.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to save this server', 'orange');
 		} finally {
 			saving = false;
 		}
@@ -251,7 +251,7 @@
 			open = false;
 			notify(`${n} removed.`);
 		} catch (e) {
-			notify(e instanceof Error ? e.message : 'Could not remove.', 'orange');
+			notify(e instanceof Error ? e.message : 'Unable to remove this server', 'orange');
 		}
 	}
 

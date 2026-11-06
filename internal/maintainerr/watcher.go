@@ -285,7 +285,7 @@ func (w *Watcher) plexID(typ string, tmdbID int) (string, error) {
 	if got, _ := w.Store.PlexItemsFor([]string{key(typ, tmdbID)}); len(got) > 0 {
 		return got[key(typ, tmdbID)].RatingKey, nil
 	}
-	return "", errors.New("it isn't in Plex")
+	return "", errors.New("This isn't in Plex")
 }
 
 // Keep keeps a title out of Maintainerr's rules for good (an admin's call).
@@ -299,7 +299,7 @@ func (w *Watcher) Keep(ctx context.Context, typ string, tmdbID int, by int64) er
 		return err
 	}
 	if err := c.Exclude(ctx, id); err != nil {
-		return err
+		return fmt.Errorf("Unable to keep this in Maintainerr: %w", err)
 	}
 	w.Store.DropKeep(typ, tmdbID) // a fresh keep becomes a lasting one
 	w.Store.SaveKeep(store.Keep{Type: typ, TmdbID: tmdbID, PlexID: id, Reason: "kept", ByUser: by})
@@ -323,7 +323,7 @@ func (w *Watcher) LetGo(ctx context.Context, typ string, tmdbID int) error {
 		return err
 	}
 	if err := c.Unexclude(ctx, id); err != nil {
-		return err
+		return fmt.Errorf("Unable to let go of this in Maintainerr: %w", err)
 	}
 	w.Store.DropKeep(typ, tmdbID)
 	w.Store.ClearKeepAsks(typ, tmdbID)
@@ -340,10 +340,10 @@ func (w *Watcher) Postpone(ctx context.Context, typ string, tmdbID, days int) er
 	}
 	l, ok := w.Store.WasLeaving(typ, tmdbID)
 	if !ok || l.SeenAt != w.Seen() {
-		return errors.New("it isn't leaving")
+		return errors.New("This isn't leaving")
 	}
 	if err := c.Postpone(ctx, l.CollectionID, l.PlexID, days); err != nil {
-		return err
+		return fmt.Errorf("Unable to add %d days in Maintainerr: %w", days, err)
 	}
 	w.Store.ClearKeepAsks(typ, tmdbID)
 	w.asksChanged()
@@ -354,7 +354,7 @@ func (w *Watcher) Postpone(ctx context.Context, typ string, tmdbID, days int) er
 // Ask records that someone wants a leaving title kept; the admins' bell counts open asks.
 func (w *Watcher) Ask(typ string, tmdbID int, userID int64) error {
 	if l, ok := w.Store.WasLeaving(typ, tmdbID); !ok || l.SeenAt != w.Seen() {
-		return errors.New("it isn't leaving")
+		return errors.New("This isn't leaving")
 	}
 	if err := w.Store.AskToKeep(typ, tmdbID, userID); err != nil {
 		return err

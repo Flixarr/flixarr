@@ -97,7 +97,7 @@ func buildProfile(name string, b Body, schema arrProfile, formatIDs map[string]i
 	single := func(n string, allowed bool) (arrItem, error) {
 		q, ok := quals[n]
 		if !ok {
-			return arrItem{}, fmt.Errorf("this server has no quality named %q", n)
+			return arrItem{}, fmt.Errorf("This server has no quality named %s", n)
 		}
 		used[n] = true
 		return arrItem{Quality: q, Items: []arrItem{}, Allowed: allowed}, nil
@@ -132,7 +132,7 @@ func buildProfile(name string, b Body, schema arrProfile, formatIDs map[string]i
 		}
 	}
 	if cutoff < 0 {
-		return arrProfile{}, fmt.Errorf("cutoff %q isn't one of the profile's qualities", b.Cutoff)
+		return arrProfile{}, fmt.Errorf("Cutoff %s isn't one of the profile's qualities", b.Cutoff)
 	}
 	// Qualities the profile doesn't mention are kept, not allowed, at the bottom.
 	var rest []string
@@ -156,7 +156,7 @@ func buildProfile(name string, b Body, schema arrProfile, formatIDs map[string]i
 	for _, f := range b.FormatItems {
 		id, ok := formatIDs[f.Name]
 		if !ok {
-			return arrProfile{}, fmt.Errorf("custom format %q wasn't added", f.Name)
+			return arrProfile{}, fmt.Errorf("Custom format %s wasn't added", f.Name)
 		}
 		scores[id] = f.Score
 	}

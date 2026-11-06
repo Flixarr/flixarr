@@ -144,12 +144,12 @@ func (s *Server) serviceTest(w http.ResponseWriter, r *http.Request, _ *store.Us
 	}
 	c, _, _, err := s.serviceClient(r.PathValue("kind"), in)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadRequest, capitalize(err.Error()))
 		return
 	}
 	info, err := c.Test(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadGateway, testErr(err))
 		return
 	}
 	writeJSON(w, http.StatusOK, info)
@@ -164,7 +164,7 @@ func (s *Server) serviceSave(w http.ResponseWriter, r *http.Request, _ *store.Us
 	kind := r.PathValue("kind")
 	c, saved, exists, err := s.serviceClient(kind, in)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadRequest, capitalize(err.Error()))
 		return
 	}
 	info, err := c.Test(r.Context())
@@ -222,7 +222,7 @@ func (s *Server) serviceSave(w http.ResponseWriter, r *http.Request, _ *store.Us
 	warn := ""
 	if len(in.AddProfiles) > 0 {
 		if err := s.Profiles.Add(r.Context(), v, in.AddProfiles); err != nil {
-			warn = "Saved, but Flixarr's quality profiles couldn't be added: " + err.Error() + "."
+			warn = "Saved, but unable to add Flixarr's quality profiles: " + err.Error()
 		} else if in.DefaultProfile != "" {
 			links, _ := s.Store.ProfileLinks(v.ID)
 			for _, l := range links {
@@ -272,7 +272,7 @@ func (s *Server) serviceProfilesAdd(w http.ResponseWriter, r *http.Request, _ *s
 	}
 	json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in)
 	if err := s.Profiles.Add(r.Context(), v, in.Keys); err != nil {
-		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error()))
 		return
 	}
 	writeJSON(w, http.StatusOK, s.viewOf(v))
@@ -286,7 +286,7 @@ func (s *Server) serviceProfileUseFlixarr(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if err := s.Profiles.UseFlixarrVersion(r.Context(), v, r.PathValue("key")); err != nil {
-		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error()))
 		return
 	}
 	writeJSON(w, http.StatusOK, s.viewOf(v))
@@ -300,7 +300,7 @@ func (s *Server) serviceProfileSkip(w http.ResponseWriter, r *http.Request, _ *s
 		return
 	}
 	if err := s.Profiles.Skip(v, r.PathValue("key")); err != nil {
-		writeErr(w, http.StatusBadRequest, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadRequest, capitalize(err.Error()))
 		return
 	}
 	writeJSON(w, http.StatusOK, s.viewOf(v))
@@ -315,7 +315,7 @@ func (s *Server) serviceProfileChanges(w http.ResponseWriter, r *http.Request, _
 	}
 	c, err := s.Profiles.Changes(r.Context(), v, r.PathValue("key"))
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error()))
 		return
 	}
 	writeJSON(w, http.StatusOK, c)
@@ -326,7 +326,7 @@ func (s *Server) profilesInfo(w http.ResponseWriter, r *http.Request, _ *store.U
 	d := s.Profiles.Doc()
 	if d == nil {
 		if _, err := s.Profiles.Refresh(r.Context()); err != nil {
-			writeErr(w, http.StatusBadGateway, capitalize(err.Error())+".")
+			writeErr(w, http.StatusBadGateway, capitalize(err.Error()))
 			return
 		}
 		d = s.Profiles.Doc()
@@ -415,4 +415,14 @@ func (s *Server) serviceDelete(w http.ResponseWriter, r *http.Request, _ *store.
 		s.Log.Info("service removed", "kind", kind)
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// testErr is a failed connection test: the app's own words when it named itself ("This is Sonarr, not
+// Radarr"), otherwise "Unable to connect: {reason}".
+func testErr(err error) string {
+	msg := err.Error()
+	if strings.HasPrefix(msg, "This is ") || strings.HasSuffix(msg, "isn't at this address") {
+		return msg
+	}
+	return "Unable to connect: " + msg
 }

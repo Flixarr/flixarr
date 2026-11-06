@@ -70,7 +70,7 @@ func (c *Cache) Days() int {
 // SetConfig saves the image cache settings.
 func (c *Cache) SetConfig(enabled bool, days int) error {
 	if days < 1 || days > 365 {
-		return errors.New("keep unused images between 1 and 365 days")
+		return errors.New("Must be between 1 and 365 days")
 	}
 	if err := c.Store.SetSetting(keyEnabled, strconv.FormatBool(enabled)); err != nil {
 		return err
