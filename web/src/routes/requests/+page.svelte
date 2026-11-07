@@ -65,12 +65,12 @@
 	// Where a request is. Waiting for approval needs attention from people who approve; for everyone else
 	// it's on its way.
 	const groupOf = (r: Request) =>
-		r.status === 'available' ? 'ready'
+		r.status === 'available' || r.status === 'partial' ? 'ready'
 		: r.status === 'declined' || r.status === 'expired' || r.status === 'removed' ? 'ended'
 		: r.status === 'failed' || r.trouble || (r.status === 'pending' && admin) ? 'attention'
 		: 'onway';
 	const inGroup = (r: Request, g: typeof group) => g === 'all' || (g === 'issues' ? issuesOf(r).length > 0 : groupOf(r) === g);
-	const ORDER = ['pending', 'failed', 'importing', 'downloading', 'grabbed', 'sent', 'approved', 'available', 'declined', 'removed', 'expired'];
+	const ORDER = ['pending', 'failed', 'importing', 'downloading', 'grabbed', 'sent', 'approved', 'partial', 'available', 'declined', 'removed', 'expired'];
 	const scoped = $derived((list ?? []).filter((r) => scope === 'all' || r.userId === session.me?.id));
 	const shown = $derived.by(() => {
 		const q = query.trim().toLowerCase();
@@ -140,7 +140,7 @@
 		approve: (r) => r.status === 'pending',
 		decline: (r) => r.status === 'pending',
 		retry: (r) => r.status === 'failed',
-		fix: (r) => ['approved', 'sent', 'grabbed', 'downloading', 'importing'].includes(r.status),
+		fix: (r) => ['approved', 'sent', 'grabbed', 'downloading', 'importing', 'partial'].includes(r.status),
 		delete: () => true
 	};
 	const ACTS: [Act, string, string][] = [['approve', 'Approve', 'btn'], ['decline', 'Decline', 'btn-ghost'], ['retry', 'Try again', 'btn-ghost'], ['fix', 'Fix', 'btn-ghost'], ['delete', 'Delete', 'btn-ghost text-red-300']];

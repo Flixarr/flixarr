@@ -62,7 +62,7 @@
 	const openReq = $derived(info?.requests.find((r) => !['failed', 'declined', 'expired', 'removed'].includes(r.status)));
 	const current = $derived.by(() => {
 		if (!info) return null;
-		if (openReq) return { label: text(openReq.status, openReq.progress), tone: TONE[openReq.status] ?? NEUTRAL };
+		if (openReq) return { label: text(openReq.status, openReq.progress, series), tone: TONE[openReq.status] ?? NEUTRAL };
 		if (info.plex) return { label: 'Available', tone: TONE.available! };
 		if (info.live.hasFile) return { label: `In ${info.live.server}, not in Plex yet`, tone: NEUTRAL };
 		if (info.live.inArr) return { label: info.live.monitored ? `In ${info.live.server}, no file yet` : `In ${info.live.server}, not monitored`, tone: NEUTRAL };
@@ -202,7 +202,7 @@
 									<span class="block truncate text-sm font-medium text-gray-100">{r.source === 'redownload' ? 'Redownload by ' : ''}{r.userName || 'Someone'}</span>
 									<span class="block truncate text-[11px] text-gray-500">{[askedFor(r), r.profileName, fmtDate(r.createdAt, { month: 'short', day: 'numeric', year: 'numeric' })].filter(Boolean).join(' · ')}</span>
 								</span>
-								<span class="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 {TONE[r.status] ?? NEUTRAL}">{text(r.status, r.progress)}</span>
+								<span class="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 {TONE[r.status] ?? NEUTRAL}">{text(r.status, r.progress, series)}</span>
 								<Icon name="chevron" class="size-3.5 shrink-0 text-gray-500" />
 							</button>
 						{/each}

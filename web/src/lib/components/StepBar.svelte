@@ -8,7 +8,7 @@
 
 	const names = $derived(full ? STEPS : SIMPLE_STEPS);
 	const at = $derived(full ? step(status) : (simple(status, progress)?.step ?? -1));
-	const done = $derived(status === 'available');
+	const done = $derived(status === 'available' || status === 'partial');
 	// The current step's own fill: download progress while downloading, full once it's past downloading.
 	const now = $derived(status === 'downloading' ? progress : status === 'importing' || done ? 100 : 15);
 </script>

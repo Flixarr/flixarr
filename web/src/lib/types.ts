@@ -134,7 +134,7 @@ export interface ArrInfo {
 
 export interface Request {
 	id: number; type: 'movie' | 'series'; tmdbId: number; title: string; year: string; poster: string; backdrop: string;
-	userId: number; userName: string; status: 'pending' | 'approved' | 'declined' | 'sent' | 'grabbed' | 'downloading' | 'importing' | 'available' | 'failed' | 'expired' | 'removed';
+	userId: number; userName: string; status: 'pending' | 'approved' | 'declined' | 'sent' | 'grabbed' | 'downloading' | 'importing' | 'partial' | 'available' | 'failed' | 'expired' | 'removed';
 	serverId: number; arrId: number; profileId: number; profileName: string; mode: 'all' | 'seasons' | 'episodes'; seasons: number[]; episodes: [number, number][]; progress: number; error: string; anime: boolean; source?: string; detail?: string; userAvatar?: string;
 	createdAt: string; updatedAt: string;
 	trouble?: boolean; // its download is stuck in Radarr / Sonarr right now

@@ -41,7 +41,7 @@ type Request struct {
 }
 
 // OpenStatuses are the statuses of a request still in play (one per title at a time).
-var OpenStatuses = []string{"pending", "approved", "sent", "grabbed", "downloading", "importing", "available"}
+var OpenStatuses = []string{"pending", "approved", "sent", "grabbed", "downloading", "importing", "partial", "available"}
 
 const requestCols = `r.id, r.type, r.tmdb_id, r.title, r.year, r.poster, r.backdrop, r.user_id, COALESCE(u.username, ''), r.status, COALESCE(r.server_id, 0), r.arr_id, r.profile_id, r.profile_name, r.mode, r.seasons, r.progress, r.error, r.anime, r.created_at, r.updated_at, r.episodes, r.source, COALESCE(u.avatar, ''), r.unreleased`
 
@@ -227,7 +227,7 @@ func coverageOf(list []Request) Coverage {
 
 // ActiveRequests lists requests that went to a Radarr/Sonarr and aren't available yet (the request follow loop watches them).
 func (s *Store) ActiveRequests() ([]Request, error) {
-	return s.queryRequests(`SELECT ` + requestCols + ` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.status IN ('sent', 'grabbed', 'downloading', 'importing') AND r.arr_id != 0`)
+	return s.queryRequests(`SELECT ` + requestCols + ` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.status IN ('sent', 'grabbed', 'downloading', 'importing', 'partial') AND r.arr_id != 0`)
 }
 
 func (s *Store) queryRequests(q string, args ...any) ([]Request, error) {
@@ -380,7 +380,7 @@ func (s *Store) RequestsIn(statuses ...string) ([]Request, error) {
 
 // ActiveRequestsFor lists the active requests for one Radarr/Sonarr item (a webhook names it by its own ID).
 func (s *Store) ActiveRequestsFor(typ string, arrID int) ([]Request, error) {
-	return s.queryRequests(`SELECT `+requestCols+` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.type = ? AND r.arr_id = ? AND r.status IN ('sent', 'grabbed', 'downloading', 'importing')`, typ, arrID)
+	return s.queryRequests(`SELECT `+requestCols+` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.type = ? AND r.arr_id = ? AND r.status IN ('sent', 'grabbed', 'downloading', 'importing', 'partial')`, typ, arrID)
 }
 
 // AvailableRequests lists the available requests for these titles ("movie:603" keys); with series set it

@@ -27,7 +27,7 @@
 	const asked = $derived(r.type === 'movie' ? 'Movie' : askedFor(r));
 	const replies = $derived(issues.reduce((n, i) => n + i.comments, 0));
 	const first = $derived(issues[0]);
-	const moving = $derived(r.status === 'downloading' && r.progress > 0);
+	const moving = $derived((r.status === 'downloading' || r.status === 'partial') && r.progress > 0);
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -56,9 +56,9 @@
 	{#if manager}<div class="hidden truncate text-xs text-gray-400 laptop:block">{r.profileName || 'Default'}</div>{/if}
 
 	<div class="flex flex-col items-end gap-1.5 laptop:items-start">
-		<StatusPill status={r.status} progress={r.progress} />
+		<StatusPill status={r.status} progress={r.progress} series={r.type === 'series'} />
 		{#if moving}
-			<div class="flex w-24 items-center gap-1.5 laptop:w-full"><div class="h-1 flex-1 overflow-hidden rounded-full bg-gray-700/70"><div class="h-full rounded-full bg-blue-400" style="width:{r.progress}%"></div></div><span class="text-[10px] tabular-nums text-blue-300">{r.progress}%</span></div>
+			<div class="flex w-24 items-center gap-1.5 laptop:w-full"><div class="h-1 flex-1 overflow-hidden rounded-full bg-gray-700/70"><div class="h-full rounded-full bg-blue-400" style="width:{r.progress}%"></div></div>{#if r.type !== 'series'}<span class="text-[10px] tabular-nums text-blue-300">{r.progress}%</span>{/if}</div>
 		{/if}
 		{#if manager && r.status === 'pending'}
 			<div class="flex gap-1.5">

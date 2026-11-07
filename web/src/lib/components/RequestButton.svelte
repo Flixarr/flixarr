@@ -59,10 +59,10 @@
 </script>
 
 {#snippet pill(r: RequestBrief)}
-	{@const st = simple(r.status, r.progress)}
+	{@const st = simple(r.status, r.progress, item.type === 'series')}
 	{#if st}
 		<button class="act inline-flex items-center rounded-lg font-medium ring-1 {st.tone}" onclick={() => (detailOpen = true)}>
-			{#if r.status === 'available'}<Icon name="check" class="size-4" />{/if}{st.label}{#if waitingRelease(r)} · not released yet{/if}
+			{#if r.status === 'available' || r.status === 'partial'}<Icon name="check" class="size-4" />{/if}{st.label}{#if waitingRelease(r)} · not released yet{/if}
 		</button>
 	{/if}
 {/snippet}

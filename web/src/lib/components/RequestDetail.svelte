@@ -138,7 +138,7 @@
 						<div class="text-[11px] text-gray-400">{facts.join(' · ')}</div>
 						<a href="/{r.type}/{r.tmdbId}" class="text-xl font-bold leading-tight hover:underline">{r.title}</a>
 						<div class="mt-2 flex flex-wrap items-center gap-2">
-							<StatusPill status={r.status} progress={r.progress} exact={admin} class="px-2.5 py-1 text-xs" />
+							<StatusPill status={r.status} progress={r.progress} series={r.type === 'series'} exact={admin} class="px-2.5 py-1 text-xs" />
 							{#if d?.issues?.length}<span class="inline-flex items-center gap-1 rounded-lg bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-300 ring-1 ring-amber-500/40"><Icon name="issues" class="size-3.5" />{d.issues.length === 1 ? '1 open issue' : `${d.issues.length} open issues`}</span>{/if}
 							{#if took}<span class="text-xs text-gray-400">Arrived in {took}</span>{/if}
 						</div>

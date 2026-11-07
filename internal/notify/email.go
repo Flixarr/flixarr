@@ -65,7 +65,7 @@ func sendMail(ctx context.Context, c Config, to []string, m Message) error {
 }
 
 func mailBody(c Config, to string, m Message) []byte {
-	head := eventText[m.Event].head
+	head := headOf(m)
 	name := c.FromName
 	if name == "" {
 		name = "Flixarr"

@@ -517,6 +517,7 @@ type Message struct {
 	Link    string // into Flixarr, when an application URL is set
 	Request int64  // the request (or issue) ID
 	UserID  int64  // who asked (or reported): emails about their request go to them
+	Head    string // overrides the event's heading ("First episode ready to watch")
 }
 
 var eventText = map[string]struct {
@@ -579,6 +580,9 @@ func (n *Notifier) FromRequest(event string, r store.Request) Message {
 		}
 	case "request_available":
 		m.Text = "Ready to watch in Plex. Requested by " + user
+		if r.Status == "partial" { // the first episode is in (#216)
+			m.Head, m.Text = "First episode ready to watch", "Requested by "+user
+		}
 	case "request_failed":
 		// The requester reads this (email, push): plain words. The full reason stays in m.Error for the
 		// shared Discord channel and webhooks.
@@ -740,7 +744,7 @@ func (n *Notifier) deliver(ctx context.Context, ch string, c Config, m Message) 
 
 func discordBody(c Config, m Message) map[string]any {
 	head := eventText[m.Event]
-	embed := map[string]any{"title": m.Title, "description": m.Text, "color": head.color, "author": map[string]any{"name": head.head},
+	embed := map[string]any{"title": m.Title, "description": m.Text, "color": head.color, "author": map[string]any{"name": headOf(m)},
 		"footer": map[string]any{"text": "Flixarr"}, "timestamp": time.Now().UTC().Format(time.RFC3339)}
 	if m.Link != "" {
 		embed["url"] = m.Link
@@ -867,4 +871,12 @@ func answerErr(code int, body string) error {
 		return fmt.Errorf("%s (%d)", m, code)
 	}
 	return fmt.Errorf("error (%d)", code)
+}
+
+// headOf is a message's heading: its own, or its event's.
+func headOf(m Message) string {
+	if m.Head != "" {
+		return m.Head
+	}
+	return eventText[m.Event].head
 }

@@ -398,11 +398,17 @@ type fakePlex struct {
 	rescans int
 	has     bool
 	st      *store.Store
+	seasons map[int]int // episodes in Plex per season
 }
 
-func (f *fakePlex) Connected() bool                                      { return true }
-func (f *fakePlex) Live() bool                                           { return false }
-func (f *fakePlex) Seasons(context.Context, int) (map[int]int, error)    { return map[int]int{}, nil }
+func (f *fakePlex) Connected() bool { return true }
+func (f *fakePlex) Live() bool      { return false }
+func (f *fakePlex) Seasons(context.Context, int) (map[int]int, error) {
+	if f.seasons == nil {
+		return map[int]int{}, nil
+	}
+	return f.seasons, nil
+}
 func (f *fakePlex) Rescan(context.Context, string) error                 { f.rescans++; return nil }
 func (f *fakePlex) FileItem(string) (plexlib.FileItem, bool)             { return plexlib.FileItem{}, false }
 func (f *fakePlex) FixMatch(context.Context, string, int) error          { return nil }
@@ -693,18 +699,68 @@ func TestSeasonProgressCountsFinishedEpisodes(t *testing.T) {
 	// Only another season downloading: nothing for this request yet.
 	sonarr.queue = `[{"seasonNumber":2,"size":1000,"sizeleft":500,"status":"downloading","trackedDownloadState":"downloading"}]`
 	check("sent", 0)
-	// One episode of 8 at half: 6%.
+	// One episode at half: the download's own progress, not a share of the season (#216).
 	sonarr.queue = `[{"seasonNumber":1,"size":1000,"sizeleft":500,"status":"downloading","trackedDownloadState":"downloading"},{"seasonNumber":2,"size":1000,"sizeleft":0,"status":"downloading","trackedDownloadState":"downloading"}]`
-	check("downloading", 6)
-	// That one imported, nothing in the queue yet for the rest: still downloading (1 of 8), not back to Requested.
+	check("downloading", 50)
+	// That one is in (no Plex here, so files count): Partially available, nothing moving.
 	sonarr.queue, sonarr.files = "", 1
-	check("downloading", 12)
-	// Next one done and importing while 6 are still missing: not "Importing" for the whole season.
+	check("partial", 0)
+	// More being moved in while some are still missing: still Partially available, with a bar.
 	sonarr.queue = `[{"seasonNumber":1,"size":1000,"sizeleft":0,"status":"completed","trackedDownloadState":"importPending"}]`
-	check("downloading", 25)
-	// The last one being moved in: Importing.
 	sonarr.files = 7
-	check("importing", 100)
+	check("partial", 99)
+	// All of it: Available.
+	sonarr.queue, sonarr.files = "", 8
+	check("available", 100)
+}
+
+// Partly in Plex: one "First episode ready to watch" alert and notification; when it's all there the same
+// alert becomes "Ready to watch" (one row) and the available notification goes out (#216).
+func TestPartialAvailable(t *testing.T) {
+	s, st, _, sonarr, admin, _ := setup(t)
+	px := &fakePlex{st: st, seasons: map[int]int{}}
+	s.Plex = px
+	var sent []string
+	s.Notify = func(ev string, r store.Request) { sent = append(sent, ev+":"+r.Status) }
+	ctx := context.Background()
+	r, _ := s.Create(ctx, admin, New{Type: "series", TmdbID: 1396, Title: "Breaking Bad", Seasons: []int{1}})
+	step := func(status string) {
+		t.Helper()
+		s.checked = nil
+		s.Refresh(ctx)
+		if r, _ = st.Request(r.ID); r.Status != status {
+			t.Fatalf("want %s, got %s", status, r.Status)
+		}
+	}
+	sonarr.files = 1
+	step("importing") // in Sonarr, Plex hasn't got it yet: Plex is asked to scan
+	if px.rescans == 0 {
+		t.Fatal("Plex wasn't asked to scan")
+	}
+	px.seasons[1] = 1
+	step("partial")
+	step("partial")
+	bell := func() []store.Alert {
+		var out []store.Alert
+		list, _ := st.Bell(admin.ID, func(string) bool { return true })
+		for _, a := range list {
+			if a.Key == readyKey(r.ID) {
+				out = append(out, a)
+			}
+		}
+		return out
+	}
+	if b := bell(); len(b) != 1 || b[0].Title != firstEpisode {
+		t.Fatalf("first episode alert: %+v", b)
+	}
+	sonarr.files, px.seasons[1] = 8, 8
+	step("available")
+	if b := bell(); len(b) != 1 || b[0].Title != "Ready to watch" {
+		t.Fatalf("one alert, now ready: %+v", b)
+	}
+	if strings.Join(sent, ",") != "request_submitted:sent,request_available:partial,request_available:available" && strings.Join(sent, ",") != "request_available:partial,request_available:available" {
+		t.Fatalf("notifications: %v", sent)
+	}
 }
 
 func TestFix(t *testing.T) {

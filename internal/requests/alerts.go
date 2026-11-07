@@ -11,6 +11,9 @@ import (
 // manage requests get a to-do for each request waiting for approval and each one that failed, gone once
 // it's handled. The steps in between (sent, downloading…) never alert.
 
+// firstEpisode is the bell's words when a series request is partly in Plex.
+const firstEpisode = "First episode ready to watch"
+
 func approveKey(id int64) string { return fmt.Sprintf("approve:req:%d", id) }
 func failedKey(id int64) string  { return fmt.Sprintf("failed:req:%d", id) }
 func readyKey(id int64) string   { return fmt.Sprintf("ready:req:%d", id) }
@@ -34,8 +37,17 @@ func (s *Service) Alert(r store.Request) {
 		s.Store.AddNews(store.Alert{Audience: mine, Title: "Couldn't get it", Detail: r.Title, Link: fmt.Sprintf("/requests?open=%d", r.ID), Poster: r.Poster})
 		s.Store.RaiseTodo(store.Alert{Key: failedKey(r.ID), Audience: "can:manageRequests", Title: "Request failed", Detail: r.Title + " · " + r.Error,
 			Link: fmt.Sprintf("/requests?open=%d", r.ID), Poster: r.Poster})
+	case "partial": // the first episode is in (#216); the same alert turns into Ready to watch later
+		if _, ok := s.Store.LastAlertAt(readyKey(r.ID)); !ok {
+			s.Store.AddNews(store.Alert{Key: readyKey(r.ID), Audience: mine, Title: firstEpisode, Detail: r.Title, Link: link, Poster: r.Poster})
+		}
 	case "available":
 		title := "Ready to watch"
+		if t, _ := s.Store.LastAlertTitle(readyKey(r.ID)); t == firstEpisode {
+			// Was partly there: the first-episode alert becomes this one, new again, not a second alert.
+			s.Store.ReplaceNews(store.Alert{Key: readyKey(r.ID), Audience: mine, Title: title, Detail: r.Title, Link: link, Poster: r.Poster})
+			return
+		}
 		if prev, ok := s.Store.LastAlertAt(readyKey(r.ID)); ok {
 			// Ready before: fixed or redownloaded since, or (a whole show) new episodes came in.
 			if r.Type == "series" && !s.Store.TitleEventSince(r.Type, r.TmdbID, "redownload", prev) {

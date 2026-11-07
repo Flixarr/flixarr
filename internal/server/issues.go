@@ -17,7 +17,7 @@ func (s *Server) waitingFor(typ string, id int) bool {
 	reqs, _ := s.Store.RequestsForTitle(typ, id)
 	for _, r := range reqs {
 		switch r.Status {
-		case "approved", "sent", "grabbed", "downloading", "importing", "failed":
+		case "approved", "sent", "grabbed", "downloading", "importing", "partial", "failed":
 			return true
 		}
 	}
@@ -31,7 +31,7 @@ func (s *Server) inLibrary(typ string, id int) bool {
 		return true
 	}
 	got, _ := s.Store.RequestStatusFor([]string{key})
-	return got[key].Status == "available"
+	return got[key].Status == "available" || got[key].Status == "partial"
 }
 
 func (s *Server) issueList(w http.ResponseWriter, r *http.Request, u *store.User) {

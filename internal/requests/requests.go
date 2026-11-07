@@ -55,10 +55,15 @@ func (s *Service) Publish(r store.Request) {
 // How often an active request is checked when nothing tells Flixarr about it. Download progress has no
 // event (Radarr and Sonarr themselves only re-read the download client about once a minute), so 30
 // seconds is as fresh as it gets; waiting for a grab is slower because the Grab webhook reports it.
-func followEvery(status string) time.Duration {
-	switch status {
+func followEvery(r store.Request) time.Duration {
+	switch r.Status {
 	case "grabbed", "downloading", "importing":
 		return 30 * time.Second
+	case "partial": // can wait weeks for the rest; webhooks report grabs and imports at once
+		if r.Progress > 0 {
+			return 30 * time.Second
+		}
+		return 15 * time.Minute
 	}
 	return 2 * time.Minute
 }
@@ -603,7 +608,7 @@ func (s *Service) Refresh(ctx context.Context) error {
 	s.mu.Lock()
 	due := []store.Request{}
 	for _, r := range reqs {
-		if time.Since(s.checked[r.ID]) >= followEvery(r.Status) {
+		if time.Since(s.checked[r.ID]) >= followEvery(r) {
 			due = append(due, r)
 		}
 	}
@@ -680,6 +685,7 @@ func (s *Service) refresh(ctx context.Context, reqs []store.Request) error {
 		} else if err != nil {
 			continue // try again on the next pass
 		}
+		_, readyBefore := s.Store.LastAlertAt(readyKey(r.ID))
 		if r.Status != before.Status {
 			s.Alert(r)
 		}
@@ -687,8 +693,11 @@ func (s *Service) refresh(ctx context.Context, reqs []store.Request) error {
 			s.Store.UpdateRequest(r)
 			s.Publish(r)
 		}
-		if r.Status == "available" && before.Status != "available" {
+		switch {
+		case r.Status == "available" && before.Status != "available":
 			s.notify("request_available", r)
+		case r.Status == "partial" && before.Status != "partial" && before.Status != "available" && !readyBefore:
+			s.notify("request_available", r) // the first episode (#216): said once, then Available when it's all there
 		}
 	}
 	return nil
@@ -825,6 +834,30 @@ func (s *Service) filesDone(ctx context.Context, r *store.Request, sonarrHave ma
 		r.Status, r.Progress = "available", 100
 		return
 	}
+	s.askPlexScan(ctx, r)
+	r.Status, r.Progress = "importing", 100
+}
+
+// someInPlex says whether Plex has any episode of the seasons a series request asked for (want; all for a
+// whole-show request). Without a Plex server, files in Sonarr count (the caller checked there are some).
+func (s *Service) someInPlex(ctx context.Context, r *store.Request, want map[int]bool) bool {
+	if s.Plex == nil || !s.Plex.Connected() {
+		return true
+	}
+	counts, err := s.Plex.Seasons(ctx, r.TmdbID)
+	if err != nil {
+		return r.Status == "partial" // Plex didn't answer: stay as it was
+	}
+	for n, c := range counts {
+		if n > 0 && c > 0 && (r.Mode == "all" || want[n]) {
+			return true
+		}
+	}
+	return false
+}
+
+// askPlexScan asks Plex to look for new files of a request's title.
+func (s *Service) askPlexScan(ctx context.Context, r *store.Request) {
 	// Plex didn't notice the new files on its own (yet): ask it to scan, backing off (right away, then after
 	// 2, 5, 15 and 60 minutes, then hourly) so a title Plex can't match doesn't mean scans forever.
 	if s.rescanned == nil {
@@ -842,7 +875,6 @@ func (s *Service) filesDone(ctx context.Context, r *store.Request, sonarrHave ma
 			s.Log.Warn("plex rescan", "err", err)
 		}
 	}
-	r.Status, r.Progress = "importing", 100
 }
 
 func (s *Service) follow(ctx context.Context, v store.Server, r *store.Request) error {
@@ -936,8 +968,23 @@ func (s *Service) follow(ctx context.Context, v store.Server, r *store.Request) 
 		only = want
 	}
 	r.Unreleased = wanted == 0 // nothing asked for has aired yet
-	if err := s.queueProgress(ctx, c, fmt.Sprintf("queue/details?seriesId=%d", r.ArrID), r, only, sum(have), wanted); err != nil {
+	// A series' progress is only what's downloading right now (#216): episodes already there don't make a
+	// percentage, they make it Partially available.
+	if err := s.queueProgress(ctx, c, fmt.Sprintf("queue/details?seriesId=%d", r.ArrID), r, only, 0, 0); err != nil {
 		return err
+	}
+	if sum(have) > 0 {
+		if s.someInPlex(ctx, r, want) {
+			r.Status = "partial" // in Ready from the first episode on; Sonarr keeps looking for the rest
+			if r.Progress >= 100 {
+				r.Progress = 99
+			}
+			return nil
+		}
+		if r.Status == "sent" { // files Plex doesn't show yet, nothing downloading
+			s.askPlexScan(ctx, r)
+			r.Status, r.Progress = "importing", 0
+		}
 	}
 	if on, _ := sr["monitored"].(bool); r.Status == "sent" && (!on || seriesDropped(sr, *r)) {
 		return errUnmonitored

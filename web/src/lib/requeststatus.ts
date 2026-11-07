@@ -5,7 +5,7 @@ type Status = Request['status'] | 'blocked';
 
 export const LABEL: Record<Status, string> = {
 	pending: 'Waiting for approval', approved: 'Requested', sent: 'Requested', grabbed: 'Grabbed', downloading: 'Downloading',
-	importing: 'Importing', available: 'Available', failed: 'Failed', declined: 'Declined', expired: 'Expired', removed: 'Removed', blocked: "Can't be requested"
+	importing: 'Importing', partial: 'Partially available', available: 'Available', failed: 'Failed', declined: 'Declined', expired: 'Expired', removed: 'Removed', blocked: "Can't be requested"
 };
 
 // Pill colours: [background, text, ring].
@@ -14,6 +14,7 @@ export const TONE: Partial<Record<Status, string>> = {
 	grabbed: 'bg-blue-500/15 text-blue-300 ring-blue-500/40',
 	downloading: 'bg-blue-500/15 text-blue-300 ring-blue-500/40',
 	importing: 'bg-purple-500/15 text-purple-300 ring-purple-500/40',
+	partial: 'bg-green-500/15 text-green-300 ring-green-500/40',
 	available: 'bg-green-500/15 text-green-300 ring-green-500/40',
 	failed: 'bg-red-500/15 text-red-300 ring-red-500/40'
 };
@@ -21,24 +22,26 @@ export const NEUTRAL = 'bg-gray-800/70 text-gray-200 ring-gray-700/60';
 
 // Step bar: Requested → Grabbed → Downloading → Importing → Available.
 export const STEPS = ['Requested', 'Grabbed', 'Downloading', 'Importing', 'Available'];
-export const step = (s: Status) => ({ pending: 0, approved: 0, sent: 0, grabbed: 1, downloading: 2, importing: 3, available: 4 } as Record<string, number>)[s] ?? -1;
+export const step = (s: Status) => ({ pending: 0, approved: 0, sent: 0, grabbed: 1, downloading: 2, importing: 3, partial: 4, available: 4 } as Record<string, number>)[s] ?? -1;
 
 // Still moving: worth watching for changes every few seconds.
-export const ACTIVE: Status[] = ['pending', 'approved', 'sent', 'grabbed', 'downloading', 'importing'];
+export const ACTIVE: Status[] = ['pending', 'approved', 'sent', 'grabbed', 'downloading', 'importing', 'partial'];
 export const isActive = (s?: string) => !!s && (ACTIVE as string[]).includes(s);
 
-export const text = (s: Status, progress = 0) => LABEL[s] + (s === 'downloading' && progress ? ` ${progress}%` : '');
+// Series show no percentage (#216): episodes that are in make them Partially available instead.
+export const text = (s: Status, progress = 0, series = false) => LABEL[s] + (s === 'downloading' && progress && !series ? ` ${progress}%` : '');
 
 // What everyone sees on title pages and on other people's cards: a short set of states. Grabbed and
 // Importing fold into Downloading (starting / almost ready); the exact state is for people who manage
 // requests (the admin panel and the details window). Expired reads as nothing (Request again).
 export type Simple = { label: string; tone: string; step: number } | null;
-export function simple(s: Status | string | undefined, progress = 0): Simple {
+export function simple(s: Status | string | undefined, progress = 0, series = false): Simple {
 	switch (s) {
 		case 'pending': return { label: 'Requested · waiting for approval', tone: TONE.pending!, step: 0 };
 		case 'approved': case 'sent': return { label: 'Requested', tone: NEUTRAL, step: 0 };
 		case 'grabbed': return { label: 'Downloading', tone: TONE.downloading!, step: 1 };
-		case 'downloading': return { label: progress ? `Downloading ${progress}%` : 'Downloading', tone: TONE.downloading!, step: 1 };
+		case 'downloading': return { label: progress && !series ? `Downloading ${progress}%` : 'Downloading', tone: TONE.downloading!, step: 1 };
+		case 'partial': return { label: 'Partially available', tone: TONE.partial!, step: 2 };
 		case 'importing': return { label: 'Almost ready', tone: TONE.downloading!, step: 1 };
 		case 'available': return { label: 'Available', tone: TONE.available!, step: 2 };
 		case 'failed': return { label: 'Failed', tone: TONE.failed!, step: -1 };
@@ -52,7 +55,7 @@ export const SIMPLE_STEPS = ['Requested', 'Downloading', 'Available'];
 // The timeline's words for each step.
 export const EVENT_TEXT: Record<string, string> = {
 	requested: 'Requested', redownload: 'Redownload asked for', approved: 'Approved', declined: 'Declined', sent: 'Looking for a download',
-	grabbed: 'Found a download', downloading: 'Downloading', importing: 'Downloaded, adding to Plex', available: 'In Plex',
+	grabbed: 'Found a download', downloading: 'Downloading', importing: 'Downloaded, adding to Plex', partial: 'First episode in Plex', available: 'In Plex',
 	failed: 'Failed', expired: 'Removed from Plex', removed: 'Removed', pending: 'Waiting for approval',
 	imported: 'Brought over from Seerr as ended' // #186: the import's own "expired", not a removal
 };
@@ -66,4 +69,4 @@ export const askedFor = (r: Pick<Request, 'type' | 'mode' | 'seasons' | 'episode
 	r.type !== 'series' ? '' : r.mode === 'all' ? 'Whole show' : r.mode === 'episodes' ? `${r.episodes.length} episodes` : r.seasons.length === 1 ? `Season ${r.seasons[0]}` : `Seasons ${r.seasons.join(', ')}`;
 
 // A timeline dot's colour for a request step (yellow: someone pressed Fix).
-export const eventDot = (s: string) => (s === 'failed' ? 'bg-red-500' : s === 'fix' ? 'bg-yellow-500' : s === 'available' ? 'bg-green-500' : ['declined', 'expired', 'removed', 'imported'].includes(s) ? 'bg-gray-500' : 'bg-primary');
+export const eventDot = (s: string) => (s === 'failed' ? 'bg-red-500' : s === 'fix' ? 'bg-yellow-500' : s === 'available' || s === 'partial' ? 'bg-green-500' : ['declined', 'expired', 'removed', 'imported'].includes(s) ? 'bg-gray-500' : 'bg-primary');

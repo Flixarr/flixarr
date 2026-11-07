@@ -27,7 +27,7 @@ var Simple = []string{"telegram", "slack", "pushover", "gotify", "ntfy", "pushbu
 
 // textOf is a message as a heading and body text, the same for every service.
 func textOf(m Message) (head, body string) {
-	head = eventText[m.Event].head + ": " + m.Title
+	head = headOf(m) + ": " + m.Title
 	lines := []string{}
 	if m.Text != "" {
 		lines = append(lines, m.Text)

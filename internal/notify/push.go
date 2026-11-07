@@ -36,7 +36,7 @@ func (n *Notifier) push(ctx context.Context, userIDs []int64, m Message) error {
 	if subject == "" {
 		subject = "https://flixarr.app"
 	}
-	payload := map[string]any{"title": m.Title, "body": eventText[m.Event].head + ". " + m.Text, "tag": fmt.Sprintf("%s-%d", m.Event, m.Request)}
+	payload := map[string]any{"title": m.Title, "body": headOf(m) + ". " + m.Text, "tag": fmt.Sprintf("%s-%d", m.Event, m.Request)}
 	if m.Poster != "" {
 		payload["image"] = "https://image.tmdb.org/t/p/w342" + m.Poster
 	}

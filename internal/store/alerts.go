@@ -219,6 +219,21 @@ func (s *Store) TapAll(userID int64, can func(string) bool) error {
 }
 
 // LastAlertAt is when the newest alert with a key was added (ok=false: never).
+// LastAlertTitle is the words of a key's newest alert.
+func (s *Store) LastAlertTitle(key string) (string, bool) {
+	var t string
+	err := s.db.QueryRow(`SELECT title FROM alerts WHERE key = ? ORDER BY id DESC LIMIT 1`, key).Scan(&t)
+	return t, err == nil
+}
+
+// ReplaceNews swaps a key's news alert for a new one: the same single row in the bell, new again and on
+// top (a series' "First episode ready to watch" becoming "Ready to watch").
+func (s *Store) ReplaceNews(a Alert) error {
+	s.db.Exec(`DELETE FROM alert_seen WHERE alert_id IN (SELECT id FROM alerts WHERE key = ? AND kind = 'news')`, a.Key)
+	s.db.Exec(`DELETE FROM alerts WHERE key = ? AND kind = 'news'`, a.Key)
+	return s.insertAlert("news", a)
+}
+
 func (s *Store) LastAlertAt(key string) (string, bool) {
 	var at string
 	err := s.db.QueryRow(`SELECT started_at FROM alerts WHERE key = ? ORDER BY id DESC LIMIT 1`, key).Scan(&at)
