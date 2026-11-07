@@ -128,7 +128,8 @@
 	// Plex, Redownload, Delete). Folded, it shows the newest 5; the earlier ones open above them.
 	let allHistory = $state(false);
 	const story5 = $derived.by(() => {
-		const all = [...(info?.history ?? [])].reverse();
+		// A request turning Partially available is the title's own "First episodes in Plex" step again (#216).
+		const all = [...(info?.history ?? [])].filter((h) => h.kind !== 'request:partial').reverse();
 		return { shown: (allHistory ? all : all.slice(-5)).map(story), earlier: Math.max(0, all.length - 5) };
 	});
 	function story(h: History): Step {
