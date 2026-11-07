@@ -9,9 +9,9 @@ import (
 )
 
 // Alerts are the bell (#90). One alert per thing that happens. News (Ready to watch, Declined…) stays
-// until it's tapped and for 24 hours after; a to-do (waiting for approval, a new issue, a server problem)
-// stays until it's handled, tapped or not. Red = new since the person last opened the bell; the number =
-// alerts they haven't tapped. alert_seen holds who tapped what.
+// for 24 hours after it's tapped, or 7 days after it arrived if nobody taps it (#217); a to-do (waiting
+// for approval, a new issue, a server problem) stays until it's handled, tapped or not. Red = new since
+// the person last opened the bell; the number = alerts they haven't tapped. alert_seen holds who tapped what.
 type Alert struct {
 	ID     int64  `json:"id"`
 	Key    string `json:"key"`
@@ -28,8 +28,12 @@ type Alert struct {
 	Repeat   bool   `json:"-"` // AddNews: the key may happen again (Ready to watch again), so always add
 }
 
-// tappedNewsFor is how long tapped news stays in the bell.
-const tappedNewsFor = 24 * time.Hour
+// tappedNewsFor is how long tapped news stays in the bell; untappedNewsFor how long news nobody tapped
+// stays from when it arrived (#217), so a bell nobody reads empties itself.
+const (
+	tappedNewsFor   = 24 * time.Hour
+	untappedNewsFor = 7 * 24 * time.Hour
+)
 
 // bellSize is how many alerts a person's bell lists.
 const bellSize = 50
@@ -149,10 +153,11 @@ func (s *Store) Bell(userID int64, can func(string) bool) ([]Alert, error) {
 	var opened string
 	s.db.QueryRow(`SELECT bell_opened_at FROM users WHERE id = ?`, userID).Scan(&opened)
 	since := time.Now().Add(-tappedNewsFor).UTC().Format(time.RFC3339)
+	arrived := time.Now().Add(-untappedNewsFor).UTC().Format(time.RFC3339)
 	rows, err := s.db.Query(`SELECT a.id, a.key, a.kind, a.title, a.detail, a.link, a.poster, a.started_at, a.audience, t.seen_at IS NOT NULL
 		FROM alerts a LEFT JOIN alert_seen t ON t.alert_id = a.id AND t.user_id = ?
-		WHERE (a.kind = 'todo' AND a.resolved_at IS NULL) OR (a.kind = 'news' AND (t.seen_at IS NULL OR t.seen_at > ?))
-		ORDER BY a.id DESC LIMIT 2000`, userID, since)
+		WHERE (a.kind = 'todo' AND a.resolved_at IS NULL) OR (a.kind = 'news' AND ((t.seen_at IS NULL AND a.started_at > ?) OR t.seen_at > ?))
+		ORDER BY a.id DESC LIMIT 2000`, userID, arrived, since)
 	if err != nil {
 		return nil, err
 	}

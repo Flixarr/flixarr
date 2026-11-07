@@ -56,6 +56,11 @@ func TestBell(t *testing.T) {
 	if l, _ := st.Bell(2, CanNone); len(l) != 1 || l[0].Tapped {
 		t.Fatalf("a day later: %+v", l)
 	}
+	// Nobody taps it: gone a week after it arrived (#217).
+	st.db.Exec(`UPDATE alerts SET started_at = ? WHERE audience = 'user:2'`, time.Now().Add(-8*24*time.Hour).UTC().Format(time.RFC3339))
+	if l, _ := st.Bell(2, CanNone); len(l) != 0 {
+		t.Fatalf("a week later: %+v", l)
+	}
 
 	// A to-do for people who manage requests: updates quietly, stays when tapped, goes when handled.
 	st.RaiseTodo(Alert{Key: "approve:req:7", Audience: "can:manageRequests", Title: "eryn requested", Detail: "Fleabag"})
