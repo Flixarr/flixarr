@@ -227,7 +227,7 @@
 </main>
 
 {#if admin && sel.length}
-	<div class="fixed inset-x-4 bottom-20 z-20 mx-auto max-w-2xl rounded-xl border border-gray-700 bg-gray-900/95 px-4 py-3 shadow-2xl backdrop-blur tablet:bottom-6">
+	<div class="fixed inset-x-4 bottom-[calc(76px+max(4px,env(safe-area-inset-bottom)-16px))] z-20 mx-auto max-w-2xl rounded-xl border border-gray-700 bg-gray-900/95 px-4 py-3 shadow-2xl backdrop-blur tablet:bottom-6">
 		<div class="flex flex-wrap items-center gap-2">
 			<span class="mr-auto text-sm font-medium">{sel.length} picked</span>
 			{#each ACTS as [a, label, cls] (a)}
