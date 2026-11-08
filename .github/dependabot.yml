@@ -15,6 +15,10 @@ updates:
     groups:
       web:
         patterns: ["*"]
+    ignore:
+      # SvelteKit only supports TypeScript 6 so far
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     target-branch: develop
