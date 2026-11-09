@@ -19,6 +19,17 @@ type Quality struct {
 	Seasons map[int]SeasonQuality `json:"seasons"`
 }
 
+// isFlixarrProfile: the badge describes Flixarr's own profiles, so titles on anyone else's don't get one.
+func (s *Service) isFlixarrProfile(serverID int64, profileID int) bool {
+	links, _ := s.Store.ProfileLinks(serverID)
+	for _, l := range links {
+		if l.ArrID == profileID && l.State != "missing" {
+			return true
+		}
+	}
+	return false
+}
+
 // QualityFor reads it from Radarr or Sonarr's own flag. A title that isn't there has nothing to report.
 func (s *Service) QualityFor(ctx context.Context, typ string, tmdbID int) Quality {
 	q := Quality{Seasons: map[int]SeasonQuality{}}
@@ -28,7 +39,7 @@ func (s *Service) QualityFor(ctx context.Context, typ string, tmdbID int) Qualit
 	}
 	c := client(v)
 	found, err := s.inArr(ctx, c, typ, tmdbID)
-	if err != nil || found == nil {
+	if err != nil || found == nil || !s.isFlixarrProfile(v.ID, num(found["qualityProfileId"])) {
 		return q
 	}
 	if typ == "movie" {

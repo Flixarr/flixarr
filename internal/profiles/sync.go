@@ -546,16 +546,16 @@ func (m *Manager) SyncAll(ctx context.Context) (string, error) {
 	}
 	failed := 0
 	for _, v := range servers {
-		if testinstall.On && testinstall.PushProfiles {
-			if err := m.addDefaults(ctx, v); err != nil {
-				failed++
-				m.Log.Warn("quality profile add", "server", v.Name, "err", err)
-				continue
-			}
-		}
 		if _, err := m.Sync(ctx, v); err != nil {
 			failed++
 			m.Log.Warn("quality profile sync", "server", v.Name, "err", err)
+			continue
+		}
+		if testinstall.On && testinstall.PushProfiles { // after Sync, which notices deleted profiles
+			if err := m.addDefaults(ctx, v); err != nil {
+				failed++
+				m.Log.Warn("quality profile add", "server", v.Name, "err", err)
+			}
 		}
 	}
 	waiting := m.UpdateTodo()
