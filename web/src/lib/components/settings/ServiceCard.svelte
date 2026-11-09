@@ -80,7 +80,7 @@
 	const issues = $derived(st?.health.length ?? 0);
 	const queue = $derived(st?.queue ?? []);
 	const trouble = $derived(queue.some((q) => q.state === 'warning' || q.state === 'error'));
-	const showQueue = $derived(queue.length > 0 && (opened || trouble)); // problems are never hidden
+	const showQueue = $derived(queue.length > 0 && opened);
 	const used = $derived(st?.totalSpace ? Math.round((1 - st.freeSpace / st.totalSpace) * 100) : 0);
 	const installed = $derived(v.profiles.filter((p) => p.installed));
 	const edited = $derived(installed.filter((p) => p.state === 'customized').length);
@@ -136,7 +136,7 @@
 				<ServiceStat label="Free space" value={fmtBytes(st.freeSpace)} tone={used > 90 ? 'text-red-400' : ''} sub={st.totalSpace ? `${used}% of ${fmtBytes(st.totalSpace)} used` : undefined}>
 					{#if st.totalSpace}<span class="mt-2 block h-1 overflow-hidden rounded-full bg-gray-700/60"><span class="block h-full rounded-full" style="width:{used}%; background:{used > 90 ? '#ef4444' : s.color}"></span></span>{/if}
 				</ServiceStat>
-				<ServiceStat label="Queue" value={queueValue} sub={queueSub} tone={queueTone} expanded={showQueue} onclick={queue.length && !trouble ? toggleQueue : undefined} />
+				<ServiceStat label="Queue" value={queueValue} sub={queueSub} tone={queueTone} expanded={showQueue} onclick={queue.length ? toggleQueue : undefined} />
 				<ServiceStat label="Download sources" value={plural(st.indexers, 'indexer')} tone={st.indexersDown || st.clientsDown ? 'text-yellow-400' : ''}
 					sub={[st.indexersDown ? `${st.indexersDown} down` : '', st.clients.length ? `${st.clients.join(', ')}${st.clientsDown ? ' down' : ''}` : 'No download client'].filter(Boolean).join(' · ')} />
 				{#if v.profiles.length}

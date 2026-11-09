@@ -30,9 +30,11 @@
 	const connected = $derived(saved ? KINDS.filter((k) => saved![k.kind]) : []);
 	const trouble = $derived(saved ? connected.filter((k) => ['down', 'issues'].includes(health(saved![k.kind]!))) : []);
 	const queued = $derived(saved ? connected.reduce((n, k) => n + (saved![k.kind]!.status?.queue.length ?? 0), 0) : 0);
+	const stuck = $derived(saved ? connected.reduce((n, k) => n + (saved![k.kind]!.status?.queue.filter((q) => q.state === 'warning' || q.state === 'error').length ?? 0), 0) : 0);
 	const summary = $derived.by(() => {
 		if (!connected.length) return { text: 'Nothing connected yet', sub: 'Connect Radarr and Sonarr so requests have somewhere to go.', dot: 'bg-gray-500' };
 		if (trouble.length) return { text: `${trouble.map((k) => saved![k.kind]!.name).join(' and ')} ${trouble.length === 1 ? 'needs' : 'need'} attention`, sub: 'Details are on the card below.', dot: 'bg-yellow-400' };
+		if (stuck) return { text: `${stuck} download${stuck === 1 ? ' needs' : 's need'} attention`, sub: 'Tap a Queue box below to see them.', dot: 'bg-yellow-400' };
 		return { text: 'Everything is running', sub: queued ? `${queued} item${queued === 1 ? '' : 's'} in the download queues.` : 'Nothing is downloading right now.', dot: 'bg-green-500' };
 	});
 	const set = (k: ServiceKind, v: Services[ServiceKind]) => (saved![k] = v);
