@@ -269,6 +269,15 @@ func (s *Service) Create(ctx context.Context, u *store.User, in New) (store.Requ
 			return store.Request{}, &Problem{Plain: "This quality option is no longer available", Err: fmt.Errorf("This quality profile no longer exists in %s", arr.Kinds[v.Kind])}
 		}
 	}
+	// Anime uses the Anime profile when the owner turned it on, unless someone chose another quality.
+	if isAnime(in.Genres, in.Language) && (in.ProfileID == 0 || in.ProfileID == v.QualityProfileID) {
+		links, _ := s.Store.ProfileLinks(v.ID)
+		for _, l := range links {
+			if l.Key == "anime" && l.State != "missing" {
+				profileID, profileName = l.ArrID, "Flixarr · Anime"
+			}
+		}
+	}
 	mode, seasons, episodes := "all", []int{}, [][2]int{}
 	if in.Type == "series" && len(in.Episodes) > 0 {
 		mode, episodes = "episodes", in.Episodes
