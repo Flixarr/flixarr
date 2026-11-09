@@ -4,6 +4,7 @@
 	import { api } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import type { ServiceKind } from '#lib/types.ts';
+	import Icon from '#lib/components/Icon.svelte';
 
 	let { kinds }: { kinds: { kind: ServiceKind; name: string }[] } = $props();
 
@@ -12,6 +13,9 @@
 	let base = $state('');
 	let added = $state<Partial<Record<ServiceKind, boolean>>>({});
 	let busy = $state<ServiceKind | ''>('');
+	let opened = $state(false);
+	const onFor = $derived(kinds.filter((k) => added[k.kind]));
+	const allOn = $derived(kinds.length > 0 && onFor.length === kinds.length);
 	const input = 'mt-1 w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/60';
 
 	$effect(() => {
@@ -49,6 +53,12 @@
 	<div>
 		<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Instant updates</div>
 		<div class="card divide-y divide-gray-700/40 px-4">
+			<button class="flex w-full items-center gap-3 py-3 text-left" aria-expanded={opened || !allOn} onclick={() => (opened = !opened)}>
+				<span class="size-2 shrink-0 rounded-full {allOn ? 'bg-green-500' : 'bg-gray-500'}"></span>
+				<span class="min-w-0 flex-1 text-sm">{allOn ? 'On' : onFor.length ? `On for ${onFor.map((k) => k.name).join(', ')}` : 'Off'}{#if info.last}<span class="block truncate text-xs text-gray-500">Last heard: {info.last}</span>{/if}</span>
+				{#if allOn}<span class="text-gray-500 transition {opened ? '-rotate-90' : 'rotate-90'}"><Icon name="chevron" class="size-4" /></span>{/if}
+			</button>
+			{#if opened || !allOn}
 			<p class="py-3 text-sm text-gray-400">Without this, Flixarr checks Radarr and Sonarr every few seconds while something is on its way. With it, they tell Flixarr the moment a download is grabbed or imported, or when something goes wrong.</p>
 			<div class="py-3">
 				<label for="wh-base" class="block text-sm">Flixarr's address, as Radarr and Sonarr see it</label>
@@ -69,7 +79,7 @@
 				<span>Prefer to do it yourself? Settings → Connect → + → Webhook, method POST, with this URL.</span>
 				<button class="text-primary-light hover:underline" onclick={copy}>Copy the URL</button>
 			</div>
-			{#if info.last}<p class="py-3 text-xs text-gray-500">Last heard: {info.last}</p>{/if}
+			{/if}
 		</div>
 	</div>
 {/if}
