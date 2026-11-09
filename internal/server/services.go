@@ -25,6 +25,10 @@ type serviceView struct {
 	// Flixarr's quality profiles on this server (added or not).
 	Profiles []profiles.ProfileStatus `json:"profiles"`
 	Warning  string                   `json:"warning,omitempty"` // e.g. saved, but adding profiles failed
+	// How Flixarr's size limits stand here: "", applied, restored or edited.
+	SizeLimits string `json:"sizeLimits"`
+	// A slow library search is under way.
+	LibrarySearching bool `json:"librarySearching"`
 	// When the refresh-status job runs next (nil when it's paused), for the card's countdown.
 	NextUpdate    *time.Time `json:"nextUpdate"`
 	UpdatesPaused bool       `json:"updatesPaused"`
@@ -50,6 +54,7 @@ func (s *Server) viewOf(v store.Server) serviceView {
 		sv.Status = &snap
 	}
 	sv.Profiles, _ = s.Profiles.Status(v)
+	sv.SizeLimits, sv.LibrarySearching = s.Profiles.SizeLimits(v.ID), s.Profiles.LibrarySearching(v.ID)
 	if sv.Profiles == nil {
 		sv.Profiles = []profiles.ProfileStatus{}
 	}
@@ -348,12 +353,13 @@ func (s *Server) profilesInfo(w http.ResponseWriter, r *http.Request, _ *store.U
 		Description string             `json:"description"`
 		ArrName     string             `json:"arrName"`
 		Rev         string             `json:"rev"`
+		DefaultOn   bool               `json:"defaultOn"`
 		Apps        []string           `json:"apps"`
 		Details     map[string]*detail `json:"details"`
 	}
 	out := []entry{}
 	for _, p := range d.Profiles {
-		e := entry{ID: p.ID, Name: p.Name, Label: p.Label, Description: p.Description, ArrName: profiles.ArrName(p), Rev: p.Rev, Details: map[string]*detail{}}
+		e := entry{ID: p.ID, Name: p.Name, Label: p.Label, Description: p.Description, ArrName: profiles.ArrName(p), Rev: p.Rev, DefaultOn: p.DefaultOn, Details: map[string]*detail{}}
 		for _, kind := range []string{"radarr", "sonarr"} {
 			ap := p.For(kind)
 			if ap == nil {
@@ -380,7 +386,107 @@ func (s *Server) profilesInfo(w http.ResponseWriter, r *http.Request, _ *store.U
 		}
 		out = append(out, e)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"version": d.Version, "source": d.Source, "profiles": out})
+	writeJSON(w, http.StatusOK, map[string]any{"version": d.Version, "source": d.Source, "profiles": out,
+		"libraryLanguage": s.Profiles.LibraryLanguage(), "languages": profiles.Languages, "perDay": s.Profiles.PerDay()})
+}
+
+// serviceProfileRemove takes one Flixarr profile off a server.
+func (s *Server) serviceProfileRemove(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	v, ok, err := s.Store.FirstServer(r.PathValue("kind"))
+	if err != nil || !ok {
+		writeErr(w, http.StatusNotFound, "Not connected")
+		return
+	}
+	if err := s.Profiles.Remove(r.Context(), v, r.PathValue("key")); err != nil {
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error()))
+		return
+	}
+	writeJSON(w, http.StatusOK, s.viewOf(v))
+}
+
+// serviceSizes restores a server's own size limits, or puts Flixarr's back.
+func (s *Server) serviceSizes(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	v, ok, err := s.Store.FirstServer(r.PathValue("kind"))
+	if err != nil || !ok {
+		writeErr(w, http.StatusNotFound, "Not connected")
+		return
+	}
+	switch r.PathValue("action") {
+	case "restore":
+		err = s.Profiles.RestoreSizes(r.Context(), v)
+	case "apply":
+		err = s.Profiles.ApplySizes(r.Context(), v)
+	default:
+		writeErr(w, http.StatusNotFound, "Not found")
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error()))
+		return
+	}
+	writeJSON(w, http.StatusOK, s.viewOf(v))
+}
+
+// serviceLibrary says how many titles a server has, for the warnings on moving a library.
+func (s *Server) serviceLibrary(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	v, ok, err := s.Store.FirstServer(r.PathValue("kind"))
+	if err != nil || !ok {
+		writeErr(w, http.StatusNotFound, "Not connected")
+		return
+	}
+	n, err := s.Profiles.LibraryCount(r.Context(), v)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error()))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"count": n, "perDay": s.Profiles.PerDay()})
+}
+
+// serviceLibraryMove puts every title on a server on one profile, and optionally searches for better copies.
+func (s *Server) serviceLibraryMove(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	v, ok, err := s.Store.FirstServer(r.PathValue("kind"))
+	if err != nil || !ok {
+		writeErr(w, http.StatusNotFound, "Not connected")
+		return
+	}
+	var in struct {
+		ProfileID int    `json:"profileId"`
+		Search    string `json:"search"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil || in.ProfileID == 0 {
+		writeErr(w, http.StatusBadRequest, "Invalid request")
+		return
+	}
+	if _, err := s.Profiles.MoveLibrary(r.Context(), v, in.ProfileID, in.Search); err != nil {
+		writeErr(w, http.StatusBadGateway, capitalize(err.Error()))
+		return
+	}
+	writeJSON(w, http.StatusOK, s.viewOf(v))
+}
+
+// profilesSettings saves the library language and how many titles the slow search covers a day.
+func (s *Server) profilesSettings(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	var in struct {
+		LibraryLanguage string `json:"libraryLanguage"`
+		PerDay          int    `json:"perDay"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil {
+		writeErr(w, http.StatusBadRequest, "Invalid request")
+		return
+	}
+	if in.PerDay != 0 {
+		if err := s.Profiles.SetPerDay(in.PerDay); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	if in.LibraryLanguage != "" {
+		if err := s.Profiles.SetLibraryLanguage(r.Context(), in.LibraryLanguage); err != nil {
+			writeErr(w, http.StatusBadGateway, capitalize(err.Error()))
+			return
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // serviceRefresh reads one connection's status right away ("Refresh now" on the card).

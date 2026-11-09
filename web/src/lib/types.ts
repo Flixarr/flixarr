@@ -107,7 +107,7 @@ export interface Job {
 export type ServiceKind = 'radarr' | 'sonarr';
 
 export interface ProfileStatus { key: string; name: string; label: string; description: string; arrName: string; installed: boolean; arrId?: number; state: '' | 'ok' | 'update' | 'customized' | 'missing'; updateAvailable: boolean; skipped?: boolean; rev?: string; updatedAt?: string }
-export interface FlixarrProfile { id: string; name: string; label: string; description: string; arrName: string; apps: ServiceKind[] }
+export interface FlixarrProfile { defaultOn: boolean; id: string; name: string; label: string; description: string; arrName: string; apps: ServiceKind[] }
 
 export interface ServiceView {
 	id: number; kind: ServiceKind; name: string; url: string; webUrl: string; rootFolder: string; qualityProfileId: number; qualityProfileName: string;
@@ -115,6 +115,8 @@ export interface ServiceView {
 	status: ArrStatus | null;
 	profiles: ProfileStatus[];
 	warning?: string;
+	sizeLimits: '' | 'applied' | 'restored' | 'edited';
+	librarySearching: boolean;
 	nextUpdate: string | null;
 	updatesPaused: boolean;
 }
@@ -151,3 +153,8 @@ export interface UserProfile {
 	roles: Record<string, string[]>; admin: boolean; canChange: boolean; approvalRequired: boolean;
 }
 export type RequestBrief = { id: number; status: Request['status'] | 'blocked'; progress: number; plex?: string; blocked?: boolean; episodes?: [number, number]; unreleased?: boolean; asked?: { whole: boolean; seasons: number[] } };
+
+// Whether a title's files have reached the quality its profile aims for.
+export interface TitleQuality {
+	unmet: boolean; count: number; files: number; seasons: Record<number, { unmet: number; files: number }>;
+}

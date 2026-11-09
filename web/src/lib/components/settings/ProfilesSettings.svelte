@@ -4,13 +4,14 @@
 	import { api } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import Modal from '#lib/components/Modal.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import type { ServiceKind, ServiceView } from '#lib/types.ts';
 
 	type Changes = { edited: boolean; qualitiesAdded: string[]; qualitiesRemoved: string[]; cutoffFrom?: string; cutoffTo?: string; formatsAdded: string[]; formatsRemoved: string[]; scoresChanged: { name: string; from: number; to: number }[] };
 
 	type Detail = { basedOn: string; basedOnUrl: string; qualities: string[]; cutoff: string; formats: number; preferred: string[]; blocked: string[] };
 	type Entry = { id: string; name: string; label: string; description: string; arrName: string; rev: string; apps: ServiceKind[]; details: Record<string, Detail> };
-	type Info = { version: string; source: { name: string; url: string; commit: string; license: string }; profiles: Entry[] };
+	type Info = { version: string; source: { name: string; url: string; commit: string; license: string }; profiles: Entry[]; libraryLanguage: string; languages: string[]; perDay: number };
 
 	const APPS: { kind: ServiceKind; name: string }[] = [{ kind: 'radarr', name: 'Radarr' }, { kind: 'sonarr', name: 'Sonarr' }];
 
@@ -49,9 +50,72 @@
 	}
 	const scoreText = (n: number) => (n > 0 ? `+${n}` : `${n}`);
 
+	async function saveLanguage(libraryLanguage: string) {
+		try {
+			await api('/profiles/settings', { method: 'POST', body: JSON.stringify({ libraryLanguage }) });
+			notify('Library language saved.');
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Unable to save', 'orange');
+		}
+	}
+	async function sizes(kind: ServiceKind, action: 'restore' | 'apply') {
+		busy = `sizes:${kind}`;
+		try {
+			servers![kind] = await api<ServiceView>(`/services/${kind}/sizes/${action}`, { method: 'POST' });
+			notify(action === 'restore' ? 'Your size limits are back.' : "Flixarr's size limits are set.");
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Unable to do that', 'orange');
+		} finally {
+			busy = '';
+		}
+	}
+	const sizeText: Record<string, string> = { applied: 'Flixarr set the size limits here, so a good file isn\'t refused for its size.', restored: 'Using the size limits this server had before Flixarr changed them.', edited: 'The size limits were changed here, so Flixarr leaves them alone.' };
+
+	// Moving a library: pick a profile, then how to look for better copies.
+	type Search = '' | 'slow' | 'now';
+	let moveTo = $state<Record<string, number>>({});
+	let moving = $state<{ kind: ServiceKind; app: string; search: Search; count: number; perDay: number } | null>(null);
+	let movingOpen = $state(false);
+	let perDay = $state(30);
+
+	async function move(kind: ServiceKind, app: string, search: Search) {
+		busy = `move:${kind}`;
+		try {
+			if (search === '') return await doMove(kind, search);
+			const d = await api<{ count: number; perDay: number }>(`/services/${kind}/library`);
+			moving = { kind, app, search, count: d.count, perDay: d.perDay };
+			movingOpen = true;
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Unable to do that', 'orange');
+		} finally {
+			busy = '';
+		}
+	}
+	async function doMove(kind: ServiceKind, search: Search) {
+		movingOpen = false;
+		busy = `move:${kind}`;
+		try {
+			servers![kind] = await api<ServiceView>(`/services/${kind}/library/move`, { method: 'POST', body: JSON.stringify({ profileId: moveTo[kind], search }) });
+			notify(search === 'slow' ? 'Library moved. The slow search has started.' : search === 'now' ? 'Library moved. Searching now.' : 'Library moved.');
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Unable to move the library', 'orange');
+		} finally {
+			busy = '';
+		}
+	}
+	async function savePerDay() {
+		try {
+			await api('/profiles/settings', { method: 'POST', body: JSON.stringify({ perDay }) });
+			notify('Saved.');
+		} catch (e) {
+			notify(e instanceof Error ? e.message : 'Unable to save', 'orange');
+		}
+	}
+
 	async function load() {
 		try {
 			[info, servers] = await Promise.all([api<Info>('/profiles'), api<Record<ServiceKind, ServiceView | null>>('/services')]);
+			perDay = info.perDay;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Unable to load the profiles';
 		}
@@ -91,6 +155,14 @@
 			<div class="text-xs text-gray-400">Version {when(info.version)} · built on the <a href={info.source.url} target="_blank" rel="noopener" class="text-primary-light hover:underline">{info.source.name}</a>. New versions download on their own and wait here until you apply them.</div>
 		</div>
 		<button class="btn-ghost shrink-0 px-3 py-1.5 text-xs" disabled={syncing} onclick={syncNow}>{syncing ? 'Syncing…' : 'Sync now'}</button>
+	</div>
+
+	<div class="card flex flex-wrap items-center gap-4 p-4">
+		<div class="min-w-0 flex-1 text-sm">
+			<div class="font-medium">Library language</div>
+			<div class="text-xs text-gray-400">Copies in this language or the title's original language are kept. Any other language is never downloaded.</div>
+		</div>
+		<Select bind:value={info.libraryLanguage} options={info.languages.map((l) => ({ value: l, label: l }))} search class="w-44 shrink-0" onchange={saveLanguage} />
 	</div>
 
 	<!-- One card per profile: what it aims for and where it is at a glance; the long lists behind Details. -->
@@ -163,6 +235,59 @@
 			</div>
 		{/each}
 	</div>
+
+	{#each APPS as a (a.kind)}
+		{@const v = servers[a.kind]}
+		{#if v}
+			{@const flixarrOn = v.profiles.filter((p) => p.installed)}
+			<div class="card space-y-3 p-4 text-sm">
+				<div class="flex items-center gap-2 font-medium"><img src="/logos/{a.kind}.svg" alt="" class="size-4" />{a.name}</div>
+				{#if v.sizeLimits}
+					<div class="flex flex-wrap items-center gap-3 text-xs text-gray-400">
+						<span class="min-w-0 flex-1">{sizeText[v.sizeLimits]}</span>
+						{#if v.sizeLimits === 'applied'}<button class="btn-ghost shrink-0 px-3 py-1 text-xs" disabled={busy !== ''} onclick={() => sizes(a.kind, 'restore')}>Restore</button>
+						{:else}<button class="btn-ghost shrink-0 px-3 py-1 text-xs" disabled={busy !== ''} onclick={() => sizes(a.kind, 'apply')}>Use Flixarr's limits</button>{/if}
+					</div>
+				{/if}
+				{#if flixarrOn.length}
+					<div class="border-t border-gray-700/40 pt-3">
+						<div class="font-medium">Move your library</div>
+						<p class="text-xs text-gray-400">Puts every title on one profile.{v.librarySearching ? ' A slow search is under way.' : ''}</p>
+						<div class="mt-2 flex flex-wrap items-center gap-2">
+							<Select bind:value={moveTo[a.kind]} placeholder="Choose a profile" options={flixarrOn.map((p) => ({ value: p.arrId ?? 0, label: p.label }))} class="w-48" />
+							<button class="btn-ghost px-3 py-1.5 text-xs" disabled={busy !== '' || !moveTo[a.kind]} onclick={() => move(a.kind, a.name, '')}>Move only</button>
+							<button class="btn-ghost px-3 py-1.5 text-xs" disabled={busy !== '' || !moveTo[a.kind]} onclick={() => move(a.kind, a.name, 'slow')}>Search slowly</button>
+							<button class="btn-ghost px-3 py-1.5 text-xs" disabled={busy !== '' || !moveTo[a.kind]} onclick={() => move(a.kind, a.name, 'now')}>Search everything now</button>
+						</div>
+					</div>
+				{/if}
+			</div>
+		{/if}
+	{/each}
+
+	<div class="card flex flex-wrap items-center gap-4 p-4">
+		<div class="min-w-0 flex-1 text-sm">
+			<div class="font-medium">Search slowly</div>
+			<div class="text-xs text-gray-400">How many titles to search each day. Indexers often limit daily searches, so raise this only if yours allows more.</div>
+		</div>
+		<input type="number" min="1" max="1000" bind:value={perDay} onchange={savePerDay} class="w-24 rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-1.5 text-sm outline-none" />
+	</div>
+
+	<Modal bind:open={movingOpen} title={moving?.search === 'now' ? 'Search everything now?' : 'Search slowly?'} sub={moving?.app}>
+		{#if moving}
+			<p class="p-5 text-sm text-gray-300">
+				{#if moving.search === 'slow'}
+					Flixarr will search {moving.perDay} titles a day until your library is done, about {Math.ceil(moving.count / moving.perDay)} days. When a better copy is found, it replaces the one you have, so expect more downloads and some extra disk use.
+				{:else}
+					Flixarr will search all {moving.count} titles right now. This can start thousands of downloads, use up your indexers' daily limits and fill your disk. There's no easy way to undo it once it starts.
+				{/if}
+			</p>
+		{/if}
+		{#snippet footer()}
+			<button class="btn-ghost" onclick={() => (movingOpen = false)}>Cancel</button>
+			<button class="btn px-6" onclick={() => moving && doMove(moving.kind, moving.search)}>{moving?.search === 'now' ? 'Search everything' : 'Start'}</button>
+		{/snippet}
+	</Modal>
 
 	<p class="text-xs text-gray-500">Added to Radarr and Sonarr as "{info.profiles[0]?.arrName}" and so on. Custom formats already on a server are reused when they match exactly; otherwise Flixarr adds its own copy, marked "(Flixarr)", and never changes yours. Add or remove profiles from each server's connection window in Services.</p>
 

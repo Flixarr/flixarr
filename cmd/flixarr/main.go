@@ -122,6 +122,9 @@ func main() {
 		About:  "Downloads Flixarr's quality profiles and updates the ones added to Radarr and Sonarr. Profiles edited there are left alone.",
 		Spread: 2 * time.Hour,
 		Run:    pm.SyncAll})
+	runner.Add(&jobs.Job{ID: "library-search", Name: "Library: slow search", Default: "0 3 * * *",
+		About: "After a library is moved onto a profile with Search slowly, searches a small batch of titles each day until it's been through them all.",
+		Run:   pm.RunLibrarySearch})
 	// The daily update check also says which profiles version is current; a new one syncs right away.
 	checker.OnResult = func(r *update.Result) {
 		if r.UpdateAvailable && r.Latest != nil { // once per version, for admins

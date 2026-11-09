@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { meta, fmtDate, runtime } from '#lib/api.ts';
+	import { api, meta, fmtDate, runtime } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import type { Movie } from '#lib/types.ts';
 	import DetailHeader from '#lib/components/DetailHeader.svelte';
@@ -17,7 +17,8 @@
 	import AdminPanel from '#lib/components/AdminPanel.svelte';
 	import LeavingActions from '#lib/components/LeavingActions.svelte';
 	import { can } from '#lib/session.svelte.ts';
-	import type { RequestBrief } from '#lib/types.ts';
+	import type { RequestBrief, TitleQuality } from '#lib/types.ts';
+	import QualityUnmet from '#lib/components/QualityUnmet.svelte';
 	import Img from '#lib/components/Img.svelte';
 
 	let m = $state<Movie | null>(null);
@@ -35,6 +36,12 @@
 		return () => (alive = false);
 	});
 	let brief = $state<RequestBrief | null | undefined>(undefined);
+	let quality = $state<TitleQuality | null>(null);
+	$effect(() => {
+		const tid = page.params.id;
+		quality = null;
+		if (brief?.plex) api<TitleQuality>(`/titles/movie/${tid}/quality`).then((d) => tid === page.params.id && (quality = d)).catch(() => {});
+	});
 	// Report issue: on what's in the library, or on a request that hasn't arrived ("Didn't download").
 	const inLib = $derived(!!brief?.plex || brief?.status === 'available');
 	const waiting = $derived(!!brief && ['approved', 'sent', 'grabbed', 'downloading', 'importing', 'failed'].includes(brief.status));
@@ -54,6 +61,7 @@
 		{#snippet chip()}
 			{#if brief?.plex}<span class="rounded-md bg-green-500/15 px-1.5 py-0.5 text-green-400 ring-1 ring-green-500/40">✓ In your library</span>
 			{:else if brief !== undefined}<span class="rounded-md bg-gray-900/70 px-1.5 py-0.5 text-gray-300 ring-1 ring-gray-700/60">Not in your library</span>{/if}
+			{#if brief?.plex && quality?.unmet}<QualityUnmet />{/if}
 			{#if m && brief?.plex}<LeavingActions type="movie" id={m.id} title={m.title} chip />{/if}
 		{/snippet}
 		{#snippet actions()}

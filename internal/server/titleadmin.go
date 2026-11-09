@@ -78,6 +78,16 @@ func (s *Server) titleAdmin(w http.ResponseWriter, r *http.Request, _ *store.Use
 	})
 }
 
+// titleQuality says whether a title's files have reached the quality their profile aims for.
+func (s *Server) titleQuality(w http.ResponseWriter, r *http.Request, _ *store.User) {
+	typ, id, ok := titleParams(r)
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "Invalid request")
+		return
+	}
+	writeJSON(w, http.StatusOK, s.Requests.QualityFor(r.Context(), typ, id))
+}
+
 // titleFix is Fix on any title (requested through Flixarr or not).
 func (s *Server) titleFix(w http.ResponseWriter, r *http.Request, u *store.User) {
 	typ, id, ok := titleParams(r)

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -182,9 +183,7 @@ func (m *Manager) load(ctx context.Context, v store.Server) (*server, error) {
 	if err := s.c.Get(ctx, "qualityprofile", &s.profiles); err != nil {
 		return nil, err
 	}
-	if v.Kind == "radarr" {
-		s.c.Get(ctx, "language", &s.languages) // optional; the schema's default language is used otherwise
-	}
+	s.c.Get(ctx, "language", &s.languages) // optional; the schema's default language is used otherwise
 	return s, nil
 }
 
@@ -204,11 +203,13 @@ func (m *Manager) ensureFormats(ctx context.Context, s *server, d *Doc, b Body) 
 	}
 	ids := map[string]int{}
 	lib := d.CustomFormats[s.v.Kind]
+	lang := s.languageID(m.LibraryLanguage())
 	for _, fi := range b.FormatItems {
 		want, ok := lib[fi.Name]
 		if !ok {
 			return nil, fmt.Errorf("The profiles are missing custom format %s", fi.Name)
 		}
+		want = withLanguage(want, lang)
 		h := specHash(want.Specifications)
 		if l, ok := links[fi.Name]; ok {
 			if cur, still := live[l.ArrID]; still {
@@ -259,7 +260,7 @@ func (m *Manager) ensureFormats(ctx context.Context, s *server, d *Doc, b Body) 
 
 // push adds or replaces one Flixarr profile on the server and records it.
 func (m *Manager) push(ctx context.Context, s *server, d *Doc, p Profile, arrID int) error {
-	if testinstall.On {
+	if !pushAllowed() {
 		return errors.New("Quality profiles aren't added from a dev install")
 	}
 	ap := p.For(s.v.Kind)
@@ -338,6 +339,91 @@ func (m *Manager) Add(ctx context.Context, v store.Server, keys []string) error 
 		}
 		m.Log.Info("quality profile added", "server", v.Name, "profile", p.ID, "rev", p.Rev)
 	}
+	return m.applySizes(ctx, v, d, false)
+}
+
+// Remove takes a Flixarr profile off a server. Radarr and Sonarr refuse while titles are using it.
+func (m *Manager) Remove(ctx context.Context, v store.Server, key string) error {
+	if !pushAllowed() {
+		return errors.New("Quality profiles aren't removed from a dev install")
+	}
+	m.run.Lock()
+	defer m.run.Unlock()
+	links, err := m.Store.ProfileLinks(v.ID)
+	if err != nil {
+		return err
+	}
+	for _, l := range links {
+		if l.Key != key {
+			continue
+		}
+		if l.ArrID == v.QualityProfileID {
+			return errors.New("This is the default quality for new requests. Choose another default first")
+		}
+		if err := client(v).Delete(ctx, fmt.Sprintf("qualityprofile/%d", l.ArrID)); err != nil && l.State != "missing" {
+			return fmt.Errorf("Unable to remove it. Titles may still be using it: %w", err)
+		}
+		return m.Store.DeleteProfileLink(v.ID, key)
+	}
+	return nil
+}
+
+// KeyLibraryLanguage is the owner's library language, by name.
+const KeyLibraryLanguage = "library_language"
+
+// Languages are the choices for the library language; each is a name Radarr and Sonarr both use.
+var Languages = []string{"English", "Arabic", "Bulgarian", "Chinese", "Czech", "Danish", "Dutch", "Finnish", "French", "German", "Greek", "Hebrew", "Hindi", "Hungarian", "Icelandic", "Indonesian", "Italian", "Japanese", "Korean", "Norwegian", "Polish", "Portuguese", "Romanian", "Russian", "Spanish", "Swedish", "Thai", "Turkish", "Ukrainian", "Vietnamese"}
+
+// LibraryLanguage is the language the owner's library should be in.
+func (m *Manager) LibraryLanguage() string { return m.Store.Setting(KeyLibraryLanguage, "English") }
+
+// languageID finds a language on the server by name (English when the server doesn't list it).
+func (s *server) languageID(name string) int {
+	for _, l := range s.languages {
+		if l.Name == name {
+			return l.ID
+		}
+	}
+	return 1
+}
+
+// SetLibraryLanguage saves the language and updates the custom formats that use it on every server.
+func (m *Manager) SetLibraryLanguage(ctx context.Context, name string) error {
+	if !slices.Contains(Languages, name) {
+		return errors.New("Unknown language")
+	}
+	if err := m.Store.SetSetting(KeyLibraryLanguage, name); err != nil {
+		return err
+	}
+	d := m.Doc()
+	if d == nil || !pushAllowed() {
+		return nil
+	}
+	m.run.Lock()
+	defer m.run.Unlock()
+	servers, err := m.Store.Servers()
+	if err != nil {
+		return err
+	}
+	for _, v := range servers {
+		links, _ := m.Store.ProfileLinks(v.ID)
+		if len(links) == 0 {
+			continue
+		}
+		var b Body
+		for n, f := range d.CustomFormats[v.Kind] {
+			if usesLanguage(f) {
+				b.FormatItems = append(b.FormatItems, FormatItem{Name: n})
+			}
+		}
+		s, err := m.load(ctx, v)
+		if err != nil {
+			return err
+		}
+		if _, err := m.ensureFormats(ctx, s, d, b); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -373,6 +459,7 @@ func (m *Manager) UseFlixarrVersion(ctx context.Context, v store.Server, key str
 	if err := m.push(ctx, s, d, *p, id); err != nil {
 		return err
 	}
+	m.applySizes(ctx, v, d, false)
 	m.Store.SetSetting(skipKey(v.ID, key), "")
 	go m.UpdateTodo()
 	return nil
@@ -396,7 +483,17 @@ func (m *Manager) Sync(ctx context.Context, v store.Server) (int, error) {
 	for _, p := range s.profiles {
 		live[p.ID] = p
 	}
+	known := map[string]bool{}
+	for _, p := range d.Profiles {
+		known[p.ID] = true
+	}
+	installed := false
 	for _, l := range links {
+		if !known[l.Key] { // a profile Flixarr no longer ships
+			m.Store.DeleteProfileLink(v.ID, l.Key)
+			continue
+		}
+		installed = installed || l.State != "missing"
 		cur, still := live[l.ArrID]
 		switch {
 		case !still:
@@ -408,7 +505,33 @@ func (m *Manager) Sync(ctx context.Context, v store.Server) (int, error) {
 		}
 		m.Store.SaveProfileLink(l, false)
 	}
+	if installed {
+		return 0, m.applySizes(ctx, v, d, false)
+	}
 	return 0, nil
+}
+
+// addDefaults adds the default profiles to a server that has none yet (a dev install allowed to push).
+func (m *Manager) addDefaults(ctx context.Context, v store.Server) error {
+	list, err := m.Status(v)
+	if err != nil {
+		return err
+	}
+	keys := []string{}
+	for _, p := range list {
+		if p.Installed {
+			return nil
+		}
+	}
+	for _, p := range m.Doc().Profiles {
+		if p.DefaultOn && p.For(v.Kind) != nil {
+			keys = append(keys, p.ID)
+		}
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+	return m.Add(ctx, v, keys)
 }
 
 // SyncAll downloads the profiles and syncs every server; it's the "Quality profiles: sync" job.
@@ -423,6 +546,13 @@ func (m *Manager) SyncAll(ctx context.Context) (string, error) {
 	}
 	failed := 0
 	for _, v := range servers {
+		if testinstall.On && testinstall.PushProfiles {
+			if err := m.addDefaults(ctx, v); err != nil {
+				failed++
+				m.Log.Warn("quality profile add", "server", v.Name, "err", err)
+				continue
+			}
+		}
 		if _, err := m.Sync(ctx, v); err != nil {
 			failed++
 			m.Log.Warn("quality profile sync", "server", v.Name, "err", err)

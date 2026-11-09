@@ -139,7 +139,7 @@
 		// Flixarr's own profiles: offered (all ticked) when adding a server, and the default quality.
 		if (!v) api<{ profiles: FlixarrProfile[] }>('/profiles').then((d) => {
 			flixarrProfiles = d.profiles.filter((p) => p.apps.includes(k));
-			form.addProfiles = flixarrProfiles.map((p) => p.id);
+			form.addProfiles = flixarrProfiles.filter((p) => p.defaultOn).map((p) => p.id);
 			form.defaultProfile = form.addProfiles.includes('standard') ? 'standard' : (form.addProfiles[0] ?? '');
 			initial = JSON.stringify(form);
 		}).catch(() => (flixarrProfiles = []));
@@ -193,13 +193,13 @@
 	}
 
 	// Existing server: add one Flixarr profile, or take Flixarr's version of one edited in Radarr/Sonarr.
-	async function profileAction(key: string, action: 'add' | 'use-flixarr') {
+	async function profileAction(key: string, action: 'add' | 'use-flixarr' | 'remove') {
 		profileBusy = key;
 		try {
-			const v = await api<ServiceView>(action === 'add' ? `/services/${kind}/profiles` : `/services/${kind}/profiles/${key}/use-flixarr`, { method: 'POST', body: JSON.stringify({ keys: [key] }) });
+			const v = await api<ServiceView>(action === 'add' ? `/services/${kind}/profiles` : `/services/${kind}/profiles/${key}/${action}`, { method: 'POST', body: JSON.stringify({ keys: [key] }) });
 			saved![kind] = v;
 			await test(true); // the new profile shows up in the default quality list
-			notify(action === 'add' ? 'Profile added.' : "Flixarr's version is back in place.");
+			notify(action === 'add' ? 'Profile added.' : action === 'remove' ? 'Profile removed.' : "Flixarr's version is back in place.");
 		} catch (e) {
 			notify(e instanceof Error ? e.message : 'Unable to do that', 'orange');
 		} finally {
@@ -297,8 +297,9 @@
 								</span></span>
 							{#if !p.installed}
 								<button class="btn-ghost shrink-0 px-3 py-1 text-xs" disabled={profileBusy !== ''} onclick={() => profileAction(p.key, 'add')}>{profileBusy === p.key ? 'Adding…' : p.state === 'missing' ? 'Add again' : 'Add'}</button>
-							{:else if p.updateAvailable}
-								<button class="btn-ghost shrink-0 px-3 py-1 text-xs" disabled={profileBusy !== ''} onclick={() => profileAction(p.key, 'use-flixarr')}>{profileBusy === p.key ? 'Updating…' : p.state === 'customized' ? "Use Flixarr's version" : 'Update'}</button>
+							{:else}
+								{#if p.updateAvailable}<button class="btn-ghost shrink-0 px-3 py-1 text-xs" disabled={profileBusy !== ''} onclick={() => profileAction(p.key, 'use-flixarr')}>{profileBusy === p.key ? 'Updating…' : p.state === 'customized' ? "Use Flixarr's version" : 'Update'}</button>{/if}
+								<button class="btn-ghost shrink-0 px-3 py-1 text-xs" disabled={profileBusy !== ''} onclick={() => profileAction(p.key, 'remove')}>Remove</button>
 							{/if}
 						</div>
 					{/each}

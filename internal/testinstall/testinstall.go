@@ -15,5 +15,9 @@ import (
 // On reports whether this is a test install (read once at start; tests may set it).
 var On = os.Getenv("FLIXARR_TEST_INSTALL") == "true"
 
+// PushProfiles lets a dev install change quality profiles anyway (FLIXARR_DEV_PROFILES=true), for the install
+// that's the only one on its Radarr and Sonarr.
+var PushProfiles = os.Getenv("FLIXARR_DEV_PROFILES") == "true"
+
 // ErrBlocked is returned by writes a test install doesn't make.
 var ErrBlocked = errors.New("This isn't done from a dev install")

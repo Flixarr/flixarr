@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { meta, fmtDate, isOut, airsIn } from '#lib/api.ts';
+	import { api, meta, fmtDate, isOut, airsIn } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
-	import type { Series, Season } from '#lib/types.ts';
+	import type { Series, Season, TitleQuality } from '#lib/types.ts';
+	import QualityUnmet from '#lib/components/QualityUnmet.svelte';
 	import DetailHeader from '#lib/components/DetailHeader.svelte';
 	import CastRow from '#lib/components/CastRow.svelte';
 	import Facts from '#lib/components/Facts.svelte';
@@ -46,6 +47,13 @@
 		loadSeasons(tid).then((d) => tid === page.params.id && (plex = d));
 	});
 
+	let quality = $state<TitleQuality | null>(null);
+	$effect(() => {
+		const tid = page.params.id;
+		quality = null;
+		if (brief?.plex) api<TitleQuality>(`/titles/series/${tid}/quality`).then((d) => tid === page.params.id && (quality = d)).catch(() => {});
+	});
+
 	// Opened from a person's page (?credit=…): which seasons and episodes they're in, marked below.
 	type Credit = { person: string; character: string; seasons: number[]; episodes: [number, number][] };
 	let credit = $state<Credit | null>(null);
@@ -84,6 +92,7 @@
 		{#snippet chip()}
 			{#if brief?.plex}<span class="rounded-md bg-green-500/15 px-1.5 py-0.5 text-green-400 ring-1 ring-green-500/40">{brief.episodes && brief.episodes[0] < brief.episodes[1] ? `◐ ${brief.episodes[0]} of ${brief.episodes[1]} episodes in your library` : '✓ In your library'}</span>
 			{:else if brief !== undefined}<span class="rounded-md bg-gray-900/70 px-1.5 py-0.5 text-gray-300 ring-1 ring-gray-700/60">Not in your library</span>{/if}
+			{#if brief?.plex && quality?.unmet}<QualityUnmet text="{quality.count} of {quality.files} episodes don't meet the selected quality. They'll be replaced automatically when better copies are available." />{/if}
 			{#if t && brief?.plex}<LeavingActions type="series" id={t.id} title={t.title} chip />{/if}
 		{/snippet}
 		{#snippet actions()}
@@ -128,6 +137,10 @@
 									{#if inPlex[s.n]}
 										{@const eps = episodeCount(plex, s)}
 										<span class="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] ring-1 {inPlex[s.n] >= eps ? 'bg-green-500/15 text-green-400 ring-green-500/40' : 'bg-green-500/10 text-green-300 ring-green-500/30'}">{inPlex[s.n] >= eps ? 'In Plex' : `${inPlex[s.n]} of ${eps} in Plex`}</span>
+									{/if}
+									{#if inPlex[s.n] && quality?.seasons[s.n]?.unmet}
+										{@const q = quality.seasons[s.n]}
+										<QualityUnmet icon text="{q.unmet} of {q.files} episodes don't meet the selected quality" />
 									{/if}
 									<span class="text-gray-500 transition group-open:rotate-90"><Icon name="chevron" class="size-4" /></span>
 								</summary>

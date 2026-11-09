@@ -21,6 +21,15 @@ type Doc struct {
 	Profiles []Profile `json:"profiles"`
 	// Every custom format the profiles use, per app ("radarr", "sonarr"), keyed by name.
 	CustomFormats map[string]map[string]CustomFormat `json:"customFormats"`
+	// Radarr and Sonarr's size limits per app ("radarr", "sonarr"), keyed by quality name.
+	Sizes map[string]map[string]SizeLimit `json:"sizes,omitempty"`
+}
+
+// SizeLimit is one quality's size limits in MB per minute. Preferred and Max are left as they are when absent.
+type SizeLimit struct {
+	Min       float64  `json:"min"`
+	Preferred *float64 `json:"preferred,omitempty"`
+	Max       *float64 `json:"max,omitempty"`
 }
 
 // Source credits where the profiles came from.
@@ -37,7 +46,8 @@ type Profile struct {
 	Name        string      `json:"name"`
 	Label       string      `json:"label"`
 	Description string      `json:"description"`
-	Rev         string      `json:"rev"` // changes whenever anything pushed for this profile changes
+	DefaultOn   bool        `json:"defaultOn"` // ticked when a server is connected
+	Rev         string      `json:"rev"`       // changes whenever anything pushed for this profile changes
 	Radarr      *AppProfile `json:"radarr,omitempty"`
 	Sonarr      *AppProfile `json:"sonarr,omitempty"`
 }
@@ -133,6 +143,39 @@ func specHash(specs []Spec) string {
 	b, _ := json.Marshal(list)
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:8])
+}
+
+// libraryToken stands in for the owner's library language in a custom format's rules.
+const libraryToken = "$library"
+
+// withLanguage returns a custom format with the library language filled in.
+func withLanguage(f CustomFormat, id int) CustomFormat {
+	specs := make([]Spec, len(f.Specifications))
+	for i, s := range f.Specifications {
+		fields := make([]Field, len(s.Fields))
+		for j, x := range s.Fields {
+			if x.Value == libraryToken {
+				x.Value = id
+			}
+			fields[j] = x
+		}
+		s.Fields = fields
+		specs[i] = s
+	}
+	f.Specifications = specs
+	return f
+}
+
+// usesLanguage reports whether a custom format depends on the library language.
+func usesLanguage(f CustomFormat) bool {
+	for _, s := range f.Specifications {
+		for _, x := range s.Fields {
+			if x.Value == libraryToken {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // ArrName is the name the profile gets inside Radarr/Sonarr.
