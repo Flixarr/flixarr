@@ -11,7 +11,7 @@
 
 	let { s, v, now, onedit, onremove, onchange }: { s: Kind; v: ServiceView; now: number; onedit: () => void; onremove: () => void; onchange: (v: ServiceView) => void } = $props();
 
-	const QUEUE_ROWS = 5;
+	const QUEUE_ROWS = 3;
 	const STATE_TEXT: Record<string, string> = { queued: 'Waiting', paused: 'Paused', importing: 'Importing', warning: 'Needs attention', error: 'Failed' };
 	const STATE_TONE: Record<string, string> = { warning: 'text-yellow-400', error: 'text-red-400', paused: 'text-gray-400', queued: 'text-gray-500', importing: 'text-green-400' };
 	const PILL: Record<string, { text: string; tone: string; dot: string }> = {
@@ -24,7 +24,7 @@
 	let menu = $state(false);
 	let refreshing = $state(false);
 	// Whether the queue is open is remembered in this browser.
-	const openKey = 'flixarr.queueOpen';
+	const openKey = 'flixarr.serviceQueueOpen';
 	let opened = $state(!!JSON.parse(localStorage.getItem(openKey) || '{}')[untrack(() => s.kind)]);
 	function toggleQueue() {
 		opened = !opened;
