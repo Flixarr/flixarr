@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 
 	"github.com/Flixarr/flixarr/internal/store"
@@ -57,12 +58,20 @@ func sizesHash(defs []map[string]any) string {
 	rows := make([]row, 0, len(defs))
 	for _, d := range defs {
 		id, _ := json.Marshal(d["id"])
-		rows = append(rows, row{string(id), d["minSize"], d["preferredSize"], d["maxSize"]})
+		rows = append(rows, row{string(id), rounded(d["minSize"]), rounded(d["preferredSize"]), rounded(d["maxSize"])})
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].ID < rows[j].ID })
 	b, _ := json.Marshal(rows)
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:8])
+}
+
+// rounded keeps a limit comparable however the app stored it. A limit that's not set stays nil.
+func rounded(v any) any {
+	if f, ok := v.(float64); ok {
+		return math.Round(f*10) / 10
+	}
+	return v
 }
 
 // withLimits returns the definitions with Flixarr's limits filled in.
@@ -117,10 +126,6 @@ func (m *Manager) applySizes(ctx context.Context, v store.Server, d *Doc, force 
 	if st.State != SizesApplied || sizesHash(next) != st.Hash {
 		if err := c.Put(ctx, "qualitydefinition/update", next, nil); err != nil {
 			return fmt.Errorf("Unable to set the size limits: %w", err)
-		}
-		// Read back what was stored: the app can round the values.
-		if err := c.Get(ctx, "qualitydefinition", &next); err != nil {
-			return err
 		}
 	}
 	st.State, st.Hash = SizesApplied, sizesHash(next)
