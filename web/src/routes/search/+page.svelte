@@ -110,8 +110,8 @@
 			<div class="grid grid-cols-3 gap-3 px-4 tablet:grid-cols-4 laptop:grid-cols-6 laptop:px-0 desktop:grid-cols-8" onclick={saveRecent}>
 				{#each shown as h (h.type + h.id)}
 					{#if h.type === 'person'}
-						<a href="/person/{h.id}" class="group block text-center">
-							<div class="mx-auto aspect-square w-full overflow-hidden rounded-full border border-gray-700/40 bg-gray-800/40 shadow-xl">
+						<a href="/person/{h.id}" class="group block">
+							<div class="aspect-[2/3] w-full overflow-hidden rounded-xl border border-gray-700/40 bg-gray-800/40 shadow-xl">
 								{#if h.poster}<Img path={h.poster} kind="profile" sizes="(min-width: 1280px) 190px, (min-width: 1024px) 16vw, (min-width: 640px) 25vw, 33vw" class="h-full w-full" />{:else}<div class="grid h-full place-items-center text-3xl text-gray-600">{h.title.charAt(0)}</div>{/if}
 							</div>
 							<div class="mt-2 truncate text-[13px] font-medium">{h.title}</div>
