@@ -1,7 +1,8 @@
 <script lang="ts">
 	// App root: loads the session, sends people to setup / sign-in when needed, and draws the shell.
 	import '../app.css';
-	import { goto } from '$app/navigation';
+	import { goto, snapshot } from '$app/navigation';
+	import { restoreScroll, restoreRows, rowSpots } from '#lib/scroll.ts';
 	import { page } from '$app/state';
 	import TopNav from '#lib/components/TopNav.svelte';
 	import TabBar from '#lib/components/TabBar.svelte';
@@ -15,6 +16,17 @@
 	const bare = $derived(page.url.pathname === '/setup' || page.url.pathname === '/login' || page.url.pathname === '/welcome');
 	// Pages with a full-bleed banner start with a transparent top bar.
 	const transparent = $derived(page.url.pathname === '/' || /^\/(movie|series|collection)\/\d+/.test(page.url.pathname));
+
+	// Every page: Back and Forward put you where you were on it, even when its content loads after the page opens.
+	// Pages with tabs, filters or long lists also keep those with their own snapshot.
+	snapshot({
+		id: 'scroll',
+		capture: () => ({ y: scrollY, rows: rowSpots() }),
+		restore: (v) => {
+			restoreScroll(v.y);
+			restoreRows(v.rows ?? {});
+		}
+	});
 
 	// iOS home-screen app: after the keyboard closes, iOS sometimes leaves the page laid out as if it were
 	// still open, so the tab bar floats above the bottom. Nudging the scroll position makes it lay out again.

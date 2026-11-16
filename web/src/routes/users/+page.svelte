@@ -6,7 +6,7 @@
 	import { api, ago } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
-	import { goto } from '$app/navigation';
+	import { goto, snapshot } from '$app/navigation';
 	import type { User } from '#lib/types.ts';
 	import Avatar from '#lib/components/Avatar.svelte';
 	import Icon from '#lib/components/Icon.svelte';
@@ -20,6 +20,8 @@
 
 	let users = $state<Row[] | null>(null);
 	let userQuery = $state('');
+	// Back to Users keeps what you searched for.
+	snapshot({ id: 'users', capture: () => ({ userQuery }), restore: (v) => (userQuery = v.userQuery) });
 	let iAmAdmin = $state(false);
 	let approvals = $state(true);
 	let saving = $state(false);

@@ -2,6 +2,7 @@
 	// Issues: problems reported on titles in the library. People who manage issues see everyone's and can
 	// resolve, reopen and remove them; everyone else sees their own ("My issues") and can comment.
 	import { api, fmtDate } from '#lib/api.ts';
+	import { snapshot } from '$app/navigation';
 	import { notify } from '#lib/toast.svelte.ts';
 	import { session, can } from '#lib/session.svelte.ts';
 	import Img from '#lib/components/Img.svelte';
@@ -19,6 +20,8 @@
 
 	let list = $state<Issue[] | null>(null);
 	let filter = $state<'open' | 'resolved' | 'all'>('open');
+	// Back to Issues keeps the filter you picked.
+	snapshot({ id: 'issues', capture: () => ({ filter }), restore: (v) => (filter = v.filter) });
 	let current = $state<Issue | null>(null);
 	let comments = $state<Comment[]>([]);
 	let detailOpen = $state(false);

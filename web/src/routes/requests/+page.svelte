@@ -14,6 +14,8 @@
 	import type { IssueBrief, Request } from '#lib/types.ts';
 	import { on } from '#lib/live.svelte.ts';
 	import { page } from '$app/state';
+	import { snapshot } from '$app/navigation';
+	import { tick } from 'svelte';
 	import { infinite } from '#lib/infinite.ts';
 	import { SvelteSet } from 'svelte/reactivity';
 
@@ -92,6 +94,18 @@
 		drawn = STEP;
 	});
 	const visible = $derived(shown.slice(0, drawn));
+	// Back to Requests keeps the group, search and sort you picked and how far the list had loaded.
+	snapshot({
+		id: 'requests',
+		capture: () => ({ group, query, sort, drawn }),
+		restore: async (v) => {
+			group = v.group;
+			query = v.query;
+			sort = v.sort;
+			await tick(); // after the reset above has run for the new filters
+			drawn = v.drawn;
+		}
+	});
 	const more = async () => {
 		if (drawn >= shown.length) return false;
 		drawn += STEP;

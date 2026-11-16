@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { snapshot } from '$app/navigation';
 	import { api, meta, fmtDate, isOut, airsIn } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import type { Series, Season, TitleQuality } from '#lib/types.ts';
@@ -66,7 +67,17 @@
 	const creditEp = (n: number, e: number) => !!credit?.episodes.some(([s, x]) => s === n && x === e);
 	const creditSeason = (n: number) => !!credit && (creditIn(n) > 0 || (!credit.episodes.length && credit.seasons.includes(n)));
 
+	// Seasons you opened stay open when you come back to the show (kept per show, so another show starts closed).
+	let opened = $state<{ id: string; n: number[] }>({ id: '', n: [] });
+	const isOpened = (n: number) => opened.id === page.params.id && opened.n.includes(n);
+	const markOpen = (n: number, isOpen: boolean) => {
+		const cur = opened.id === page.params.id ? opened.n : [];
+		if (isOpen === cur.includes(n)) return;
+		opened = { id: page.params.id ?? '', n: isOpen ? [...cur, n] : cur.filter((x) => x !== n) };
+	};
+	snapshot({ id: 'series', capture: () => $state.snapshot(opened), restore: (v) => (opened = v) });
 	function openSeason(n: number, isOpen: boolean) {
+		markOpen(n, isOpen);
 		if (!isOpen || !t || episodes[n]) return;
 		episodes[n] = 'loading';
 		const show = (s: Season) => (episodes[n] = s);
@@ -128,7 +139,7 @@
 						<span class="text-xs text-gray-400">{t.next ? 'Next episode ' + fmtDate(t.next) : t.status === 'Ended' ? 'Series ended' : ''}</span></div>
 					<div class="space-y-2">
 						{#each t.seasons as s (s.n)}
-							<details class="group card overflow-hidden {creditSeason(s.n) ? 'ring-1 ring-primary/50' : ''}" ontoggle={(e) => openSeason(s.n, (e.currentTarget as HTMLDetailsElement).open)}>
+							<details open={isOpened(s.n)} class="group card overflow-hidden {creditSeason(s.n) ? 'ring-1 ring-primary/50' : ''}" ontoggle={(e) => openSeason(s.n, (e.currentTarget as HTMLDetailsElement).open)}>
 								<summary class="flex cursor-pointer list-none items-center gap-3 p-3 hover:bg-white/5">
 									{#if s.poster}<Img path={s.poster} kind="poster" sizes="40px" class="aspect-[2/3] w-10 shrink-0 rounded-md bg-gray-800 ring-1 ring-gray-700/60" />
 									{:else}<div class="grid h-15 w-10 place-items-center rounded-md bg-gray-800 text-xs text-gray-500">S{s.n}</div>{/if}
