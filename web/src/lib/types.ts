@@ -49,9 +49,16 @@ export interface Series {
 	recommendations: Card[]; similar: Card[];
 }
 
+/** What a person did on a title. */
+export type Role = 'acting' | 'directing' | 'writing' | 'producing';
+/** One title on a person's page: a small card plus their roles on it (#235). */
+export interface PersonCredit extends Pick<Card, 'id' | 'type' | 'title' | 'poster' | 'year' | 'rating' | 'character' | 'creditId'> {
+	roles?: Role[]; // missing on copies cached before API 1.10.0: acting only
+	jobs?: string[]; // Director, Writer, Producer, Executive Producer
+}
 export interface Person {
 	id: number; name: string; bio: string; profile: string | null; born: string | null; died: string | null;
-	place: string | null; dept: string | null; credits: Card[];
+	place: string | null; dept: string | null; credits: PersonCredit[];
 }
 
 export interface Collection { id: number; name: string; overview: string; poster: string | null; backdrop: string | null; parts: Card[] }

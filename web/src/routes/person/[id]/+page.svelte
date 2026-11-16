@@ -1,25 +1,79 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { meta, fmtDate } from '#lib/api.ts';
-	import type { Person } from '#lib/types.ts';
+	import type { Person, PersonCredit, Role } from '#lib/types.ts';
 	import Poster from '#lib/components/Poster.svelte';
 	import Chips from '#lib/components/Chips.svelte';
 	import Img from '#lib/components/Img.svelte';
+	import { infinite } from '#lib/infinite.ts';
 
 	let p = $state<Person | null>(null);
 	let error = $state('');
 	let more = $state(false);
-	let tab = $state<string | number>('all');
+	let clamped = $state(false);
+	let bioEl = $state<HTMLParagraphElement>();
+	let role = $state<string | number>('all');
+	let type = $state<string | number>('all');
 	const age = (b: string, d?: string | null) => Math.floor(((d ? new Date(d) : new Date()).getTime() - new Date(b).getTime()) / 3.15576e10);
-	const list = $derived((p?.credits ?? []).filter((c) => tab === 'all' || c.type === tab));
+
+	// Role tabs and type tabs filter together (#237); each tab counts what it would show with the other one applied.
+	const ROLES: [Role, string][] = [['acting', 'Acting'], ['directing', 'Directing'], ['writing', 'Writing'], ['producing', 'Producing']];
+	const rolesOf = (c: PersonCredit): Role[] => c.roles ?? ['acting'];
+	const inRole = (c: PersonCredit, r: string | number) => r === 'all' || rolesOf(c).includes(r as Role);
+	const inType = (c: PersonCredit, t: string | number) => t === 'all' || c.type === t;
+	const credits = $derived(p?.credits ?? []);
+	const roleTabs = $derived.by(() => {
+		const tabs = ROLES.map(([key, label]) => ({ key, label, count: credits.filter((c) => inType(c, type) && rolesOf(c).includes(key)).length }))
+			.filter((t) => credits.some((c) => rolesOf(c).includes(t.key)));
+		return tabs.length > 1 ? [{ key: 'all', label: 'All', count: credits.filter((c) => inType(c, type)).length }, ...tabs] : [];
+	});
+	const typeTabs = $derived.by(() => {
+		const r = credits.filter((c) => inRole(c, role));
+		const movies = r.filter((c) => c.type === 'movie').length, series = r.length - movies;
+		return movies && series ? [{ key: 'all', label: 'All', count: r.length }, { key: 'movie', label: 'Movies', count: movies }, { key: 'series', label: 'Series', count: series }] : [];
+	});
+	// A type picked under another role still filters only while its tabs show (e.g. Series, then Directing with no series).
+	const shownType = $derived(typeTabs.length ? type : 'all');
+	const list = $derived(credits.filter((c) => inRole(c, role) && inType(c, shownType)));
+	// Under the poster: the character for acting, the jobs for crew. On All, crew jobs win when there are any.
+	const CREW: Record<string, string[]> = { directing: ['Director', 'Co-Director'], writing: ['Writer'], producing: ['Producer', 'Executive Producer'] };
+	const sub = (c: PersonCredit) => {
+		const jobs = role === 'all' ? (c.jobs ?? []) : (c.jobs ?? []).filter((j) => CREW[role]?.includes(j));
+		if (role !== 'acting' && jobs.length) return jobs.join(', ');
+		return c.character ? 'as ' + c.character : '';
+	};
+
+	// Posters are drawn 48 at a time, more as you scroll (#236); a new tab starts over.
+	const STEP = 48;
+	let drawn = $state(STEP);
+	$effect(() => {
+		void [role, shownType];
+		drawn = STEP;
+	});
+	const visible = $derived(list.slice(0, drawn));
+	const next = async () => {
+		if (drawn >= list.length) return false;
+		drawn += STEP;
+		return true;
+	};
 
 	$effect(() => {
 		const id = page.params.id;
 		p = null;
+		error = '';
+		more = false;
+		role = 'all';
+		type = 'all';
 		let alive = true;
 		const show = (d: Person) => { if (!alive) return; p = d; document.title = 'Flixarr · ' + d.name; };
-		meta<Person>('person/' + id, {}, show).then(show).catch((e) => (error = e.message));
+		meta<Person>('person/' + id, {}, show).then(show).catch((e) => { if (alive) error = e.message; });
 		return () => (alive = false);
+	});
+	// Read more only when the bio is actually cut off (#238).
+	$effect(() => {
+		void p?.bio;
+		if (!bioEl || more) return;
+		clamped = bioEl.scrollHeight > bioEl.clientHeight + 1;
 	});
 </script>
 
@@ -41,17 +95,19 @@
 					{#if p.place}<span class="text-gray-400">{p.place}</span>{/if}
 				</div>
 				{#if p.bio}
-					<p class="max-w-3xl whitespace-pre-line leading-relaxed text-gray-300 {more ? '' : 'line-clamp-5'}">{p.bio}</p>
-					<button class="text-sm text-primary-light hover:text-white" onclick={() => (more = !more)}>{more ? 'Show less' : 'Read more'}</button>
+					<p bind:this={bioEl} class="max-w-3xl whitespace-pre-line leading-relaxed text-gray-300 {more ? '' : 'line-clamp-5'}">{p.bio}</p>
+					{#if clamped}<button class="text-sm text-primary-light hover:text-white" onclick={() => (more = !more)}>{more ? 'Show less' : 'Read more'}</button>{/if}
 				{/if}
 			</div>
 		</section>
 		<section class="space-y-3">
 			<div class="flex flex-wrap items-center justify-between gap-3 px-4 laptop:px-0"><h2 class="text-base font-semibold">Known for</h2></div>
-			<Chips bind:value={tab} options={[{ key: 'all', label: 'All', count: p.credits.length }, { key: 'movie', label: 'Movies', count: p.credits.filter((c) => c.type === 'movie').length }, { key: 'series', label: 'Series', count: p.credits.filter((c) => c.type === 'series').length }]} />
+			{#if roleTabs.length}<Chips bind:value={role} options={roleTabs} />{/if}
+			{#if typeTabs.length}<Chips bind:value={type} options={typeTabs} />{/if}
 			<div class="grid grid-cols-3 gap-3 px-4 tablet:grid-cols-4 laptop:grid-cols-6 laptop:px-0 desktop:grid-cols-8">
-				{#each list as c (c.type + c.id)}<Poster item={c} class="w-full" sub={c.character ? 'as ' + c.character : ''} />{/each}
+				{#each visible as c (c.type + c.id)}<Poster item={c} class="w-full" sub={sub(c)} />{/each}
 			</div>
+			{#if drawn < list.length}<div use:infinite={next} class="py-6 text-center text-xs text-gray-500">Loading more…</div>{/if}
 		</section>
 	{/if}
 </main>
