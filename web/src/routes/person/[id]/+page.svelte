@@ -102,7 +102,14 @@
 		</section>
 		<section class="space-y-3">
 			<div class="flex flex-wrap items-center justify-between gap-3 px-4 laptop:px-0"><h2 class="text-base font-semibold">Known for</h2></div>
-			{#if roleTabs.length}<Chips bind:value={role} options={roleTabs} />{/if}
+			<!-- Two kinds of filter, two looks: what they did as underlined tabs, movies or series as pills below. -->
+			{#if roleTabs.length}
+				<div class="no-scrollbar mx-4 flex gap-5 overflow-x-auto border-b border-gray-700/60 text-sm laptop:mx-0" role="tablist">
+					{#each roleTabs as t (t.key)}
+						<button class="-mb-px shrink-0 border-b-2 pb-2.5 font-medium transition {role === t.key ? 'border-primary text-white' : 'border-transparent text-gray-400 hover:text-white'}" role="tab" aria-selected={role === t.key} onclick={() => (role = t.key)}>{t.label} <span class="ml-0.5 text-xs text-gray-500">{t.count}</span></button>
+					{/each}
+				</div>
+			{/if}
 			{#if typeTabs.length}<Chips bind:value={type} options={typeTabs} />{/if}
 			<div class="grid grid-cols-3 gap-3 px-4 tablet:grid-cols-4 laptop:grid-cols-6 laptop:px-0 desktop:grid-cols-8">
 				{#each visible as c (c.type + c.id)}<Poster item={c} class="w-full" sub={sub(c)} />{/each}
