@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { snapshot } from '$app/navigation';
+	import { tick, untrack } from 'svelte';
+	import { restoreScroll } from '#lib/scroll.ts';
 	import { meta, fmtDate } from '#lib/api.ts';
 	import type { Person, PersonCredit, Role } from '#lib/types.ts';
 	import Poster from '#lib/components/Poster.svelte';
@@ -43,31 +46,48 @@
 		return c.character ? 'as ' + c.character : '';
 	};
 
-	// Posters are drawn 48 at a time, more as you scroll (#236); a new tab starts over.
+	// Posters are drawn 48 at a time, more as you scroll (#236); a new tab starts over (the count belongs to its tabs).
 	const STEP = 48;
-	let drawn = $state(STEP);
-	$effect(() => {
-		void [role, shownType];
-		drawn = STEP;
-	});
-	const visible = $derived(list.slice(0, drawn));
+	const tabsKey = $derived(role + '|' + shownType);
+	let drawn = $state({ key: '', n: STEP });
+	const limit = $derived(drawn.key === tabsKey ? drawn.n : STEP);
+	const visible = $derived(list.slice(0, limit));
 	const next = async () => {
-		if (drawn >= list.length) return false;
-		drawn += STEP;
+		if (limit >= list.length) return false;
+		drawn = { key: tabsKey, n: limit + STEP };
 		return true;
 	};
 
 	$effect(() => {
 		const id = page.params.id;
-		p = null;
-		error = '';
-		more = false;
-		role = 'all';
-		type = 'all';
+		// Back to a person whose page was restored below keeps its tabs; anyone else starts fresh.
+		if (untrack(() => p?.id !== Number(id))) {
+			p = null;
+			error = '';
+			more = false;
+			role = 'all';
+			type = 'all';
+		}
 		let alive = true;
 		const show = (d: Person) => { if (!alive) return; p = d; document.title = 'Flixarr · ' + d.name; };
 		meta<Person>('person/' + id, {}, show).then(show).catch((e) => { if (alive) error = e.message; });
 		return () => (alive = false);
+	});
+	// Going back to a person brings back their page, the tabs you picked, how far it had loaded and where you were.
+	snapshot({
+		id: 'person',
+		capture: () => ({ id: page.params.id, p: $state.snapshot(p), role, type, more, drawn: $state.snapshot(drawn), y: scrollY }),
+		restore: async (v) => {
+			if (!v.p || v.id !== page.params.id) return;
+			p = v.p;
+			error = '';
+			role = v.role;
+			type = v.type;
+			more = v.more;
+			drawn = v.drawn;
+			await tick();
+			restoreScroll(v.y);
+		}
 	});
 	// Read more only when the bio is actually cut off (#238).
 	$effect(() => {
@@ -114,7 +134,7 @@
 			<div class="grid grid-cols-3 gap-3 px-4 tablet:grid-cols-4 laptop:grid-cols-6 laptop:px-0 desktop:grid-cols-8">
 				{#each visible as c (c.type + c.id)}<Poster item={c} class="w-full" sub={sub(c)} />{/each}
 			</div>
-			{#if drawn < list.length}<div use:infinite={next} class="py-6 text-center text-xs text-gray-500">Loading more…</div>{/if}
+			{#if limit < list.length}<div use:infinite={next} class="py-6 text-center text-xs text-gray-500">Loading more…</div>{/if}
 		</section>
 	{/if}
 </main>
