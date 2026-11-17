@@ -193,11 +193,11 @@
 
 {#snippet person(h: SearchHit, cls: string)}
 	<a href="/person/{h.id}" class="group block {cls}">
-		<div class="aspect-square w-full overflow-hidden rounded-full border border-gray-700/40 bg-gray-800/40 shadow-xl">
+		<div class="aspect-[2/3] w-full overflow-hidden rounded-xl border border-gray-700/40 bg-gray-800/40 shadow-xl">
 			{#if h.poster}<Img path={h.poster} kind="profile" sizes="(min-width: 640px) 144px, 112px" class="h-full w-full" />{:else}<div class="grid h-full place-items-center text-3xl text-gray-600">{h.title.charAt(0)}</div>{/if}
 		</div>
-		<div class="mt-2 truncate text-center text-[13px] font-medium">{h.title}</div>
-		<div class="truncate text-center text-xs text-gray-400">{h.dept ?? ''}</div>
+		<div class="mt-2 truncate text-[13px] font-medium">{h.title}</div>
+		<div class="truncate text-xs text-gray-400">{h.dept ?? ''}</div>
 	</a>
 {/snippet}
 
@@ -228,7 +228,7 @@
 							<div class="absolute inset-0 bg-gradient-to-r from-gray-950 via-gray-950/80 to-transparent"></div>
 							<div class="relative flex gap-4 p-4 tablet:gap-5 tablet:p-5 laptop:p-7">
 								<a href={href(top)} class="w-24 shrink-0 self-start tablet:w-32 laptop:w-40">
-									<div class="{top.type === 'person' ? 'aspect-square rounded-full' : 'aspect-[2/3] rounded-xl'} overflow-hidden bg-gray-800 shadow-2xl ring-1 ring-white/10">
+									<div class="aspect-[2/3] rounded-xl overflow-hidden bg-gray-800 shadow-2xl ring-1 ring-white/10">
 										{#if top.poster}<Img path={top.poster} kind={top.type === 'person' ? 'profile' : 'poster'} sizes="160px" class="h-full w-full" />{:else}<div class="grid h-full place-items-center text-3xl text-gray-600">{top.title.charAt(0)}</div>{/if}
 									</div>
 								</a>
