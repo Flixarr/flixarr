@@ -12,13 +12,11 @@
 	import { api, meta, href } from '#lib/api.ts';
 	import type { Card, Page, SearchHit, Movie, Series } from '#lib/types.ts';
 	import Poster from '#lib/components/Poster.svelte';
-	import Row from '#lib/components/Row.svelte';
 	import Chips from '#lib/components/Chips.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import Img from '#lib/components/Img.svelte';
 	import RequestButton from '#lib/components/RequestButton.svelte';
 	import LoadingMore from '#lib/components/LoadingMore.svelte';
-	import { statusOf } from '#lib/availability.svelte.ts';
 	import { infinite } from '#lib/infinite.ts';
 	import { releaseKeyboard } from '#lib/keyboard.ts';
 
@@ -153,24 +151,23 @@
 		}
 	});
 
-	const inPlex = (h: SearchHit) => (h.type === 'movie' || h.type === 'series') && !!statusOf(`${h.type}:${h.id}`)?.plex;
 	// The best match; when the search found nothing, the closest title in Plex (a typo like brkng bad).
 	const top = $derived<SearchHit | undefined>(hits[0] ?? (mine[0] as SearchHit | undefined));
 	const rest = $derived(hits.slice(1));
-	// Your library (#251): Plex's own matches first, then any other result Plex has.
-	const library = $derived.by(() => {
-		const out: Card[] = [];
-		const seen = new Set<string>(top ? [top.type + top.id] : []);
-		const add = (c: Card) => { const k = c.type + c.id; if (!seen.has(k)) { seen.add(k); out.push(c); } };
-		mine.forEach(add);
-		rest.filter(inPlex).forEach((h) => add(h as Card));
+	// Everything else in one mixed grid, in ranked order (Marc: "I want them mixed in"). Titles only Plex
+	// matched (a typo like brkng bad) go first (#251); the Top result isn't repeated.
+	const topKey = $derived(top ? top.type + top.id : '');
+	const mixed = $derived.by(() => {
+		const seen = new Set<string>([topKey]);
+		const out: SearchHit[] = [];
+		for (const h of [...(mine as SearchHit[]), ...rest]) {
+			const k = h.type + h.id;
+			if (!seen.has(k)) { seen.add(k); out.push(h); }
+		}
 		return out;
 	});
-	const libKeys = $derived(new Set(library.map((c) => c.type + c.id)));
-	// One row per kind (#249), minus what's already in Your library.
-	const rows = $derived(KINDS.map((k) => ({ k, list: rest.filter((h) => h.type === k && !libKeys.has(h.type + h.id)) })));
 	const ROW_NAME = { movie: 'Movies', series: 'Series', person: 'People' };
-	const kindList = $derived(kind.term === q.trim() && kind.tab === tab ? kind.list : []);
+	const kindList = $derived(kind.term === q.trim() && kind.tab === tab ? kind.list.filter((h) => h.type + h.id !== topKey) : []);
 	const kindDone = $derived(kind.term === q.trim() && kind.tab === tab && kind.page >= kind.pages);
 
 	// The Top result's title page, for its Request or Play button (#248).
@@ -192,7 +189,6 @@
 		return !y ? '' : y > thisYear ? `Coming ${y}` : y === thisYear ? 'New' : '';
 	};
 	const KIND_NAME = { movie: 'Movie', series: 'Series', person: 'Person' };
-	const seeAll = (k: Kind) => `/search?q=${encodeURIComponent(q.trim())}&tab=${k}`;
 </script>
 
 {#snippet person(h: SearchHit, cls: string)}
@@ -223,52 +219,45 @@
 		<!-- Opening a result saves the search to Recent (clicks bubble up from the links). -->
 		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 		<div onclick={(e) => (e.target as Element).closest('a') && saveRecent()}>
-			{#if tab === 'all'}
-				{#if !hits.length && !mine.length && !busy}
-					<p class="px-4 py-20 text-center text-sm text-gray-400">No results for “{q.trim()}”.</p>
-				{:else}
-					<div class="space-y-8">
-						{#if top}
-							<!-- The best match, big, with its button (#248). -->
-							<div class="px-4 laptop:px-0">
-								<div class="relative overflow-hidden rounded-2xl ring-1 ring-gray-700/50">
-									{#if top.backdrop}<Img path={top.backdrop} kind="backdrop" sizes="100vw" class="absolute inset-0 h-full w-full opacity-30" />{/if}
-									<div class="absolute inset-0 bg-gradient-to-r from-gray-950 via-gray-950/80 to-transparent"></div>
-									<div class="relative flex gap-4 p-4 tablet:gap-5 tablet:p-5 laptop:p-7">
-										<a href={href(top)} class="w-24 shrink-0 self-start tablet:w-32 laptop:w-40">
-											<div class="{top.type === 'person' ? 'aspect-square rounded-full' : 'aspect-[2/3] rounded-xl'} overflow-hidden bg-gray-800 shadow-2xl ring-1 ring-white/10">
-												{#if top.poster}<Img path={top.poster} kind={top.type === 'person' ? 'profile' : 'poster'} sizes="160px" class="h-full w-full" />{:else}<div class="grid h-full place-items-center text-3xl text-gray-600">{top.title.charAt(0)}</div>{/if}
-											</div>
-										</a>
-										<div class="min-w-0 space-y-2 self-center">
-											<div class="text-[11px] font-bold uppercase tracking-wider text-primary">Top result</div>
-											<a href={href(top)} class="block text-xl font-bold hover:text-primary-light tablet:text-2xl laptop:text-4xl">{top.title}</a>
-											<div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-300">
-												{#if top.type === 'person'}{top.dept ?? 'Person'}{:else}{top.year || 'TBA'} · {KIND_NAME[top.type]}{#if top.rating} · ★ {top.rating}{/if}{/if}
-												{#if label(top)}<span class="rounded bg-sky-500/15 px-1.5 py-0.5 text-[11px] font-semibold text-sky-300 ring-1 ring-sky-500/40">{label(top)}</span>{/if}
-											</div>
-											{#if top.overview}<p class="line-clamp-2 max-w-2xl text-sm text-gray-400">{top.overview}</p>{/if}
-											<div class="flex flex-wrap gap-2 pt-1">
-												{#if topItem && topItem.id === top.id}<RequestButton item={topItem} />{/if}
-												<a href={href(top)} class="btn-ghost">{top.type === 'person' ? 'View person' : 'Details'}</a>
-											</div>
-										</div>
+			<div class="space-y-6">
+				{#if top}
+					<!-- The best match, big, with its button (#248). -->
+					<div class="px-4 laptop:px-0">
+						<div class="relative overflow-hidden rounded-2xl ring-1 ring-gray-700/50">
+							{#if top.backdrop}<Img path={top.backdrop} kind="backdrop" sizes="100vw" class="absolute inset-0 h-full w-full opacity-30" />{/if}
+							<div class="absolute inset-0 bg-gradient-to-r from-gray-950 via-gray-950/80 to-transparent"></div>
+							<div class="relative flex gap-4 p-4 tablet:gap-5 tablet:p-5 laptop:p-7">
+								<a href={href(top)} class="w-24 shrink-0 self-start tablet:w-32 laptop:w-40">
+									<div class="{top.type === 'person' ? 'aspect-square rounded-full' : 'aspect-[2/3] rounded-xl'} overflow-hidden bg-gray-800 shadow-2xl ring-1 ring-white/10">
+										{#if top.poster}<Img path={top.poster} kind={top.type === 'person' ? 'profile' : 'poster'} sizes="160px" class="h-full w-full" />{:else}<div class="grid h-full place-items-center text-3xl text-gray-600">{top.title.charAt(0)}</div>{/if}
+									</div>
+								</a>
+								<div class="min-w-0 space-y-2 self-center">
+									<div class="text-[11px] font-bold uppercase tracking-wider text-primary">Top result</div>
+									<a href={href(top)} class="block text-xl font-bold hover:text-primary-light tablet:text-2xl laptop:text-4xl">{top.title}</a>
+									<div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-300">
+										{#if top.type === 'person'}{top.dept ?? 'Person'}{:else}{top.year || 'TBA'} · {KIND_NAME[top.type]}{#if top.rating} · ★ {top.rating}{/if}{/if}
+										{#if label(top)}<span class="rounded bg-sky-500/15 px-1.5 py-0.5 text-[11px] font-semibold text-sky-300 ring-1 ring-sky-500/40">{label(top)}</span>{/if}
+									</div>
+									{#if top.overview}<p class="line-clamp-2 max-w-2xl text-sm text-gray-400">{top.overview}</p>{/if}
+									<div class="flex flex-wrap gap-2 pt-1">
+										{#if topItem && topItem.id === top.id}<RequestButton item={topItem} />{/if}
+										<a href={href(top)} class="btn-ghost">{top.type === 'person' ? 'View person' : 'Details'}</a>
 									</div>
 								</div>
 							</div>
-						{/if}
-						<Row title="Your library" items={library}>
-							{#snippet item(c)}<Poster item={c} />{/snippet}
-						</Row>
-						{#each rows as r (r.k)}
-							<Row title={ROW_NAME[r.k]} items={r.list} more={seeAll(r.k)}>
-								{#snippet item(h)}{@render hit(h, 'w-28 shrink-0 tablet:w-36')}{/snippet}
-							</Row>
-						{/each}
+						</div>
 					</div>
 				{/if}
-			{:else}
-				{#if !kindList.length && kindDone}
+				{#if tab === 'all'}
+					{#if !hits.length && !mine.length && !busy}
+						<p class="px-4 py-20 text-center text-sm text-gray-400">No results for “{q.trim()}”.</p>
+					{:else}
+						<div class="grid grid-cols-3 gap-3 px-4 tablet:grid-cols-4 laptop:grid-cols-6 laptop:px-0 desktop:grid-cols-8">
+							{#each mixed as h (h.type + h.id)}{@render hit(h, 'w-full')}{/each}
+						</div>
+					{/if}
+				{:else if !kindList.length && kindDone}
 					<p class="px-4 py-20 text-center text-sm text-gray-400">No {ROW_NAME[tab].toLowerCase()} for “{q.trim()}”.</p>
 				{:else}
 					<div class="grid grid-cols-3 gap-3 px-4 tablet:grid-cols-4 laptop:grid-cols-6 laptop:px-0 desktop:grid-cols-8">
@@ -276,7 +265,7 @@
 					</div>
 					<div use:infinite={more}><LoadingMore busy={kind.busy || !kindList.length} done={kindDone} /></div>
 				{/if}
-			{/if}
+			</div>
 		</div>
 	{:else}
 		{#if recent.length}
