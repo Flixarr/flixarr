@@ -206,6 +206,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/import/seerr/file/preview", s.auth(s.admin(s.seerrFilePreview)))
 	mux.HandleFunc("POST /api/import/seerr/file", s.auth(s.admin(s.seerrFileImport)))
 	mux.HandleFunc("POST /api/queue/{kind}/{id}/fix", s.auth(s.queueFix))
+	mux.HandleFunc("GET /api/queue/fix-all", s.auth(s.queueFixAllGet))
+	mux.HandleFunc("POST /api/queue/fix-all", s.auth(s.queueFixAll))
 	mux.HandleFunc("POST /api/notifications", s.auth(s.admin(s.notifyAdd)))
 	mux.HandleFunc("POST /api/notifications/test", s.auth(s.admin(s.notifyTest)))
 	mux.HandleFunc("PUT /api/notifications/{id}", s.auth(s.admin(s.notifySave)))

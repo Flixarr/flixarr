@@ -16,7 +16,7 @@ import (
 // Event is one change. For decides who receives it; nil = everyone signed in.
 type Event struct {
 	ID   string                   `json:"-"`
-	Type string                   `json:"type"` // request | alerts | plex | job | resync
+	Type string                   `json:"type"` // request | alerts | plex | job | resync | queuefix …
 	Data any                      `json:"data,omitempty"`
 	For  func(u *store.User) bool `json:"-"`
 	seq  uint64
