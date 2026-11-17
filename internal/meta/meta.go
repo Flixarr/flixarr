@@ -269,9 +269,12 @@ func (c *Client) Get(ctx context.Context, path string, q url.Values) ([]byte, in
 	}
 	cfg := c.Config()
 	kind := kindOf(path)
+	// Searches aren't saved here (#244): Back brings results back without it, the same search is rarely
+	// typed twice, and a saved search would hide a new title. The Flixarr API keeps them a few hours.
+	save := cfg.Enabled && kind != KindSearches
 
 	var saved *store.CacheEntry
-	if cfg.Enabled {
+	if save {
 		if e, err := c.Store.CacheGet(key); err == nil {
 			if time.Now().Before(e.Expires) {
 				c.hits.Add(1)
@@ -298,7 +301,7 @@ func (c *Client) Get(ctx context.Context, path string, q url.Values) ([]byte, in
 		}
 		return body, status, err
 	}
-	if cfg.Enabled && (status == http.StatusOK || status == http.StatusNotFound) {
+	if save && (status == http.StatusOK || status == http.StatusNotFound) {
 		keep := cfg.keep(kind, fresh)
 		if status == http.StatusNotFound {
 			keep = time.Minute

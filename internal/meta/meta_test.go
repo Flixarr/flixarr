@@ -102,6 +102,40 @@ func TestCountersByKind(t *testing.T) {
 	}
 }
 
+// Searches always go to the API and are never saved (#244).
+func TestSearchesNotSaved(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Cache-Control", "s-maxage=3600")
+		w.Write([]byte(`{"results":[]}`))
+	}))
+	defer srv.Close()
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	st, err := store.Open(dir, box)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	c := New(srv.URL, "test", st)
+	q := url.Values{"q": {"dune"}}
+	for range 2 {
+		if _, _, err := c.Get(context.Background(), "search", q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if calls != 2 {
+		t.Errorf("%d API calls for 2 searches, want 2", calls)
+	}
+	kinds, _ := st.CacheStats()
+	for _, k := range kinds {
+		if k.Kind == KindSearches {
+			t.Errorf("%d searches saved", k.Count)
+		}
+	}
+}
+
 // Background calls (#165) take turns BackgroundEvery apart and say so in a header; others don't wait.
 func TestBackgroundPace(t *testing.T) {
 	var marked int

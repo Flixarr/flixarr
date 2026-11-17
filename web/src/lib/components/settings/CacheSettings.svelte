@@ -9,17 +9,16 @@
 	import Tooltip from '#lib/components/Tooltip.svelte';
 	import Select from '#lib/components/Select.svelte';
 
-	const KINDS = { titles: ['Titles', 'Movies, series, seasons, collections'], people: ['People', 'Cast and crew pages'], lists: ['Lists', 'Discover rows, browse pages, genres'], searches: ['Searches', 'Search results'] };
+	const KINDS: Record<string, [string, string]> = { titles: ['Titles', 'Movies, series, seasons, collections'], people: ['People', 'Cast and crew pages'], lists: ['Lists', 'Discover rows, browse pages, genres'] };
 	const TIMES = [[1440, '1 day'], [4320, '3 days'], [10080, '7 days'], [20160, '14 days'], [43200, '30 days']] as const;
 	const PAGES = TIMES;
 	const LISTS = TIMES;
-	const SEARCHES = TIMES;
 	const MAX = [5000, 10000, 25000, 50000, 100000];
 	const DAYS = [7, 14, 30, 60, 90];
 	const API_OFF = 'Cache API responses is off.';
 	const NONE: HitMiss = { hits: 0, misses: 0 };
 
-	type TimeKey = 'pagesMinutes' | 'listsMinutes' | 'searchesMinutes' | 'maxResults';
+	type TimeKey = 'pagesMinutes' | 'listsMinutes' | 'maxResults';
 
 	let st = $state<CacheState | null>(null);
 	let confirmAll = $state(false);
@@ -146,7 +145,6 @@
 					<div class="mt-3 rounded-lg border border-gray-700/50 bg-gray-900/60 px-4 py-1.5">
 						{@render small('Movie, series and people pages', 'pagesMinutes', PAGES)}
 						{@render small('Discover rows and lists', 'listsMinutes', LISTS)}
-						{@render small('Searches', 'searchesMinutes', SEARCHES)}
 					</div>
 				{/if}
 			</div>
@@ -174,7 +172,7 @@
 			<div class="grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem_4.75rem] items-center gap-x-3 pb-2 pt-3 text-[11px] uppercase tracking-wide text-gray-500">
 				<span></span><span class="text-right">Lookups</span><span class="text-right">Saved</span><span></span>
 			</div>
-			{#each st.kinds as k (k.kind)}
+			{#each st.kinds.filter((k) => k.kind in KINDS) as k (k.kind)}
 				{@render stored(KINDS[k.kind][0], KINDS[k.kind][1], k.count, k.bytes, st.counters.byKind?.[k.kind] ?? NONE, () => flush(k.kind, KINDS[k.kind][0]))}
 			{/each}
 			{@render stored('Saved images', 'Posters and backdrops', st.images.count, st.images.bytes, st.images, () => (confirmImages = true))}

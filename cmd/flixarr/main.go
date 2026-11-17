@@ -91,6 +91,10 @@ func main() {
 	go checker.Run(runCtx)
 
 	mc := meta.New(api, "Flixarr/"+version.Full(), st)
+	// Searches are no longer saved (#244); clear the ones older builds kept.
+	if n, err := st.CacheFlush(meta.KindSearches); err == nil && n > 0 {
+		log.Info("cleared saved searches", "count", n)
+	}
 	ic := images.New(dataDir, st)
 
 	// Scheduled jobs (Settings → Jobs); schedules are editable there.
