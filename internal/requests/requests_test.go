@@ -799,7 +799,9 @@ func TestExpiredByMaintainerr(t *testing.T) {
 	r.Status = "available"
 	st.UpdateRequest(r)
 	// It was in a Maintainerr collection, then Maintainerr deleted it from Radarr.
-	st.SyncLeaving([]store.Leaving{{Type: "movie", TmdbID: 603, PlexID: "9", CollectionID: 3, Collection: "Movies leaving", LeaveAt: "2026-10-20T00:00:00Z"}}, "2026-10-13T00:00:00Z")
+	// Dates relative to today: SyncLeaving forgets rows last seen too long ago.
+	now := time.Now().UTC()
+	st.SyncLeaving([]store.Leaving{{Type: "movie", TmdbID: 603, PlexID: "9", CollectionID: 3, Collection: "Movies leaving", LeaveAt: now.AddDate(0, 0, 7).Format(time.RFC3339)}}, now.Format(time.RFC3339))
 	radarr.gone = true
 	s.Recheck(ctx, []string{"movie:603"}, false)
 	if r, _ = st.Request(r.ID); r.Status != "expired" || !strings.Contains(r.Error, "Maintainer") {
