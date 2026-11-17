@@ -242,7 +242,7 @@
 									{#if top.overview}<p class="line-clamp-2 max-w-2xl text-sm text-gray-400">{top.overview}</p>{/if}
 									<div class="flex flex-wrap gap-2 pt-1">
 										{#if topItem && topItem.id === top.id}<RequestButton item={topItem} />{/if}
-										<a href={href(top)} class="btn-ghost">{top.type === 'person' ? 'View person' : 'Details'}</a>
+										<a href={href(top)} class="btn-ghost act">{top.type === 'person' ? 'View person' : 'Details'}</a>
 									</div>
 								</div>
 							</div>
