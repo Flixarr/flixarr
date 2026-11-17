@@ -67,6 +67,20 @@
 		if (menu === 'notif') openedBell();
 	});
 
+	// / on any page jumps to search with the cursor in the box (#253), unless you're typing somewhere.
+	$effect(() => {
+		const key = (e: KeyboardEvent) => {
+			if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+			const t = e.target as HTMLElement | null;
+			if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))) return;
+			e.preventDefault();
+			if (page.url.pathname === '/search') dispatchEvent(new CustomEvent('flixarr:focus-search'));
+			else goto('/search');
+		};
+		addEventListener('keydown', key);
+		return () => removeEventListener('keydown', key);
+	});
+
 	// Already on the search page: just put the cursor back in its box.
 	function focusIfHere(e: MouseEvent) {
 		if (page.url.pathname !== '/search') return primeKeyboard(); // iPhone keyboard (#162)
