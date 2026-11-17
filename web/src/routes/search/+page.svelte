@@ -154,7 +154,8 @@
 	});
 
 	const inPlex = (h: SearchHit) => (h.type === 'movie' || h.type === 'series') && !!statusOf(`${h.type}:${h.id}`)?.plex;
-	const top = $derived(hits[0]);
+	// The best match; when the search found nothing, the closest title in Plex (a typo like brkng bad).
+	const top = $derived<SearchHit | undefined>(hits[0] ?? (mine[0] as SearchHit | undefined));
 	const rest = $derived(hits.slice(1));
 	// Your library (#251): Plex's own matches first, then any other result Plex has.
 	const library = $derived.by(() => {
