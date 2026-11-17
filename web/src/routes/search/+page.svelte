@@ -67,12 +67,13 @@
 		// back-button snapshot.
 		const url = term ? `/search?q=${encodeURIComponent(term)}` : '/search';
 		if (url !== location.pathname + location.search) replaceState(url, {});
-		if (!term) { hits = []; return; }
+		if (!term) { hits = []; busy = false; return; }
 		busy = true;
 		let alive = true;
 		const t = setTimeout(() => {
 			const show = (p: Page<SearchHit>) => alive && (hits = p.results);
-			meta<Page<SearchHit>>('search', { q: term }, show).then(show).finally(() => (busy = false));
+			// Only the newest search may say it's done: an older one finishing late would flash "No results" (#245).
+			meta<Page<SearchHit>>('search', { q: term }, show).then(show).finally(() => alive && (busy = false));
 		}, 250);
 		return () => { clearTimeout(t); alive = false; };
 	});
