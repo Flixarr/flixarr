@@ -79,7 +79,7 @@
 <ServicesSection title="Downloads" id="svc-downloads">
 	{#snippet right()}
 		{#if all.length}
-			{all.length} in the queue{all.length === 1 ? '' : 's'}{#if stuck.length} · <span class="text-yellow-400">{stuck.length} {stuck.length === 1 ? 'needs' : 'need'} attention</span>{/if}
+			{all.length} in the queue{all.length === 1 ? '' : 's'}{#if stuck.length}{' · '}<span class="text-yellow-400">{stuck.length} {stuck.length === 1 ? 'needs' : 'need'} attention</span>{/if}
 			{#if fixable.length > 1}<button class="ml-2 inline-flex items-center rounded-md bg-yellow-500/15 px-2 py-0.5 text-[11px] font-medium text-yellow-200 ring-1 ring-yellow-500/40 hover:bg-yellow-500/25" onclick={() => (confirmAll = true)}>Fix all {fixable.length}</button>{/if}
 		{/if}
 	{/snippet}
@@ -102,7 +102,7 @@
 	{#snippet top()}
 		<div class="border-b border-gray-700/40 px-5 pt-4">
 			<div class="pr-8 font-semibold">Downloads</div>
-			<div class="text-xs text-gray-400">{inTab.length} in the {kindOf(tab).name} queue{#if tabStuck} · <span class="text-yellow-400">{tabStuck} {tabStuck === 1 ? 'needs' : 'need'} attention</span>{/if}</div>
+			<div class="text-xs text-gray-400">{inTab.length} in the {kindOf(tab).name} queue{#if tabStuck}{' · '}<span class="text-yellow-400">{tabStuck} {tabStuck === 1 ? 'needs' : 'need'} attention</span>{/if}</div>
 			{#if apps.length > 1}
 				<div class="-mb-px mt-3 flex gap-5" role="tablist">
 					{#each apps as k (k.kind)}

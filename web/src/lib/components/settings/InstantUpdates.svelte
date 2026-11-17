@@ -2,7 +2,7 @@
 	// Settings → Services → Instant updates: a Webhook connection in Radarr and Sonarr, so grabs, imports and
 	// health problems reach Flixarr at once. The section says whether it's on; Turn on / Update opens the window
 	// where it's added (Radarr and Sonarr test it first).
-	import { api } from '#lib/api.ts';
+	import { api, ago } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import type { ServiceKind } from '#lib/types.ts';
 	import Modal from '#lib/components/Modal.svelte';
@@ -16,6 +16,11 @@
 	let added = $state<Partial<Record<ServiceKind, boolean>>>({});
 	let busy = $state<ServiceKind | ''>('');
 	let open = $state(false);
+	// "2026-11-16T18:00:04Z Sonarr Download" → "2 hr ago, Sonarr download"
+	const heard = (last: string) => {
+		const m = last.match(/^(\d{4}-\d\d-\d\dT\S+)\s*(.*)$/);
+		return m ? [ago(m[1]), m[2] ? m[2].charAt(0) + m[2].slice(1).toLowerCase() : ''].filter(Boolean).join(', ') : last;
+	};
 	const onFor = $derived(kinds.filter((k) => added[k.kind]));
 	const input = 'mt-1 w-full rounded-lg border border-gray-700/60 bg-gray-800/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/60';
 
@@ -57,7 +62,7 @@
 		{#snippet right()}<span class={onFor.length ? 'text-green-400' : ''}>{onFor.length ? 'On' : 'Off'}</span>{/snippet}
 		<div class="card p-4">
 			<div class="text-xs text-gray-400">Radarr and Sonarr tell Flixarr the moment something is grabbed or imported, instead of Flixarr checking every few seconds.</div>
-			{#if onFor.length}<div class="mt-2 text-xs text-gray-500">On for {onFor.map((k) => k.name).join(' and ')}{info.last ? ` · last heard ${info.last}` : ''}</div>{/if}
+			{#if onFor.length}<div class="mt-2 text-xs text-gray-500">On for {onFor.map((k) => k.name).join(' and ')}{info.last ? ` · last heard ${heard(info.last)}` : ''}</div>{/if}
 			<div class="mt-3 flex flex-wrap gap-2">
 				<button class="{onFor.length ? 'btn-ghost' : 'btn'} px-3 py-1 text-xs" onclick={() => (open = true)}>{onFor.length ? 'Update' : 'Turn on'}</button>
 				<button class="btn-ghost px-3 py-1 text-xs" onclick={copy}>Copy the webhook URL</button>
