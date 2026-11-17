@@ -78,7 +78,7 @@ type Library struct {
 	lastFull atomic.Int64 // unix time of the last full scan
 	fullDue  atomic.Bool  // a full read is scheduled
 	// relisten drops the live connection so it comes back on a new address.
-	relisten   context.CancelFunc
+	relisten   func()
 	relistenMu sync.Mutex
 	// files: which Plex movie holds each file, from the last full scan (#171).
 	files   map[string]FileItem

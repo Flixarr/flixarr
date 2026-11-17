@@ -31,8 +31,12 @@ func (l *Library) Live() bool { return l.live.Load() }
 
 // Listen runs until ctx ends, reconnecting with a growing pause when the connection drops. New titles
 // it reads go to OnAdded like any scan's.
+//
+// Every failed try waits (5 s, doubling to 5 min). Only a real address change from SetAddress skips
+// the pause, and even then waits a moment. Without that, a Plex that's down or a name that doesn't
+// resolve turned this into a tight loop that flooded DNS with hundreds of lookups a second (#246).
 func (l *Library) Listen(ctx context.Context) {
-	wait := 5 * time.Second
+	wait := ListenWait
 	for ctx.Err() == nil {
 		base, tok, ok := l.conn()
 		if !ok {
@@ -40,28 +44,36 @@ func (l *Library) Listen(ctx context.Context) {
 			continue
 		}
 		start := time.Now()
-		lctx, cancel := context.WithCancel(ctx)
+		lctx, cancel := context.WithCancelCause(ctx)
 		l.relistenMu.Lock()
-		l.relisten = cancel
+		l.relisten = func() { cancel(errMoved) }
 		l.relistenMu.Unlock()
 		err := l.listenOnce(lctx, base, tok)
-		cancel()
+		moved := errors.Is(context.Cause(lctx), errMoved) // read before our own cancel below
+		cancel(nil)
 		l.live.Store(false)
 		if ctx.Err() != nil {
 			return
 		}
-		if lctx.Err() != nil { // the address changed: connect again now
-			wait = 5 * time.Second
+		if moved { // the address changed: connect again almost at once
+			wait = ListenWait
+			sleep(ctx, time.Second)
 			continue
 		}
 		if time.Since(start) > time.Minute {
-			wait = 5 * time.Second // it worked for a while: retry quickly
+			wait = ListenWait // it worked for a while: retry quickly
 		}
 		l.Log.Info("plex live messages stopped", "err", err, "retry in", wait)
 		sleep(ctx, wait)
 		wait = min(wait*2, 5*time.Minute)
 	}
 }
+
+// ListenWait is the first pause after the live connection fails (a variable so tests can shorten it).
+var ListenWait = 5 * time.Second
+
+// errMoved cancels the live connection when SetAddress picks a new Plex address.
+var errMoved = errors.New("plex address changed")
 
 func sleep(ctx context.Context, d time.Duration) {
 	select {

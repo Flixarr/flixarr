@@ -3,7 +3,16 @@ package plexlib
 import (
 	"bufio"
 	"bytes"
+	"context"
+	"io"
+	"log/slog"
+	"net"
+	"sync/atomic"
 	"testing"
+	"time"
+
+	"github.com/Flixarr/flixarr/internal/secret"
+	"github.com/Flixarr/flixarr/internal/store"
 )
 
 func TestLibraryAddedAndFrames(t *testing.T) {
@@ -50,5 +59,42 @@ func TestLibraryRemovedRealMessage(t *testing.T) {
 	msg := `{"NotificationContainer":{"type":"timeline","size":1,"TimelineEntry":[{"identifier":"com.plexapp.plugins.library","sectionID":"1","itemID":"75119","type":1,"title":"","state":9,"metadataState":"deleted","updatedAt":1791865425}]}}`
 	if ids, _ := libraryRemoved([]byte(msg)); len(ids) != 1 || ids[0] != "75119" {
 		t.Fatalf("got %v", ids)
+	}
+}
+
+// A Plex that refuses every connection must not be retried in a tight loop: that flooded DNS with
+// hundreds of plex.direct lookups a second (#246). With a 50 ms first pause, 600 ms allows about 4 tries.
+func TestListenBacksOff(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	var tries atomic.Int32
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			tries.Add(1)
+			c.Close() // no websocket handshake: the connection fails at once
+		}
+	}()
+	dir := t.TempDir()
+	box, _ := secret.Load(dir)
+	st, _ := store.Open(dir, box)
+	defer st.Close()
+	st.SetSetting(keyServerURL, "http://"+ln.Addr().String())
+	st.SetSecretSetting(keyToken, "srv")
+	old := ListenWait
+	ListenWait = 50 * time.Millisecond
+	defer func() { ListenWait = old }()
+	l := &Library{Store: st, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	ctx, cancel := context.WithTimeout(context.Background(), 600*time.Millisecond)
+	defer cancel()
+	l.Listen(ctx)
+	if n := tries.Load(); n < 2 || n > 6 {
+		t.Fatalf("%d connection tries in 600 ms, want 2 to 6", n)
 	}
 }
