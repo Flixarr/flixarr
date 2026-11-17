@@ -214,3 +214,28 @@ func (s *Store) SeriesCheckedLately() (map[int]bool, error) {
 	}
 	return out, rows.Err()
 }
+
+// PlexTitle is a title in Plex by name, for search (#251).
+type PlexTitle struct {
+	Type   string `json:"type"`
+	TmdbID int    `json:"id"`
+	Title  string `json:"title"`
+}
+
+// PlexTitles lists every title in Plex with its name.
+func (s *Store) PlexTitles() ([]PlexTitle, error) {
+	rows, err := s.db.Query(`SELECT type, tmdb_id, title FROM plex_items WHERE title != ''`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []PlexTitle{}
+	for rows.Next() {
+		var t PlexTitle
+		if err := rows.Scan(&t.Type, &t.TmdbID, &t.Title); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
