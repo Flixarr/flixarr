@@ -1,5 +1,5 @@
 <script lang="ts">
-	// A section of Settings → Services: a small heading with a note on the right, then its content.
+	// A section of a Settings page: a small heading with a note on the right, then its content.
 	import type { Snippet } from 'svelte';
 
 	let { title, id = '', right, children }: { title: string; id?: string; right?: Snippet; children: Snippet } = $props();

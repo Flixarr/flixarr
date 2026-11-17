@@ -12,7 +12,7 @@
 	import DownloadsSection from './DownloadsSection.svelte';
 	import InstantUpdates from './InstantUpdates.svelte';
 	import MaintainerrModal from './MaintainerrModal.svelte';
-	import ServicesSection from './ServicesSection.svelte';
+	import SettingsSection from './SettingsSection.svelte';
 	import { KINDS, health, isStuck, drives, driveName, maintainerrOn, plural, lowerFirst, shortVersion, updateText, type MaintainerrInfo, type Services } from './services.ts';
 
 	let saved = $state<Services | null>(null);
@@ -128,7 +128,7 @@
 		</div>
 
 		{#if problems.length}
-			<ServicesSection title="Needs a look" id="svc-problems">
+			<SettingsSection title="Needs a look" id="svc-problems">
 				<div class="card divide-y divide-gray-700/40">
 					{#each problems as p, i (i)}
 						<div class="flex items-center gap-3 px-4 py-2.5 text-sm">
@@ -139,13 +139,13 @@
 						</div>
 					{/each}
 				</div>
-			</ServicesSection>
+			</SettingsSection>
 		{/if}
 
 		{#if live.length}<DownloadsSection {saved} />{/if}
 
 		{#if storage.length}
-			<ServicesSection title="Storage" id="svc-storage">
+			<SettingsSection title="Storage" id="svc-storage">
 				<div class="card divide-y divide-gray-700/40">
 					{#each storage as d (d.folders.join())}
 						<div class="flex items-center gap-3 px-4 py-3">
@@ -163,10 +163,10 @@
 						</div>
 					{/each}
 				</div>
-			</ServicesSection>
+			</SettingsSection>
 		{/if}
 
-		<ServicesSection title="Connections" id="svc-connections">
+		<SettingsSection title="Connections" id="svc-connections">
 			<div class="card divide-y divide-gray-700/40">
 				{#each KINDS as k (k.kind)}
 					{@const v = saved[k.kind]}
@@ -205,7 +205,7 @@
 					</ConnectionRow>
 				{/if}
 			</div>
-		</ServicesSection>
+		</SettingsSection>
 
 		<InstantUpdates kinds={setUp} />
 	</div>

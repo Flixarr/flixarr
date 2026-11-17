@@ -6,6 +6,7 @@
 	import { session, can } from '#lib/session.svelte.ts';
 	import type { UpdateStatus } from '#lib/types.ts';
 	import Icon from '#lib/components/Icon.svelte';
+	import Tabs from '#lib/components/Tabs.svelte';
 	import { CREDITS } from '#lib/credits.ts';
 	import CacheSettings from '#lib/components/settings/CacheSettings.svelte';
 	import JobsSettings from '#lib/components/settings/JobsSettings.svelte';
@@ -23,30 +24,42 @@
 	import ImportSettings from '#lib/components/settings/ImportSettings.svelte';
 	import { tapWhere, servicesUnread } from '#lib/alerts.svelte.ts';
 
-	// Section key → label, icon, one-line description (side menu / phone list).
-	const SECTIONS: [string, string, string, string][] = [
-		['general', 'General', 'settings', 'Address, region, language'],
-		['requests', 'Requests', 'requests', 'Approval, how series are requested'],
-		['issues', 'Issues', 'issues', "What's wrong: the reasons people pick"],
-		['users', 'Users', 'users', 'Sign-in, new people'],
-		['plex', 'Plex', 'play', 'Server, libraries, scans'],
-		['services', 'Services', 'plus', 'Radarr, Sonarr'],
-		['profiles', 'Quality profiles', 'flag', "Flixarr's profiles for Radarr and Sonarr"],
-		['notifications', 'Notifications', 'bell', 'Discord, Telegram, Slack, email, push and more'],
-		['discover', 'Discover', 'discover', 'Discover page rows'],
-		['blocklist', 'Blocklist', 'close', "Titles that can't be requested"],
-		['cache', 'Cache', 'refresh', 'Saved results, images'],
-		['jobs', 'Jobs', 'clock', 'Scheduled tasks'],
-		['backups', 'Backups', 'folder', 'Daily copies of your data'],
-		['import', 'Import', 'arrow', 'Bring everything over from Seerr'],
-		['about', 'About', 'info', 'Version, updates, credits']
+	// The menu: three groups of pages (#242). Each page: key → label, icon, one-line description (side menu / phone list).
+	const GROUPS: [string, [string, string, string, string][]][] = [
+		['Setup', [
+			['general', 'General', 'settings', 'Address, region, language'],
+			['plex', 'Plex', 'play', 'Server, libraries, scans'],
+			['services', 'Services', 'plus', 'Radarr, Sonarr, Maintainerr, quality profiles']
+		]],
+		['People', [
+			['users', 'Users', 'users', 'Sign-in, new people'],
+			['requests', 'Requests', 'requests', 'Approval, issue reasons, blocklist'],
+			['notifications', 'Notifications', 'bell', 'Discord, Telegram, Slack, email, push and more']
+		]],
+		['App', [
+			['discover', 'Discover', 'discover', 'Discover page rows'],
+			['system', 'System', 'clock', 'Jobs, backups, cache, import'],
+			['about', 'About', 'info', 'Version, updates, credits']
+		]]
 	];
+	const SECTIONS = GROUPS.flatMap(([, list]) => list);
+	// Pages with tabs; #services/profiles opens a tab directly.
+	const TABS: Record<string, [string, string][]> = {
+		services: [['status', 'Status'], ['profiles', 'Quality profiles']],
+		system: [['jobs', 'Jobs'], ['backups', 'Backups'], ['cache', 'Cache'], ['import', 'Import']]
+	};
+	// Pages that were merged (old links and alerts still land in the right place).
+	const MOVED: Record<string, string> = { profiles: 'services/profiles', issues: 'requests', blocklist: 'requests', jobs: 'system/jobs', backups: 'system/backups', cache: 'system/cache', import: 'system/import' };
 
 	const isAdmin = $derived(can('admin'));
 	const v = $derived(session.status?.version);
 	const hash = $derived(page.url.hash.slice(1));
-	const tab = $derived(SECTIONS.some(([k]) => k === hash) ? hash : 'about');
+	const tab = $derived.by(() => { const k = hash.split('/')[0]; return SECTIONS.some(([x]) => x === k) ? k : 'about'; });
+	const subTab = $derived.by(() => { const t = TABS[tab], sub = hash.split('/')[1]; return t ? (t.some(([k]) => k === sub) ? sub : t[0][0]) : ''; });
 	const label = $derived(SECTIONS.find(([k]) => k === tab)?.[1]);
+	$effect(() => {
+		if (MOVED[hash]) goto('#' + MOVED[hash], { replaceState: true });
+	});
 
 	// Everyone who worked on Flixarr on GitHub (through the Flixarr API, cached there for hours).
 	type Contributor = { login: string; avatar: string; url: string; contributions: number };
@@ -98,7 +111,9 @@
 </script>
 
 {#snippet nav(drill: boolean)}
-	{#each SECTIONS as [k, l, i, d] (k)}
+	{#each GROUPS as [g, list] (g)}
+	<div class="px-3 pb-1 pt-4 text-[11px] font-semibold uppercase tracking-wide text-gray-500 first:pt-0 {drill ? 'px-1' : ''}">{g}</div>
+	{#each list as [k, l, i, d] (k)}
 		{@const on = k === tab && !drill}
 		<a href="#{k}" class="flex items-center gap-3 rounded-xl text-sm transition {drill ? 'card px-4 py-4' : 'px-3 py-2.5'} {on ? 'bg-primary/15 text-white ring-1 ring-primary/50' : 'text-gray-300 hover:bg-white/5 hover:text-white'}">
 			<span class={on ? 'text-primary-light' : 'text-gray-500'}><Icon name={i} class="size-4" /></span>
@@ -106,6 +121,7 @@
 			{#if k === 'services' && servicesUnread()}<span class="alert-dot"></span>{/if}
 			{#if drill}<Icon name="chevron" class="size-4 text-gray-500" />{/if}
 		</a>
+	{/each}
 	{/each}
 {/snippet}
 
@@ -122,35 +138,28 @@
 			<section class="space-y-4 {hash ? '' : 'hidden tablet:block'}">
 				<a href="/settings" class="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-white tablet:hidden"><span class="rotate-180"><Icon name="chevron" class="size-4" /></span>Settings</a>
 				<h2 class="text-lg font-semibold">{label}</h2>
+				{#if TABS[tab]}<Tabs value={subTab} tabs={TABS[tab].map(([k, l], i) => ({ key: k, label: l, href: i ? `#${tab}/${k}` : `#${tab}` }))} />{/if}
 
 				{#if tab === 'general'}
 					<GeneralSettings />
 				{:else if tab === 'requests'}
 					<RequestsSettings />
-				{:else if tab === 'issues'}
+					<h3 class="border-t border-gray-700/40 pt-6 text-base font-semibold">Issues</h3>
 					<IssuesSettings />
+					<h3 class="border-t border-gray-700/40 pt-6 text-base font-semibold">Blocklist</h3>
+					<BlocklistSettings />
 				{:else if tab === 'users'}
 					<UsersSettings />
 				{:else if tab === 'plex'}
 					<PlexSettings />
 				{:else if tab === 'services'}
-					<ServicesSettings />
-				{:else if tab === 'profiles'}
-					<ProfilesSettings />
+					{#if subTab === 'profiles'}<ProfilesSettings />{:else}<ServicesSettings />{/if}
 				{:else if tab === 'notifications'}
 					<NotificationsSettings />
 				{:else if tab === 'discover'}
 					<DiscoverSettings />
-				{:else if tab === 'cache'}
-					<CacheSettings />
-				{:else if tab === 'blocklist'}
-					<BlocklistSettings />
-				{:else if tab === 'backups'}
-					<BackupsSettings />
-				{:else if tab === 'import'}
-					<ImportSettings />
-				{:else if tab === 'jobs'}
-					<JobsSettings />
+				{:else if tab === 'system'}
+					{#if subTab === 'backups'}<BackupsSettings />{:else if subTab === 'cache'}<CacheSettings />{:else if subTab === 'import'}<ImportSettings />{:else}<JobsSettings />{/if}
 				{:else if tab === 'about'}
 					<div>
 						<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Flixarr</div>

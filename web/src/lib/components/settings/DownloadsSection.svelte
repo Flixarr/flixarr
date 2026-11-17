@@ -9,7 +9,7 @@
 	import Modal from '#lib/components/Modal.svelte';
 	import QueueItem from './QueueItem.svelte';
 	import DownloadFix from './DownloadFix.svelte';
-	import ServicesSection from './ServicesSection.svelte';
+	import SettingsSection from './SettingsSection.svelte';
 	import { KINDS, isStuck, needsManualImport, type Services } from './services.ts';
 
 	let { saved }: { saved: Services } = $props();
@@ -88,7 +88,7 @@
 	{/if}
 {/snippet}
 
-<ServicesSection title="Downloads" id="svc-downloads">
+<SettingsSection title="Downloads" id="svc-downloads">
 	{#snippet right()}
 		{#if all.length}
 			{all.length} in the queue{all.length === 1 ? '' : 's'}{#if stuck.length}{' · '}<span class="text-yellow-400">{stuck.length} {stuck.length === 1 ? 'needs' : 'need'} attention</span>{/if}
@@ -118,7 +118,7 @@
 			<div class="py-3 text-sm text-gray-500">Nothing downloading.</div>
 		{/if}
 	</div>
-</ServicesSection>
+</SettingsSection>
 
 <Modal bind:open={showAll} title="Downloads" wide>
 	{#snippet top()}

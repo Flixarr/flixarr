@@ -6,7 +6,7 @@
 	import { notify } from '#lib/toast.svelte.ts';
 	import type { ServiceKind } from '#lib/types.ts';
 	import Modal from '#lib/components/Modal.svelte';
-	import ServicesSection from './ServicesSection.svelte';
+	import SettingsSection from './SettingsSection.svelte';
 
 	let { kinds }: { kinds: { kind: ServiceKind; name: string }[] } = $props();
 
@@ -58,7 +58,7 @@
 </script>
 
 {#if info && kinds.length}
-	<ServicesSection title="Instant updates">
+	<SettingsSection title="Instant updates">
 		{#snippet right()}<span class={onFor.length ? 'text-green-400' : ''}>{onFor.length ? 'On' : 'Off'}</span>{/snippet}
 		<div class="card p-4">
 			<div class="text-xs text-gray-400">Radarr and Sonarr tell Flixarr the moment something is grabbed or imported, instead of Flixarr checking every few seconds.</div>
@@ -68,7 +68,7 @@
 				<button class="btn-ghost px-3 py-1 text-xs" onclick={copy}>Copy the webhook URL</button>
 			</div>
 		</div>
-	</ServicesSection>
+	</SettingsSection>
 
 	<Modal bind:open title="Instant updates" sub="Radarr and Sonarr tell Flixarr the moment something changes.">
 		<div class="space-y-4 px-5 py-4">

@@ -68,7 +68,7 @@ func (m *Manager) UpdateTodo() int {
 	if n > 1 {
 		title = fmt.Sprintf("%d quality profile updates", n)
 	}
-	m.Store.RaiseTodo(store.Alert{Key: todoKey, Audience: "admins", Title: title, Detail: joinNames(names) + " · waiting for you to apply", Link: "/settings#profiles"})
+	m.Store.RaiseTodo(store.Alert{Key: todoKey, Audience: "admins", Title: title, Detail: joinNames(names) + " · waiting for you to apply", Link: "/settings#services/profiles"})
 	return n
 }
 
