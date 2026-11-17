@@ -169,6 +169,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/services/{kind}", s.auth(s.admin(s.serviceSave)))
 	mux.HandleFunc("DELETE /api/services/{kind}", s.auth(s.admin(s.serviceDelete)))
 	mux.HandleFunc("GET /api/plex", s.auth(s.admin(s.plexStatus)))
+	mux.HandleFunc("GET /api/plex/search", s.auth(s.plexSearch))
 	mux.HandleFunc("GET /api/plex/seasons/{tmdbId}", s.auth(s.plexSeasons))
 	mux.HandleFunc("GET /api/plex/episodes/{tmdbId}", s.auth(s.plexEpisodes))
 	mux.HandleFunc("GET /api/plex/servers", s.auth(s.admin(s.plexServers)))
@@ -496,7 +497,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 // metaProxy forwards /api/meta/<path> to the Flixarr API (through the cache) with this install's region and language.
 func (s *Server) metaProxy(w http.ResponseWriter, r *http.Request, u *store.User) {
 	q := url.Values{}
-	for _, k := range []string{"q", "page", "genre", "sort"} {
+	for _, k := range []string{"q", "page", "genre", "sort", "type"} {
 		if v := r.URL.Query().Get(k); v != "" {
 			q.Set(k, v)
 		}

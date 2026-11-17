@@ -9,21 +9,34 @@
 	import { tick } from 'svelte';
 	import { restoreScroll } from '#lib/scroll.ts';
 	import { replaceState, snapshot } from '$app/navigation';
-	import { meta } from '#lib/api.ts';
-	import type { Card, Page, SearchHit } from '#lib/types.ts';
+	import { api, meta, href } from '#lib/api.ts';
+	import type { Card, Page, SearchHit, Movie, Series } from '#lib/types.ts';
 	import Poster from '#lib/components/Poster.svelte';
+	import Row from '#lib/components/Row.svelte';
 	import Chips from '#lib/components/Chips.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import Img from '#lib/components/Img.svelte';
+	import RequestButton from '#lib/components/RequestButton.svelte';
+	import LoadingMore from '#lib/components/LoadingMore.svelte';
+	import { statusOf } from '#lib/availability.svelte.ts';
+	import { infinite } from '#lib/infinite.ts';
 	import { releaseKeyboard } from '#lib/keyboard.ts';
 
+	type Kind = 'movie' | 'series' | 'person';
+	type Tab = 'all' | Kind;
+	const KINDS: Kind[] = ['movie', 'series', 'person'];
+
 	// From the address bar: on Back, page.url can still describe the page we're leaving while this one is built.
-	let q = $state(new URLSearchParams(location.search).get('q') ?? '');
-	let tab = $state<string | number>('all');
-	let hits = $state<SearchHit[]>([]);
+	const startUrl = new URLSearchParams(location.search);
+	let q = $state(startUrl.get('q') ?? '');
+	let tab = $state<Tab>((KINDS as string[]).includes(startUrl.get('tab') ?? '') ? (startUrl.get('tab') as Kind) : 'all');
+	let hits = $state<SearchHit[]>([]); // the mixed search: Top result and the rows
+	let mine = $state<Card[]>([]); // titles in Plex matching the search, even with a typo (#251)
 	let busy = $state(false);
 	let trending = $state<Card[]>([]);
 	let input = $state<HTMLInputElement>();
+	// One kind on its own, page by page (#249): the search it was loaded for, its pages so far, and how many there are.
+	let kind = $state<{ term: string; tab: Tab; list: SearchHit[]; page: number; pages: number; busy: boolean }>({ term: '', tab: 'all', list: [], page: 0, pages: 1, busy: false });
 
 	$effect(() => {
 		const showTrending = (p: Page<Card>) => (trending = p.results.slice(0, 16));
@@ -31,8 +44,8 @@
 	});
 
 	// Landing here puts the cursor in the search box, except when coming back with the back button
-	// (that would undo the restored scroll and pop the phone keyboard). The top-bar search link sends
-	// flixarr:focus-search when you're already on this page.
+	// (that would undo the restored scroll and pop the phone keyboard). The top-bar search link and the
+	// / key send flixarr:focus-search when you're already on this page.
 	let focused = false;
 	$effect(() => {
 		if (!input || focused) return;
@@ -41,12 +54,12 @@
 		releaseKeyboard(); // the stand-in from the Search tap hands the keyboard over (#162)
 	});
 	$effect(() => {
-		const f = () => input?.focus();
+		const f = () => { input?.focus(); input?.select(); };
 		addEventListener('flixarr:focus-search', f);
 		return () => removeEventListener('flixarr:focus-search', f);
 	});
 
-	// Recent searches (this device only): saved when you open a result.
+	// Recent searches (this device only): saved when you open a result or press Enter (#254).
 	const RECENT = 'flixarr_recent_searches';
 	let recent = $state<string[]>(JSON.parse(localStorage.getItem(RECENT) ?? '[]'));
 	function saveRecent() {
@@ -60,70 +73,210 @@
 		localStorage.removeItem(RECENT);
 	}
 
+	// What's in Plex: the library's own matches from the server (typos that keep the letters in order still
+	// match, brkng bad = Breaking Bad), with their posters from the title pages (usually already saved).
+	async function libraryCards(term: string): Promise<Card[]> {
+		const found = await api<{ type: 'movie' | 'series'; id: number; title: string }[]>('/plex/search?q=' + encodeURIComponent(term)).catch(() => []);
+		const cards = await Promise.all(found.slice(0, 10).map((t) =>
+			meta<Movie | Series>(`${t.type}/${t.id}`).then((d) => ({ id: d.id, type: t.type, title: d.title, poster: d.poster, backdrop: d.backdrop, year: d.year, rating: d.rating, genres: [], overview: d.overview }) as Card).catch(() => null)));
+		return cards.filter((c): c is Card => !!c);
+	}
+
 	// Debounced live search.
 	$effect(() => {
 		const term = q.trim();
-		// Only touch the URL when it actually changes: replacing the history entry on arrival would drop its saved
-		// back-button snapshot.
-		const url = term ? `/search?q=${encodeURIComponent(term)}` : '/search';
-		if (url !== location.pathname + location.search) replaceState(url, {});
-		if (!term) { hits = []; busy = false; return; }
+		if (!term) { hits = []; mine = []; busy = false; return; }
 		busy = true;
 		let alive = true;
 		const t = setTimeout(() => {
 			const show = (p: Page<SearchHit>) => alive && (hits = p.results);
 			// Only the newest search may say it's done: an older one finishing late would flash "No results" (#245).
 			meta<Page<SearchHit>>('search', { q: term }, show).then(show).finally(() => alive && (busy = false));
+			libraryCards(term).then((c) => alive && (mine = c));
 		}, 250);
 		return () => { clearTimeout(t); alive = false; };
 	});
-	// Going back to search brings back the results, the tab you picked and where you'd scrolled to.
+
+	// The address keeps the search and the open kind, so Back and See all land on the same view. Only touch
+	// the URL when it actually changes: replacing the history entry on arrival would drop its saved snapshot.
+	$effect(() => {
+		const term = q.trim();
+		const p = new URLSearchParams();
+		if (term) p.set('q', term);
+		if (term && tab !== 'all') p.set('tab', tab);
+		const url = '/search' + (p.size ? '?' + p : '');
+		if (url !== location.pathname + location.search) replaceState(url, {});
+	});
+
+	// A kind's next page. Starts over when the search or the kind changed.
+	async function more(): Promise<boolean> {
+		const term = q.trim();
+		if (!term || tab === 'all') return false;
+		if (kind.term !== term || kind.tab !== tab) kind = { term, tab, list: [], page: 0, pages: 1, busy: false };
+		if (kind.busy || kind.page >= kind.pages) return false;
+		const want = { term, tab, page: kind.page + 1 };
+		kind.busy = true;
+		try {
+			const p = await meta<Page<SearchHit>>('search', { q: term, type: tab, page: want.page });
+			if (kind.term !== want.term || kind.tab !== want.tab) return false; // the search moved on meanwhile
+			const seen = new Set(kind.list.map((h) => h.type + h.id));
+			kind.list = [...kind.list, ...p.results.filter((h) => !seen.has(h.type + h.id))];
+			kind.page = want.page;
+			kind.pages = p.totalPages;
+			return kind.page < kind.pages;
+		} catch {
+			return false;
+		} finally {
+			kind.busy = false;
+		}
+	}
+	$effect(() => {
+		// A kind's first page loads as soon as it's opened (the scroll watcher fetches the rest).
+		if (tab !== 'all' && q.trim() && (kind.term !== q.trim() || kind.tab !== tab)) {
+			const t = setTimeout(more, 250);
+			return () => clearTimeout(t);
+		}
+	});
+
+	// Going back to search brings back the results, the kind you picked and where you'd scrolled to.
 	snapshot({
 		id: 'search',
-		capture: () => ({ q, tab, hits: $state.snapshot(hits), y: scrollY }),
+		capture: () => ({ q, tab, hits: $state.snapshot(hits), mine: $state.snapshot(mine), kind: $state.snapshot(kind), y: scrollY }),
 		restore: async (v) => {
 			q = v.q;
 			tab = v.tab;
 			hits = v.hits;
+			mine = v.mine ?? [];
+			if (v.kind) kind = { ...v.kind, busy: false };
 			await tick();
 			restoreScroll(v.y);
 		}
 	});
-	const shown = $derived(hits.filter((h) => tab === 'all' || h.type === tab));
-	const count = (t: string) => hits.filter((h) => h.type === t).length;
+
+	const inPlex = (h: SearchHit) => (h.type === 'movie' || h.type === 'series') && !!statusOf(`${h.type}:${h.id}`)?.plex;
+	const top = $derived(hits[0]);
+	const rest = $derived(hits.slice(1));
+	// Your library (#251): Plex's own matches first, then any other result Plex has.
+	const library = $derived.by(() => {
+		const out: Card[] = [];
+		const seen = new Set<string>(top ? [top.type + top.id] : []);
+		const add = (c: Card) => { const k = c.type + c.id; if (!seen.has(k)) { seen.add(k); out.push(c); } };
+		mine.forEach(add);
+		rest.filter(inPlex).forEach((h) => add(h as Card));
+		return out;
+	});
+	const libKeys = $derived(new Set(library.map((c) => c.type + c.id)));
+	// One row per kind (#249), minus what's already in Your library.
+	const rows = $derived(KINDS.map((k) => ({ k, list: rest.filter((h) => h.type === k && !libKeys.has(h.type + h.id)) })));
+	const ROW_NAME = { movie: 'Movies', series: 'Series', person: 'People' };
+	const kindList = $derived(kind.term === q.trim() && kind.tab === tab ? kind.list : []);
+	const kindDone = $derived(kind.term === q.trim() && kind.tab === tab && kind.page >= kind.pages);
+
+	// The Top result's title page, for its Request or Play button (#248).
+	let topItem = $state<Movie | Series | null>(null);
+	$effect(() => {
+		const h = top;
+		topItem = null;
+		if (!h || h.type === 'person') return;
+		let alive = true;
+		meta<Movie | Series>(`${h.type}/${h.id}`).then((d) => alive && (topItem = d)).catch(() => {});
+		return () => { alive = false; };
+	});
+
+	// Coming 2027 for titles not out yet, New for this year's (#252).
+	const thisYear = new Date().getFullYear();
+	const label = (h: { type: string; year?: string }) => {
+		if (h.type === 'person') return '';
+		const y = Number(h.year) || 0;
+		return !y ? '' : y > thisYear ? `Coming ${y}` : y === thisYear ? 'New' : '';
+	};
+	const KIND_NAME = { movie: 'Movie', series: 'Series', person: 'Person' };
+	const seeAll = (k: Kind) => `/search?q=${encodeURIComponent(q.trim())}&tab=${k}`;
 </script>
+
+{#snippet person(h: SearchHit, cls: string)}
+	<a href="/person/{h.id}" class="group block {cls}">
+		<div class="aspect-square w-full overflow-hidden rounded-full border border-gray-700/40 bg-gray-800/40 shadow-xl">
+			{#if h.poster}<Img path={h.poster} kind="profile" sizes="(min-width: 640px) 144px, 112px" class="h-full w-full" />{:else}<div class="grid h-full place-items-center text-3xl text-gray-600">{h.title.charAt(0)}</div>{/if}
+		</div>
+		<div class="mt-2 truncate text-center text-[13px] font-medium">{h.title}</div>
+		<div class="truncate text-center text-xs text-gray-400">{h.dept ?? ''}</div>
+	</a>
+{/snippet}
+
+{#snippet hit(h: SearchHit, cls: string)}
+	{#if h.type === 'person'}{@render person(h, cls)}{:else}<Poster item={h as Card} class={cls} sub={label(h)} />{/if}
+{/snippet}
 
 <main class="mx-auto max-w-[1600px] space-y-6 pt-20 laptop:px-10 laptop:pt-24">
 	<div class="px-4 laptop:px-0">
 		<label class="card flex items-center gap-3 px-4 py-3.5 text-gray-400 focus-within:ring-2 focus-within:ring-primary/60">
 			<Icon name="search" class="size-5 shrink-0" />
-			<input bind:this={input} bind:value={q} autocomplete="off" class="w-full bg-transparent text-base text-white placeholder-gray-500 outline-none" placeholder="Search movies, series, people" />
-			{#if q}<button class="text-xs text-gray-400 hover:text-white" onclick={() => { q = ''; input?.focus(); }}>Clear</button>{/if}
+			<input bind:this={input} bind:value={q} autocomplete="off" enterkeyhint="search" onkeydown={(e) => { if (e.key === 'Enter') { saveRecent(); input?.blur(); } }} class="w-full bg-transparent text-base text-white placeholder-gray-500 outline-none" placeholder="Search movies, series, people" />
+			{#if q}<button class="text-xs text-gray-400 hover:text-white" onclick={() => { q = ''; tab = 'all'; input?.focus(); }}>Clear</button>
+			{:else}<kbd class="hidden rounded border border-gray-600 px-1.5 text-[11px] text-gray-500 laptop:inline">/</kbd>{/if}
 		</label>
 	</div>
 	{#if q.trim()}
-		<Chips bind:value={tab} options={[{ key: 'all', label: 'All', count: hits.length }, { key: 'movie', label: 'Movies', count: count('movie') }, { key: 'series', label: 'Series', count: count('series') }, { key: 'person', label: 'People', count: count('person') }]} />
-		{#if !shown.length && !busy}
-			<p class="px-4 py-20 text-center text-sm text-gray-400">No results for “{q.trim()}”.</p>
-		{:else}
-			<!-- Opening a result saves the search to Recent (clicks bubble up from the links). -->
-			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-			<div class="grid grid-cols-3 gap-3 px-4 tablet:grid-cols-4 laptop:grid-cols-6 laptop:px-0 desktop:grid-cols-8" onclick={saveRecent}>
-				{#each shown as h (h.type + h.id)}
-					{#if h.type === 'person'}
-						<a href="/person/{h.id}" class="group block">
-							<div class="aspect-[2/3] w-full overflow-hidden rounded-xl border border-gray-700/40 bg-gray-800/40 shadow-xl">
-								{#if h.poster}<Img path={h.poster} kind="profile" sizes="(min-width: 1280px) 190px, (min-width: 1024px) 16vw, (min-width: 640px) 25vw, 33vw" class="h-full w-full" />{:else}<div class="grid h-full place-items-center text-3xl text-gray-600">{h.title.charAt(0)}</div>{/if}
+		<Chips bind:value={tab} options={[{ key: 'all', label: 'All' }, { key: 'movie', label: 'Movies' }, { key: 'series', label: 'Series' }, { key: 'person', label: 'People' }]} />
+		<!-- Opening a result saves the search to Recent (clicks bubble up from the links). -->
+		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+		<div onclick={(e) => (e.target as Element).closest('a') && saveRecent()}>
+			{#if tab === 'all'}
+				{#if !hits.length && !mine.length && !busy}
+					<p class="px-4 py-20 text-center text-sm text-gray-400">No results for “{q.trim()}”.</p>
+				{:else}
+					<div class="space-y-8">
+						{#if top}
+							<!-- The best match, big, with its button (#248). -->
+							<div class="px-4 laptop:px-0">
+								<div class="relative overflow-hidden rounded-2xl ring-1 ring-gray-700/50">
+									{#if top.backdrop}<Img path={top.backdrop} kind="backdrop" sizes="100vw" class="absolute inset-0 h-full w-full opacity-30" />{/if}
+									<div class="absolute inset-0 bg-gradient-to-r from-gray-950 via-gray-950/80 to-transparent"></div>
+									<div class="relative flex gap-4 p-4 tablet:gap-5 tablet:p-5 laptop:p-7">
+										<a href={href(top)} class="w-24 shrink-0 self-start tablet:w-32 laptop:w-40">
+											<div class="{top.type === 'person' ? 'aspect-square rounded-full' : 'aspect-[2/3] rounded-xl'} overflow-hidden bg-gray-800 shadow-2xl ring-1 ring-white/10">
+												{#if top.poster}<Img path={top.poster} kind={top.type === 'person' ? 'profile' : 'poster'} sizes="160px" class="h-full w-full" />{:else}<div class="grid h-full place-items-center text-3xl text-gray-600">{top.title.charAt(0)}</div>{/if}
+											</div>
+										</a>
+										<div class="min-w-0 space-y-2 self-center">
+											<div class="text-[11px] font-bold uppercase tracking-wider text-primary">Top result</div>
+											<a href={href(top)} class="block text-xl font-bold hover:text-primary-light tablet:text-2xl laptop:text-4xl">{top.title}</a>
+											<div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-300">
+												{#if top.type === 'person'}{top.dept ?? 'Person'}{:else}{top.year || 'TBA'} · {KIND_NAME[top.type]}{#if top.rating} · ★ {top.rating}{/if}{/if}
+												{#if label(top)}<span class="rounded bg-sky-500/15 px-1.5 py-0.5 text-[11px] font-semibold text-sky-300 ring-1 ring-sky-500/40">{label(top)}</span>{/if}
+											</div>
+											{#if top.overview}<p class="line-clamp-2 max-w-2xl text-sm text-gray-400">{top.overview}</p>{/if}
+											<div class="flex flex-wrap gap-2 pt-1">
+												{#if topItem && topItem.id === top.id}<RequestButton item={topItem} />{/if}
+												<a href={href(top)} class="btn-ghost">{top.type === 'person' ? 'View person' : 'Details'}</a>
+											</div>
+										</div>
+									</div>
+								</div>
 							</div>
-							<div class="mt-2 truncate text-[13px] font-medium">{h.title}</div>
-							<div class="text-xs text-gray-400">{h.dept ?? ''}</div>
-						</a>
-					{:else}
-						<Poster item={h as Card} class="w-full" />
-					{/if}
-				{/each}
-			</div>
-		{/if}
+						{/if}
+						<Row title="Your library" items={library}>
+							{#snippet item(c)}<Poster item={c} />{/snippet}
+						</Row>
+						{#each rows as r (r.k)}
+							<Row title={ROW_NAME[r.k]} items={r.list} more={seeAll(r.k)}>
+								{#snippet item(h)}{@render hit(h, 'w-28 shrink-0 tablet:w-36')}{/snippet}
+							</Row>
+						{/each}
+					</div>
+				{/if}
+			{:else}
+				{#if !kindList.length && kindDone}
+					<p class="px-4 py-20 text-center text-sm text-gray-400">No {ROW_NAME[tab].toLowerCase()} for “{q.trim()}”.</p>
+				{:else}
+					<div class="grid grid-cols-3 gap-3 px-4 tablet:grid-cols-4 laptop:grid-cols-6 laptop:px-0 desktop:grid-cols-8">
+						{#each kindList as h (h.type + h.id)}{@render hit(h, 'w-full')}{/each}
+					</div>
+					<div use:infinite={more}><LoadingMore busy={kind.busy || !kindList.length} done={kindDone} /></div>
+				{/if}
+			{/if}
+		</div>
 	{:else}
 		{#if recent.length}
 			<section class="space-y-3 px-4 laptop:px-0">
