@@ -20,6 +20,8 @@ export interface Page<T> {
 	page: number;
 	totalPages: number;
 	results: T[];
+	// Search only: how the API read the text (round 3: a browse search, or titles like another one).
+	parsed?: { browse?: { label: string; type: string }; like?: { id: number; type: string; title: string; year: string | null } };
 }
 
 export interface CastMember { id: number; name: string; character: string; profile: string | null }
@@ -63,7 +65,7 @@ export interface Person {
 
 export interface Collection { id: number; name: string; overview: string; poster: string | null; backdrop: string | null; parts: Card[] }
 
-export interface SearchHit extends Omit<Partial<Card>, 'type'> { id: number; type: MediaType | 'person'; title: string; poster: string | null; dept?: string | null }
+export interface SearchHit extends Omit<Partial<Card>, 'type'> { id: number; type: MediaType | 'person' | 'collection'; title: string; poster: string | null; dept?: string | null }
 
 export interface User { id: number; plexId: number; username: string; email: string; avatar: string; role: string; perms: string[]; owner: boolean; local?: boolean; viewAs?: string; managesUsers?: boolean; lastSeen?: string; movieLimit: number; seasonLimit: number; createdAt: string }
 

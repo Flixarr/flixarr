@@ -14,6 +14,7 @@
 	import Poster from '#lib/components/Poster.svelte';
 	import Chips from '#lib/components/Chips.svelte';
 	import Icon from '#lib/components/Icon.svelte';
+	import { can } from '#lib/session.svelte.ts';
 	import Img from '#lib/components/Img.svelte';
 	import RequestButton from '#lib/components/RequestButton.svelte';
 	import LoadingMore from '#lib/components/LoadingMore.svelte';
@@ -29,12 +30,13 @@
 	let q = $state(startUrl.get('q') ?? '');
 	let tab = $state<Tab>((KINDS as string[]).includes(startUrl.get('tab') ?? '') ? (startUrl.get('tab') as Kind) : 'all');
 	let hits = $state<SearchHit[]>([]); // the mixed search: Top result and the rows
+	let parsed = $state<Page<SearchHit>['parsed']>(); // a browse or like search: what it's showing (#258)
 	let mine = $state<Card[]>([]); // titles in Plex matching the search, even with a typo (#251)
 	let busy = $state(false);
 	let trending = $state<Card[]>([]);
 	let input = $state<HTMLInputElement>();
 	// One kind on its own, page by page (#249): the search it was loaded for, its pages so far, and how many there are.
-	let kind = $state<{ term: string; tab: Tab; list: SearchHit[]; page: number; pages: number; busy: boolean }>({ term: '', tab: 'all', list: [], page: 0, pages: 1, busy: false });
+	let kind = $state<{ term: string; tab: Tab; list: SearchHit[]; page: number; pages: number; busy: boolean; parsed?: Page<SearchHit>['parsed'] }>({ term: '', tab: 'all', list: [], page: 0, pages: 1, busy: false });
 
 	$effect(() => {
 		const showTrending = (p: Page<Card>) => (trending = p.results.slice(0, 16));
@@ -83,13 +85,13 @@
 	// Debounced live search.
 	$effect(() => {
 		const term = q.trim();
-		if (!term) { hits = []; mine = []; busy = false; return; }
+		if (!term) { hits = []; mine = []; parsed = undefined; busy = false; return; }
 		busy = true;
 		let alive = true;
 		const t = setTimeout(() => {
-			const show = (p: Page<SearchHit>) => alive && (hits = p.results);
+			const show = (p: Page<SearchHit>) => { if (alive) { hits = p.results; parsed = p.parsed; } };
 			// Only the newest search may say it's done: an older one finishing late would flash "No results" (#245).
-			meta<Page<SearchHit>>('search', { q: term }, show).then(show).finally(() => alive && (busy = false));
+			meta<Page<SearchHit>>('search', { q: term, collections: 1 }, show).then(show).finally(() => alive && (busy = false));
 			libraryCards(term).then((c) => alive && (mine = c));
 		}, 250);
 		return () => { clearTimeout(t); alive = false; };
@@ -121,6 +123,7 @@
 			kind.list = [...kind.list, ...p.results.filter((h) => !seen.has(h.type + h.id))];
 			kind.page = want.page;
 			kind.pages = p.totalPages;
+			if (want.page === 1) kind.parsed = p.parsed;
 			return kind.page < kind.pages;
 		} catch {
 			return false;
@@ -139,12 +142,13 @@
 	// Going back to search brings back the results, the kind you picked and where you'd scrolled to.
 	snapshot({
 		id: 'search',
-		capture: () => ({ q, tab, hits: $state.snapshot(hits), mine: $state.snapshot(mine), kind: $state.snapshot(kind), y: scrollY }),
+		capture: () => ({ q, tab, hits: $state.snapshot(hits), mine: $state.snapshot(mine), parsed: $state.snapshot(parsed), kind: $state.snapshot(kind), y: scrollY }),
 		restore: async (v) => {
 			q = v.q;
 			tab = v.tab;
 			hits = v.hits;
 			mine = v.mine ?? [];
+			parsed = v.parsed;
 			if (v.kind) kind = { ...v.kind, busy: false };
 			await tick();
 			restoreScroll(v.y);
@@ -160,7 +164,9 @@
 	const mixed = $derived.by(() => {
 		const seen = new Set<string>([topKey]);
 		const out: SearchHit[] = [];
-		for (const h of [...(mine as SearchHit[]), ...rest]) {
+		// A browse or like search isn't a title, so the library's name matches don't belong in it.
+		const own = parsed?.browse || parsed?.like ? [] : (mine as SearchHit[]);
+		for (const h of [...own, ...rest]) {
 			const k = h.type + h.id;
 			if (!seen.has(k)) { seen.add(k); out.push(h); }
 		}
@@ -175,7 +181,7 @@
 	$effect(() => {
 		const h = top;
 		topItem = null;
-		if (!h || h.type === 'person') return;
+		if (!h || h.type === 'person' || h.type === 'collection') return;
 		let alive = true;
 		meta<Movie | Series>(`${h.type}/${h.id}`).then((d) => alive && (topItem = d)).catch(() => {});
 		return () => { alive = false; };
@@ -184,11 +190,29 @@
 	// Coming 2027 for titles not out yet, New for this year's (#252).
 	const thisYear = new Date().getFullYear();
 	const label = (h: { type: string; year?: string }) => {
-		if (h.type === 'person') return '';
+		if (h.type === 'person' || h.type === 'collection') return '';
 		const y = Number(h.year) || 0;
 		return !y ? '' : y > thisYear ? `Coming ${y}` : y === thisYear ? 'New' : '';
 	};
-	const KIND_NAME = { movie: 'Movie', series: 'Series', person: 'Person' };
+	const KIND_NAME = { movie: 'Movie', series: 'Series', person: 'Person', collection: 'Collection' };
+	// A person as the Top result: the titles the API put right after them are what they're known for (#258).
+	const knownFor = $derived.by(() => {
+		if (top?.type !== 'person' || hits[0] !== top) return [];
+		const out: SearchHit[] = [];
+		for (const h of hits.slice(1)) {
+			if (h.type !== 'movie' && h.type !== 'series') break;
+			out.push(h);
+			if (out.length === 3) break;
+		}
+		return out;
+	});
+	// What a browse or like search is showing, for the line above the results (#258).
+	const reading = $derived.by(() => {
+		const p = tab === 'all' ? parsed : kind.term === q.trim() && kind.tab === tab ? kind.parsed : undefined;
+		if (p?.browse) return p.browse.label;
+		if (p?.like) return `More like ${p.like.title}${p.like.year ? ` (${p.like.year})` : ''}`;
+		return '';
+	});
 </script>
 
 {#snippet person(h: SearchHit, cls: string)}
@@ -201,8 +225,18 @@
 	</a>
 {/snippet}
 
+{#snippet collection(h: SearchHit, cls: string)}
+	<a href="/collection/{h.id}" class="group block {cls}">
+		<div class="aspect-[2/3] w-full overflow-hidden rounded-xl border border-gray-700/40 bg-gray-800/40 shadow-xl">
+			{#if h.poster}<Img path={h.poster} kind="poster" sizes="(min-width: 640px) 144px, 112px" class="h-full w-full" />{:else}<div class="grid h-full place-items-center text-3xl text-gray-600">{h.title.charAt(0)}</div>{/if}
+		</div>
+		<div class="mt-2 truncate text-[13px] font-medium">{h.title}</div>
+		<div class="truncate text-xs text-gray-400">Collection</div>
+	</a>
+{/snippet}
+
 {#snippet hit(h: SearchHit, cls: string)}
-	{#if h.type === 'person'}{@render person(h, cls)}{:else}<Poster item={h as Card} class={cls} sub={label(h)} />{/if}
+	{#if h.type === 'person'}{@render person(h, cls)}{:else if h.type === 'collection'}{@render collection(h, cls)}{:else}<Poster item={h as Card} class={cls} sub={label(h)} />{/if}
 {/snippet}
 
 <main class="mx-auto max-w-[1600px] space-y-6 pt-20 laptop:px-10 laptop:pt-24">
@@ -236,19 +270,22 @@
 									<div class="text-[11px] font-bold uppercase tracking-wider text-primary">Top result</div>
 									<a href={href(top)} class="block text-xl font-bold hover:text-primary-light tablet:text-2xl laptop:text-4xl">{top.title}</a>
 									<div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-300">
-										{#if top.type === 'person'}{top.dept ?? 'Person'}{:else}{top.year || 'TBA'} · {KIND_NAME[top.type]}{#if top.rating} · ★ {top.rating}{/if}{/if}
+										{#if top.type === 'person'}{top.dept ?? 'Person'}{:else if top.type === 'collection'}Collection{:else}{top.year || 'TBA'} · {KIND_NAME[top.type]}{#if top.rating} · ★ {top.rating}{/if}{/if}
 										{#if label(top)}<span class="rounded bg-sky-500/15 px-1.5 py-0.5 text-[11px] font-semibold text-sky-300 ring-1 ring-sky-500/40">{label(top)}</span>{/if}
 									</div>
 									{#if top.overview}<p class="line-clamp-2 max-w-2xl text-sm text-gray-400">{top.overview}</p>{/if}
+									{#if knownFor.length}<p class="line-clamp-2 max-w-2xl text-sm text-gray-400">Known for {#each knownFor as k, i (k.type + k.id)}{i ? (i === knownFor.length - 1 ? ' and ' : ', ') : ''}<a href={href(k)} class="text-gray-200 hover:text-primary-light">{k.title}</a>{/each}</p>{/if}
 									<div class="flex flex-wrap gap-2 pt-1">
 										{#if topItem && topItem.id === top.id}<RequestButton item={topItem} />{/if}
-										<a href={href(top)} class="btn-ghost act">{top.type === 'person' ? 'View person' : 'Details'}</a>
+										{#if top.type === 'collection' && can('requestMovies')}<a href="/collection/{top.id}?request=1" class="btn act"><Icon name="plus" class="size-4" />Request missing</a>{/if}
+										<a href={href(top)} class="btn-ghost act">{top.type === 'person' ? 'View person' : top.type === 'collection' ? 'View collection' : 'Details'}</a>
 									</div>
 								</div>
 							</div>
 						</div>
 					</div>
 				{/if}
+				{#if reading}<h2 class="px-4 text-base font-semibold laptop:px-0">{reading}</h2>{/if}
 				{#if tab === 'all'}
 					{#if !hits.length && !mine.length && !busy}
 						<p class="px-4 py-20 text-center text-sm text-gray-400">No results for “{q.trim()}”.</p>

@@ -26,6 +26,15 @@
 	const have = $derived(c ? c.parts.filter((p) => st(p)?.plex || st(p)?.status === 'available').length : 0);
 	const missing = $derived(c ? c.parts.filter((p) => { const s = st(p); return s !== undefined && (!s || s.status === 'failed' || s.status === 'declined' || s.status === 'expired' || s.status === 'removed'); }) : []);
 
+	// ?request=1 (a collection's Request missing in search) opens the request window once it's known what's missing.
+	let autoOpened = false;
+	$effect(() => {
+		if (!autoOpened && c && missing.length && can('requestMovies') && page.url.searchParams.get('request') === '1') {
+			autoOpened = true;
+			openRequest();
+		}
+	});
+
 	async function openRequest() {
 		picked = missing.filter((p) => p.year && p.year <= String(new Date().getFullYear())).map((p) => p.id);
 		opts = null;

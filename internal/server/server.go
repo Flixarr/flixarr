@@ -497,7 +497,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 // metaProxy forwards /api/meta/<path> to the Flixarr API (through the cache) with this install's region and language.
 func (s *Server) metaProxy(w http.ResponseWriter, r *http.Request, u *store.User) {
 	q := url.Values{}
-	for _, k := range []string{"q", "page", "genre", "sort", "type"} {
+	for _, k := range []string{"q", "page", "genre", "sort", "type", "collections"} {
 		if v := r.URL.Query().Get(k); v != "" {
 			q.Set(k, v)
 		}
