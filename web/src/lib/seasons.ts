@@ -8,7 +8,7 @@ export type PlexSeasons = { inPlex: Record<number, number>; episodes?: Record<nu
 export const noSeasons = (): PlexSeasons => ({ inPlex: {} });
 
 export const loadSeasons = (id: number | string | undefined): Promise<PlexSeasons> =>
-	api<PlexSeasons>(`/plex/seasons/${id}`).then((d) => ({ inPlex: d?.inPlex ?? {}, episodes: d?.episodes })).catch(() => ({ inPlex: {}, failed: true }));
+	api<PlexSeasons>(`/plex/seasons/${id}`).then((d) => ({ inPlex: d?.inPlex ?? {}, episodes: d?.episodes, failed: d?.failed })).catch(() => ({ inPlex: {}, failed: true }));
 
 // episodeCount is how many episodes a season has, numbered the way Plex numbers them.
 export const episodeCount = (d: PlexSeasons, s: { n: number; episodes: number }) => d.episodes?.[s.n] ?? s.episodes;

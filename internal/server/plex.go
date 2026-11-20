@@ -139,11 +139,12 @@ func (s *Server) plexEpisodes(w http.ResponseWriter, r *http.Request, _ *store.U
 func (s *Server) plexSeasons(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	id, _ := strconv.Atoi(r.PathValue("tmdbId"))
 	got, err := s.Library.Seasons(r.Context(), id)
+	out := map[string]any{"inPlex": got}
 	if err != nil {
 		s.Log.Warn("plex seasons", "err", err)
-		got = map[int]int{} // the page works without it
+		// The page works without it, but nothing may read the empty counts as "none in Plex" (#257).
+		out["inPlex"], out["failed"] = map[int]int{}, true
 	}
-	out := map[string]any{"inPlex": got}
 	if counts := s.Library.SonarrCounts(r.Context(), id); counts != nil {
 		eps := map[int]int{}
 		for n, c := range counts {
