@@ -10,11 +10,12 @@
 	import { restoreScroll } from '#lib/scroll.ts';
 	import { replaceState, snapshot } from '$app/navigation';
 	import { api, meta, href } from '#lib/api.ts';
-	import type { Card, Page, SearchHit, Movie, Series } from '#lib/types.ts';
+	import type { Card, Collection, Page, SearchHit, Movie, Series } from '#lib/types.ts';
 	import Poster from '#lib/components/Poster.svelte';
 	import Chips from '#lib/components/Chips.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import { can } from '#lib/session.svelte.ts';
+	import { statusOf } from '#lib/availability.svelte.ts';
 	import Img from '#lib/components/Img.svelte';
 	import RequestButton from '#lib/components/RequestButton.svelte';
 	import LoadingMore from '#lib/components/LoadingMore.svelte';
@@ -187,6 +188,23 @@
 		return () => { alive = false; };
 	});
 
+	// A collection as the Top result: its movies, to say how many are missing (same rule as the collection page).
+	let topParts = $state<Card[] | null>(null);
+	$effect(() => {
+		const h = top;
+		topParts = null;
+		if (h?.type !== 'collection') return;
+		let alive = true;
+		meta<Collection>(`collection/${h.id}`).then((d) => alive && (topParts = d.parts)).catch(() => {});
+		return () => { alive = false; };
+	});
+	const partsMissing = $derived.by(() => {
+		if (!topParts) return undefined;
+		const st = topParts.map((p) => statusOf(`movie:${p.id}`));
+		if (st.some((x) => x === undefined)) return undefined; // still loading
+		return st.filter((x) => !x || ['failed', 'declined', 'expired', 'removed'].includes(x.status)).length;
+	});
+
 	// Coming 2027 for titles not out yet, New for this year's (#252).
 	const thisYear = new Date().getFullYear();
 	const label = (h: { type: string; year?: string }) => {
@@ -277,7 +295,8 @@
 									{#if knownFor.length}<p class="line-clamp-2 max-w-2xl text-sm text-gray-400">Known for {#each knownFor as k, i (k.type + k.id)}{i ? (i === knownFor.length - 1 ? ' and ' : ', ') : ''}<a href={href(k)} class="text-gray-200 hover:text-primary-light">{k.title}</a>{/each}</p>{/if}
 									<div class="flex flex-wrap gap-2 pt-1">
 										{#if topItem && topItem.id === top.id}<RequestButton item={topItem} />{/if}
-										{#if top.type === 'collection' && can('requestMovies')}<a href="/collection/{top.id}?request=1" class="btn act"><Icon name="plus" class="size-4" />Request missing</a>{/if}
+										{#if top.type === 'collection' && partsMissing && can('requestMovies')}<a href="/collection/{top.id}?request=1" class="btn act"><Icon name="plus" class="size-4" />Request {partsMissing} missing</a>
+										{:else if top.type === 'collection' && partsMissing === 0}<span class="act inline-flex items-center gap-2 rounded-lg bg-green-500/15 font-medium text-green-300 ring-1 ring-green-500/40"><Icon name="check" class="size-4" />All in your library</span>{/if}
 										<a href={href(top)} class="btn-ghost act">{top.type === 'person' ? 'View person' : top.type === 'collection' ? 'View collection' : 'Details'}</a>
 									</div>
 								</div>
