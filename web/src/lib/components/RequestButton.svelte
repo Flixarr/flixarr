@@ -8,9 +8,9 @@
 	import { can } from '#lib/session.svelte.ts';
 	import { page } from '$app/state';
 	import { remember } from '#lib/availability.svelte.ts';
-	import { simple, waitingRelease } from '#lib/requeststatus.ts';
+	import { simple, waitingRelease, isActive } from '#lib/requeststatus.ts';
 	import { on } from '#lib/live.svelte.ts';
-	import { loadSeasons, noSeasons, episodeCount } from '#lib/seasons.ts';
+	import { loadSeasons, noSeasons, episodeCount, type PlexSeasons } from '#lib/seasons.ts';
 	import RequestModal from './RequestModal.svelte';
 	import RequestDetail from './RequestDetail.svelte';
 
@@ -43,17 +43,21 @@
 	});
 
 	// Series: offer Request more while some season that has aired is neither fully in Plex nor asked for.
-	let plexSeasons = $state(noSeasons());
+	// Once it's in Plex, only after Plex's counts have loaded: until then every season looks missing (#257).
+	let plexSeasons = $state<PlexSeasons | null>(null);
 	const hasPlex = $derived(!!req?.plex);
 	$effect(() => {
-		plexSeasons = noSeasons();
-		if (item.type === 'series' && hasPlex) loadSeasons(item.id).then((d) => (plexSeasons = d));
+		const id = item.id;
+		plexSeasons = null;
+		if (item.type === 'series' && hasPlex) loadSeasons(id).then((d) => id === item.id && (plexSeasons = d));
 	});
 	const asked = $derived(req?.asked);
 	const moreSeasons = $derived.by(() => {
 		if (item.type !== 'series' || asked?.whole || (!asked && !hasPlex)) return false;
+		if (hasPlex && (!plexSeasons || plexSeasons.failed)) return false;
+		const counts = plexSeasons ?? noSeasons();
 		const today = new Date().toISOString().slice(0, 10);
-		return (item as Series).seasons.some((s) => s.n > 0 && episodeCount(plexSeasons, s) > 0 && (!s.air || s.air <= today) && (plexSeasons.inPlex[s.n] ?? 0) < episodeCount(plexSeasons, s) && !(asked?.seasons ?? []).includes(s.n));
+		return (item as Series).seasons.some((s) => s.n > 0 && episodeCount(counts, s) > 0 && (!s.air || s.air <= today) && (counts.inPlex[s.n] ?? 0) < episodeCount(counts, s) && !(asked?.seasons ?? []).includes(s.n));
 	});
 
 </script>
@@ -74,7 +78,7 @@
 {#if req?.plex}
 	<a href={req.plex} target="_blank" rel="noopener" class="btn-plex act"><PlexMark class="size-4" color="#111827" />Play on Plex</a>
 	{#if item.type === 'series'}
-		{#if req.status !== 'available'}{@render pill(req)}{/if}
+		{#if isActive(req.status)}{@render pill(req)}{/if}
 		{#if moreSeasons && can('requestTv')}{@render more()}{/if}
 	{/if}
 {:else if req?.blocked}

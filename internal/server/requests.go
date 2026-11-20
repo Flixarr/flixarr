@@ -155,7 +155,7 @@ func (s *Server) briefs(keys []string) (map[string]brief, error) {
 	if inPlex, err := s.Library.Lookup(keys); err == nil {
 		for k, it := range inPlex {
 			b, requested := out[k]
-			if strings.HasPrefix(k, "movie:") || !requested || b.Status == "available" || b.Status == "failed" || b.Status == "declined" {
+			if strings.HasPrefix(k, "movie:") || !requested || doneInPlex(b.Status) {
 				b.Status, b.Progress = "available", 100
 			}
 			b.Plex = it.URL
@@ -378,4 +378,14 @@ func writeProblem(w http.ResponseWriter, code int, err error, u *store.User, fal
 		msg = requests.Plain(err, fallback)
 	}
 	writeErr(w, code, msg)
+}
+
+// doneInPlex says a series' latest request has nothing left to show once the series is in Plex: it's
+// available, or it ended (failed, declined, expired, removed) and the series came back some other way (#257).
+func doneInPlex(status string) bool {
+	switch status {
+	case "available", "failed", "declined", "expired", "removed":
+		return true
+	}
+	return false
 }
