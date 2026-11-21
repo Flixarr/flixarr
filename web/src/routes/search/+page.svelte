@@ -40,8 +40,18 @@
 	let kind = $state<{ term: string; tab: Tab; list: SearchHit[]; page: number; pages: number; busy: boolean; parsed?: Page<SearchHit>['parsed'] }>({ term: '', tab: 'all', list: [], page: 0, pages: 1, busy: false });
 
 	$effect(() => {
-		const showTrending = (p: Page<Card>) => (trending = p.results.slice(0, 16));
-		meta<Page<Card>>('lists/trending', {}, showTrending).then(showTrending);
+		// Three pages, so a wide screen gets several full rows. Kept to a multiple of 24 so every row is full
+		// whether the grid has 3, 4, 6 or 8 columns.
+		const pages: Card[][] = [[], [], []];
+		const showTrending = () => {
+			const seen = new Set<string>();
+			const all = pages.flat().filter((c) => !seen.has(c.type + c.id) && seen.add(c.type + c.id));
+			trending = all.length >= 24 ? all.slice(0, all.length - (all.length % 24)) : all;
+		};
+		pages.forEach((_, i) => {
+			const show = (p: Page<Card>) => { pages[i] = p.results; showTrending(); };
+			meta<Page<Card>>('lists/trending', i ? { page: i + 1 } : {}, show).then(show).catch(() => {});
+		});
 	});
 
 	// Landing here puts the cursor in the search box, except when coming back with the back button
