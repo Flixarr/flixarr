@@ -1,5 +1,6 @@
 <script lang="ts" generics="T">
 	import type { Snippet } from 'svelte';
+	import { rowWidth } from '#lib/posters.ts';
 	// loading: the row's titles haven't arrived yet, so it holds its place with pulsing grey posters.
 	let { title, items, more = '', item, end, loading = false }: { title: string; items: T[]; more?: string; item: Snippet<[T]>; end?: Snippet; loading?: boolean } = $props();
 </script>
@@ -17,7 +18,7 @@
 				{@render end?.()}
 			{:else}
 				{#each { length: 8 } as _, i (i)}
-					<div class="w-28 shrink-0 animate-pulse tablet:w-36" aria-hidden="true">
+					<div class="shrink-0 animate-pulse {rowWidth}" aria-hidden="true">
 						<div class="aspect-[2/3] rounded-xl bg-gray-800/70"></div>
 						<div class="mt-2 h-3.5 w-3/4 rounded bg-gray-800/70"></div>
 						<div class="mt-1.5 h-3 w-1/2 rounded bg-gray-800/50"></div>

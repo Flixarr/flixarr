@@ -5,6 +5,7 @@
 	import { meta } from '#lib/api.ts';
 	import type { Card, Page } from '#lib/types.ts';
 	import { tilt, tiltEnabled } from '#lib/tilt.ts';
+	import { rowWidth } from '#lib/posters.ts';
 	import Img from './Img.svelte';
 	import Icon from './Icon.svelte';
 	let { path, params = {}, href, remaining = 0 }: { path: string; params?: Record<string, string | number>; href: string; remaining?: number } = $props();
@@ -23,7 +24,7 @@
 	const label = $derived(remaining >= 20 ? `${Math.floor(remaining / 10) * 10}+ more` : remaining > 0 ? `${remaining} more` : '');
 </script>
 
-<a {href} class="group relative block w-28 shrink-0 tablet:w-36" aria-label="See all">
+<a {href} class="group relative block shrink-0 {rowWidth}" aria-label="See all">
 	<div use:tilt class="relative aspect-[2/3] overflow-hidden rounded-xl border border-gray-700/40 bg-gray-800/40 shadow-xl">
 		<div class="board absolute inset-0 grid grid-cols-4 gap-px">
 			{#each slots as [a, b] (a.type + a.id)}

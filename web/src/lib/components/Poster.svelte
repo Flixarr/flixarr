@@ -1,17 +1,18 @@
 <script lang="ts">
 	import { href } from '#lib/api.ts';
 	import { tilt, tiltEnabled } from '#lib/tilt.ts';
+	import { rowWidth, rowSizes } from '#lib/posters.ts';
 	import type { Card } from '#lib/types.ts';
 	// Only what a poster shows, so a person's credits (no plot summary or backdrop) fit too.
 	type PosterItem = Pick<Card, 'id' | 'type' | 'title' | 'poster' | 'year' | 'rating' | 'creditId'>;
 	import Img from './Img.svelte';
 	import Tooltip from './Tooltip.svelte';
 	import { statusOf } from '#lib/availability.svelte.ts';
-	let { item, class: cls = 'w-28 tablet:w-36', sub = '' }: { item: PosterItem; class?: string; sub?: string } = $props();
+	let { item, class: cls = rowWidth, sub = '' }: { item: PosterItem; class?: string; sub?: string } = $props();
 	// From a person's page into a series: carry the credit so the show marks their episodes.
 	const link = $derived(href(item) + (item.creditId ? `?credit=${item.creditId}` : ''));
 	// Rows show posters at a fixed width; grids (class w-full) at 3/4/6/8 per row.
-	const sizes = $derived(cls.includes('w-full') ? '(min-width: 1280px) 190px, (min-width: 1024px) 16vw, (min-width: 640px) 25vw, 33vw' : '(min-width: 640px) 144px, 112px');
+	const sizes = $derived(cls.includes('w-full') ? '(min-width: 1280px) 190px, (min-width: 1024px) 16vw, (min-width: 640px) 25vw, 33vw' : rowSizes);
 	// Mouse + motion allowed: the tilt replaces the plain hover zoom.
 	const tilting = tiltEnabled();
 	// Status dot, top right: in Plex, requested, downloading.
