@@ -247,17 +247,8 @@
 	// Collections and the Top result's poster get the same mouse-following hover as every other poster (#263).
 	const tilting = tiltEnabled();
 	const KIND_NAME = { movie: 'Movie', series: 'Series', person: 'Person', collection: 'Collection' };
-	// A person as the Top result: the titles the API put right after them are what they're known for (#258).
-	const knownFor = $derived.by(() => {
-		if (top?.type !== 'person' || hits[0] !== top) return [];
-		const out: SearchHit[] = [];
-		for (const h of hits.slice(1)) {
-			if (h.type !== 'movie' && h.type !== 'series') break;
-			out.push(h);
-			if (out.length === 3) break;
-		}
-		return out;
-	});
+	// A person as the Top result: what the API says they're best known for (#258), the same while their name is typed.
+	const knownFor = $derived<{ id: number; type: 'movie' | 'series'; title: string }[]>(top?.type === 'person' ? (top.known ?? []) : []);
 	// What a browse or like search is showing, for the line above the results (#258).
 	const reading = $derived.by(() => {
 		const p = tab === 'all' ? parsed : kind.term === q.trim() && kind.tab === tab ? kind.parsed : undefined;

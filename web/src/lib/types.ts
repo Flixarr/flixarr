@@ -65,7 +65,7 @@ export interface Person {
 
 export interface Collection { id: number; name: string; overview: string; poster: string | null; backdrop: string | null; parts: Card[] }
 
-export interface SearchHit extends Omit<Partial<Card>, 'type'> { id: number; type: MediaType | 'person' | 'collection'; title: string; poster: string | null; dept?: string | null }
+export interface SearchHit extends Omit<Partial<Card>, 'type'> { id: number; type: MediaType | 'person' | 'collection'; title: string; poster: string | null; dept?: string | null; known?: { id: number; type: 'movie' | 'series'; title: string }[] }
 
 export interface User { id: number; plexId: number; username: string; email: string; avatar: string; role: string; perms: string[]; owner: boolean; local?: boolean; viewAs?: string; managesUsers?: boolean; lastSeen?: string; movieLimit: number; seasonLimit: number; createdAt: string }
 
