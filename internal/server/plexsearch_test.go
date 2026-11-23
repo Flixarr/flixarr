@@ -12,11 +12,16 @@ func TestMatchTitles(t *testing.T) {
 	for _, c := range []struct {
 		q    string
 		want int
-	}{{"brkng bad", 1396}, {"breaking", 1396}, {"rocky 2", 1367}, {"office", 2316}, {"amelie", 194}, {"fast and furious", 13804}} {
+	}{{"brkng bad", 1396}, {"breaking", 1396}, {"rocky 2", 1367}, {"office", 2316}, {"amelie", 194}, {"fast and furious", 13804},
+		{"brekaing bad", 1396}, {"brekai", 1396}, {"breka", 1396}, {"brekaing", 1396}, {"braeking bad", 1396}, {"offcie", 2316}} {
 		got := matchTitles(c.q, all, 5)
 		if len(got) == 0 || got[0].TmdbID != c.want {
 			t.Errorf("%q: got %v, want %d first", c.q, got, c.want)
 		}
+	}
+	// A different first letter isn't a typo of the title.
+	if got := matchTitles("rbeaking", all, 5); len(got) != 0 {
+		t.Errorf("rbeaking matched %v", got)
 	}
 	if got := matchTitles("zzz", all, 5); len(got) != 0 {
 		t.Errorf("zzz matched %v", got)

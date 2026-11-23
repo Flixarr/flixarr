@@ -21,7 +21,7 @@ export interface Page<T> {
 	totalPages: number;
 	results: T[];
 	// Search only: how the API read the text (round 3: a browse search, or titles like another one).
-	parsed?: { browse?: { label: string; type: string }; like?: { id: number; type: string; title: string; year: string | null } };
+	parsed?: { browse?: { label: string; type: string }; like?: { id: number; type: string; title: string; year: string | null }; id?: boolean; title?: string; year?: string | null; type?: string | null; season?: number | null; nick?: string | null };
 }
 
 export interface CastMember { id: number; name: string; character: string; profile: string | null }

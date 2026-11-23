@@ -167,9 +167,22 @@
 		}
 	});
 
-	// The best match; when the search found nothing, the closest title in Plex (a typo like brkng bad).
-	const top = $derived<SearchHit | undefined>(hits[0] ?? (mine[0] as SearchHit | undefined));
-	const rest = $derived(hits.slice(1));
+	// A title's name the way it's compared: lower case, no accents or punctuation, & = and, no leading "the".
+	const plain = (s: string) => {
+		const w = s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/&/g, ' and ').replace(/['’]/g, '').split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+		if (w.length > 1 && ['the', 'a', 'an'].includes(w[0])) w.shift();
+		return w.join('');
+	};
+	// The best match. A title in Plex wins, even with a typo (#251), unless the search found the exact title,
+	// a person or collection, or read the search a special way (a nickname, a year, a season, a pasted ID).
+	const top = $derived.by<SearchHit | undefined>(() => {
+		const best = hits[0], own = mine[0] as SearchHit | undefined;
+		if (!best || !own || parsed?.browse || parsed?.like) return best ?? own;
+		const special = parsed?.id || parsed?.nick || parsed?.year || parsed?.season;
+		if (special || best.type === 'person' || best.type === 'collection' || plain(best.title) === plain(q)) return best;
+		return own;
+	});
+	const rest = $derived(hits.filter((h) => h !== top));
 	// Everything else in one mixed grid, in ranked order (Marc: "I want them mixed in"). Titles only Plex
 	// matched (a typo like brkng bad) go first (#251); the Top result isn't repeated.
 	const topKey = $derived(top ? top.type + top.id : '');

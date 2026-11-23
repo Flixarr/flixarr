@@ -9,8 +9,8 @@ import (
 	"github.com/Flixarr/flixarr/internal/store"
 )
 
-// plexSearch finds titles in Plex by name as you type, forgiving typos that keep the letters in order
-// (brkng bad finds Breaking Bad), so what you already have shows first in search (#251).
+// plexSearch finds titles in Plex by name as you type, forgiving typos (brkng bad and brekaing bad both find
+// Breaking Bad), so what you already have shows first in search (#251).
 func (s *Server) plexSearch(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	all, err := s.Store.PlexTitles()
@@ -69,7 +69,8 @@ func normTitle(s string) string {
 }
 
 // titleScore: 100 exact, 95 same without spaces, 70 starts with the words, 55 starts with the letters,
-// 50 has every word, 30 has the letters in order (a typo that drops letters), 0 no match.
+// 50 has every word, 45 or 40 starts like it with one or two typos (a swapped, wrong, extra or missing letter),
+// 30 has the letters in order (a typo that drops letters), 0 no match.
 func titleScore(name, q string) int {
 	if name == "" || q == "" {
 		return 0
@@ -97,10 +98,51 @@ func titleScore(name, q string) int {
 	if all {
 		return 50
 	}
-	if len(qc) >= 4 && nc[0] == qc[0] && inOrder(nc, qc) {
-		return 30
+	if len(qc) >= 4 && nc[0] == qc[0] {
+		if d := typos(nc, qc); d <= len(qc)/4 {
+			return 50 - 5*d
+		}
+		if inOrder(nc, qc) {
+			return 30
+		}
 	}
 	return 0
+}
+
+// typos is how many typos apart q is from the start of s: the fewest swapped neighbours, wrong, extra or
+// missing letters (optimal string alignment distance against s's first len(q)-1 to len(q)+1 letters).
+func typos(s, q string) int {
+	a, b := []rune(q), []rune(s)
+	if len(b) > len(a)+1 {
+		b = b[:len(a)+1]
+	}
+	// d[i][j]: typos between a[:i] and b[:j]
+	d := make([][]int, len(a)+1)
+	for i := range d {
+		d[i] = make([]int, len(b)+1)
+		d[i][0] = i
+	}
+	for j := range d[0] {
+		d[0][j] = j
+	}
+	for i := 1; i <= len(a); i++ {
+		for j := 1; j <= len(b); j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			d[i][j] = min(d[i-1][j]+1, d[i][j-1]+1, d[i-1][j-1]+cost)
+			if i > 1 && j > 1 && a[i-1] == b[j-2] && a[i-2] == b[j-1] {
+				d[i][j] = min(d[i][j], d[i-2][j-2]+1)
+			}
+		}
+	}
+	// Typing a title is a prefix of it: the best match against s cut anywhere from len(q)-1 to len(q)+1.
+	best := len(a)
+	for j := max(0, len(a)-1); j <= len(b); j++ {
+		best = min(best, d[len(a)][j])
+	}
+	return best
 }
 
 // inOrder reports whether every letter of q appears in s, in order.
