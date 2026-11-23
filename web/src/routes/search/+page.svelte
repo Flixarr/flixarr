@@ -212,14 +212,20 @@
 		return () => { alive = false; };
 	});
 
-	// A collection as the Top result: its movies, to say how many are missing (same rule as the collection page).
+	// The Top result's collection: the collection itself, or the one a movie Top result belongs to (#267). Its
+	// movies say how many are missing (same rule as the collection page).
+	const topColl = $derived.by<{ id: number; name: string } | null>(() => {
+		if (top?.type === 'collection') return { id: top.id, name: top.title };
+		const c = top?.type === 'movie' && topItem?.id === top.id && 'collection' in topItem ? topItem.collection : null;
+		return c ? { id: c.id, name: c.name } : null;
+	});
 	let topParts = $state<Card[] | null>(null);
 	$effect(() => {
-		const h = top;
+		const id = topColl?.id;
 		topParts = null;
-		if (h?.type !== 'collection') return;
+		if (!id) return;
 		let alive = true;
-		meta<Collection>(`collection/${h.id}`).then((d) => alive && (topParts = d.parts)).catch(() => {});
+		meta<Collection>(`collection/${id}`).then((d) => alive && (topParts = d.parts)).catch(() => {});
 		return () => { alive = false; };
 	});
 	const partsMissing = $derived.by(() => {
@@ -323,6 +329,11 @@
 										{#if label(top)}<span class="rounded px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-gray-950 {label(top) === 'New' ? 'bg-green-400' : 'bg-amber-400'}">{label(top)}</span>{/if}
 									</div>
 									{#if top.overview}<p class="line-clamp-2 max-w-2xl text-sm text-gray-400">{top.overview}</p>{/if}
+									{#if top.type === 'movie' && topColl && topParts && topParts.length > 1 && partsMissing !== undefined}
+										<p class="text-sm text-gray-400">Part of {/^the /i.test(topColl.name) ? '' : 'the '}<a href="/collection/{topColl.id}" class="text-gray-200 hover:text-primary-light">{topColl.name}</a>
+											{#if partsMissing && can('requestMovies')} · <a href="/collection/{topColl.id}?request=1" class="font-medium text-primary-light hover:text-white">Request {partsMissing} missing</a>
+											{:else if partsMissing === 0} · <span class="text-green-300">All in your library</span>{/if}</p>
+									{/if}
 									{#if knownFor.length}<p class="line-clamp-2 max-w-2xl text-sm text-gray-400">Known for {#each knownFor as k, i (k.type + k.id)}{i ? (i === knownFor.length - 1 ? ' and ' : ', ') : ''}<a href={href(k)} class="text-gray-200 hover:text-primary-light">{k.title}</a>{/each}</p>{/if}
 									<div class="flex flex-wrap gap-2 pt-1">
 										{#if topItem && topItem.id === top.id}<RequestButton item={topItem} />{/if}
