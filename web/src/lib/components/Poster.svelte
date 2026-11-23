@@ -8,7 +8,8 @@
 	import Img from './Img.svelte';
 	import Tooltip from './Tooltip.svelte';
 	import { statusOf } from '#lib/availability.svelte.ts';
-	let { item, class: cls = rowWidth, sub = '' }: { item: PosterItem; class?: string; sub?: string } = $props();
+	// tag: a pill on the poster, green for New and amber for Coming (#252).
+	let { item, class: cls = rowWidth, sub = '', tag = '' }: { item: PosterItem; class?: string; sub?: string; tag?: string } = $props();
 	// From a person's page into a series: carry the credit so the show marks their episodes.
 	const link = $derived(href(item) + (item.creditId ? `?credit=${item.creditId}` : ''));
 	// Rows show posters at a fixed width; grids (class w-full) at 3/4/6/8 per row.
@@ -44,6 +45,11 @@
 		<div class="absolute left-1.5 top-1.5 z-10">
 			<span class="rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide {item.type === 'series' ? 'bg-primary/90' : 'bg-blue-600/80'}">{item.type === 'series' ? 'Series' : 'Movie'}</span>
 		</div>
+		{#if tag}
+			<div class="absolute bottom-1.5 left-1.5 z-10">
+				<span class="rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-950 shadow-lg {tag === 'New' ? 'bg-green-400' : 'bg-amber-400'}">{tag}</span>
+			</div>
+		{/if}
 	</div>
 	<!-- relative: a tilted poster paints in its own layer, so its shadow would otherwise cover this text. -->
 	<div class="relative">

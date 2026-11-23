@@ -283,7 +283,7 @@
 {/snippet}
 
 {#snippet hit(h: SearchHit, cls: string)}
-	{#if h.type === 'person'}{@render person(h, cls)}{:else if h.type === 'collection'}{@render collection(h, cls)}{:else}<Poster item={h as Card} class={cls} sub={label(h)} />{/if}
+	{#if h.type === 'person'}{@render person(h, cls)}{:else if h.type === 'collection'}{@render collection(h, cls)}{:else}<Poster item={h as Card} class={cls} tag={label(h)} />{/if}
 {/snippet}
 
 <main class="mx-auto max-w-[1600px] space-y-6 pt-20 laptop:px-10 laptop:pt-24">
@@ -319,7 +319,7 @@
 									<a href={href(top)} class="block text-xl font-bold hover:text-primary-light tablet:text-2xl laptop:text-4xl">{top.title}</a>
 									<div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-300">
 										{#if top.type === 'person'}{top.dept ?? 'Person'}{:else if top.type === 'collection'}Collection{:else}{top.year || 'TBA'} · {KIND_NAME[top.type]}{#if top.rating} · ★ {top.rating}{/if}{/if}
-										{#if label(top)}<span class="rounded bg-sky-500/15 px-1.5 py-0.5 text-[11px] font-semibold text-sky-300 ring-1 ring-sky-500/40">{label(top)}</span>{/if}
+										{#if label(top)}<span class="rounded px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-gray-950 {label(top) === 'New' ? 'bg-green-400' : 'bg-amber-400'}">{label(top)}</span>{/if}
 									</div>
 									{#if top.overview}<p class="line-clamp-2 max-w-2xl text-sm text-gray-400">{top.overview}</p>{/if}
 									{#if knownFor.length}<p class="line-clamp-2 max-w-2xl text-sm text-gray-400">Known for {#each knownFor as k, i (k.type + k.id)}{i ? (i === knownFor.length - 1 ? ' and ' : ', ') : ''}<a href={href(k)} class="text-gray-200 hover:text-primary-light">{k.title}</a>{/each}</p>{/if}
