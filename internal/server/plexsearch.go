@@ -68,9 +68,9 @@ func normTitle(s string) string {
 	return strings.Join(words, " ")
 }
 
-// titleScore: 100 exact, 95 same without spaces, 70 starts with the words, 55 starts with the letters,
-// 50 has every word, 45 or 40 starts like it with one or two typos (a swapped, wrong, extra or missing letter),
-// 30 has the letters in order (a typo that drops letters), 0 no match.
+// titleScore: 100 exact, 95 same without spaces, then the best of how it starts (startScore) and, 10 lower, how
+// any later word of the title starts (people search by the part they remember: "breaking dawn"), 50 has every
+// word, 30 has the letters in order (a typo that drops letters), 0 no match.
 func titleScore(name, q string) int {
 	if name == "" || q == "" {
 		return 0
@@ -79,31 +79,48 @@ func titleScore(name, q string) int {
 		return 100
 	}
 	nc, qc := strings.ReplaceAll(name, " ", ""), strings.ReplaceAll(q, " ", "")
-	switch {
-	case nc == qc:
+	if nc == qc {
 		return 95
-	case strings.HasPrefix(name, q+" "):
+	}
+	best := startScore(name, q)
+	for i := 1; i < len(name); i++ {
+		if name[i-1] == ' ' {
+			if sc := startScore(name[i:], q); sc > 0 && sc-10 > best {
+				best = sc - 10
+			}
+		}
+	}
+	if best < 50 {
+		words, all := " "+name+" ", true
+		for _, w := range strings.Fields(q) {
+			if !strings.Contains(words, " "+w+" ") {
+				all = false
+				break
+			}
+		}
+		if all {
+			best = 50
+		}
+	}
+	if best == 0 && len(qc) >= 4 && nc[0] == qc[0] && inOrder(nc, qc) {
+		best = 30
+	}
+	return best
+}
+
+// startScore is how well name starts like q: 70 with q's words, 55 with its letters, 45 or 40 with one or two
+// typos (a swapped, wrong, extra or missing letter; one per four letters typed), 0 not at all.
+func startScore(name, q string) int {
+	nc, qc := strings.ReplaceAll(name, " ", ""), strings.ReplaceAll(q, " ", "")
+	switch {
+	case name == q || strings.HasPrefix(name, q+" "):
 		return 70
 	case strings.HasPrefix(nc, qc):
 		return 55
 	}
-	words := " " + name + " "
-	all := true
-	for _, w := range strings.Fields(q) {
-		if !strings.Contains(words, " "+w+" ") {
-			all = false
-			break
-		}
-	}
-	if all {
-		return 50
-	}
-	if len(qc) >= 4 && nc[0] == qc[0] {
+	if len(qc) >= 4 && nc != "" && nc[0] == qc[0] {
 		if d := typos(nc, qc); d <= len(qc)/4 {
 			return 50 - 5*d
-		}
-		if inOrder(nc, qc) {
-			return 30
 		}
 	}
 	return 0
