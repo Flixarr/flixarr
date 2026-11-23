@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"testing"
 	"time"
 
@@ -85,20 +86,39 @@ func TestCountersByKind(t *testing.T) {
 	defer st.Close()
 	c := New(srv.URL, "test", st)
 	ctx := context.Background()
-	for _, p := range []string{"movie/603", "movie/603", "person/1", "lists/trending", "lists/trending", "lists/trending"} {
+	for _, p := range []string{"movie/603", "movie/603", "series/1399", "series/1399/season/1", "series/1399/season/1", "collection/86311", "person/1", "lists/trending", "lists/trending", "lists/trending"} {
 		if _, _, err := c.Get(ctx, p, url.Values{}); err != nil {
 			t.Fatalf("%s: %v", p, err)
 		}
 	}
 	got := c.Counters()
-	want := map[string]HitMiss{KindTitles: {1, 1}, KindPeople: {0, 1}, KindLists: {2, 1}, KindSearches: {0, 0}}
+	want := map[string]HitMiss{KindMovies: {1, 1}, KindSeries: {0, 1}, KindSeasons: {1, 1}, KindCollections: {0, 1}, KindPeople: {0, 1}, KindLists: {2, 1}, KindSearches: {0, 0}}
 	for k, w := range want {
 		if got.ByKind[k] != w {
 			t.Errorf("%s: %+v, want %+v", k, got.ByKind[k], w)
 		}
 	}
-	if got.Hits != 3 || got.Misses != 3 {
+	if got.Hits != 4 || got.Misses != 6 {
 		t.Errorf("totals %d hits %d misses", got.Hits, got.Misses)
+	}
+}
+
+// Every path the API allows is sorted into a kind with its own counter and Storage row.
+func TestKindOf(t *testing.T) {
+	for p, want := range map[string]string{
+		"movie/603": KindMovies, "movie/603/recommendations": KindMovies, "series/1399": KindSeries, "series/1399/ids": KindSeries,
+		"series/1399/season/2": KindSeasons, "collection/86311": KindCollections, "person/1": KindPeople, "credit/651dd86d74507d00e2105e2c": KindPeople,
+		"lists/trending": KindLists, "discover/movie": KindLists, "genres/movie": KindLists, "contributors": KindLists, "search": KindSearches,
+	} {
+		if !allowed(p) {
+			t.Fatalf("%s refused", p)
+		}
+		if got := kindOf(p); got != want {
+			t.Errorf("%s: %s, want %s", p, got, want)
+		}
+		if !slices.Contains(Kinds, kindOf(p)) {
+			t.Errorf("%s: kind %s has no counter", p, kindOf(p))
+		}
 	}
 }
 

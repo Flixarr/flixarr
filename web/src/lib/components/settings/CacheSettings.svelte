@@ -9,7 +9,14 @@
 	import Tooltip from '#lib/components/Tooltip.svelte';
 	import Select from '#lib/components/Select.svelte';
 
-	const KINDS: Record<string, [string, string]> = { titles: ['Titles', 'Movies, series, seasons, collections'], people: ['People', 'Cast and crew pages'], lists: ['Lists', 'Discover rows, browse pages, genres'] };
+	const KINDS: Record<string, [string, string]> = {
+		movies: ['Movies', 'Movie pages'],
+		series: ['Series', 'Series pages'],
+		seasons: ['Seasons', 'Season pages and their episodes'],
+		collections: ['Collections', 'Movie collection pages'],
+		people: ['People', 'Cast and crew pages'],
+		lists: ['Lists', 'Discover rows, browse pages, genres']
+	};
 	const TIMES = [[1440, '1 day'], [4320, '3 days'], [10080, '7 days'], [20160, '14 days'], [43200, '30 days']] as const;
 	const PAGES = TIMES;
 	const LISTS = TIMES;

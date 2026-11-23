@@ -94,7 +94,7 @@ func (s *Server) cacheSettings(w http.ResponseWriter, r *http.Request, _ *store.
 	s.writeCache(w)
 }
 
-// cacheFlush clears one kind of saved results, "images", "avatars", or "all" (every saved result, image and avatar).
+// cacheFlush clears one kind of saved results, "titles" (movies, series, seasons and collections), "images", "avatars", or "all" (every saved result, image and avatar).
 func (s *Server) cacheFlush(w http.ResponseWriter, r *http.Request, _ *store.User) {
 	kind := r.PathValue("kind")
 	var err error
@@ -104,12 +104,14 @@ func (s *Server) cacheFlush(w http.ResponseWriter, r *http.Request, _ *store.Use
 	case kind == "avatars":
 		_, err = s.Images.FlushAvatars()
 	case kind == "all":
-		if _, err = s.Store.CacheFlush(""); err == nil {
+		if _, err = s.Store.CacheFlush(); err == nil {
 			_, err = s.Images.Flush()
 		}
 		if err == nil {
 			_, err = s.Images.FlushAvatars()
 		}
+	case kind == meta.KindTitles: // every title kind at once
+		_, err = s.Store.CacheFlush(meta.TitleKinds...)
 	case contains(meta.Kinds, kind):
 		_, err = s.Store.CacheFlush(kind)
 	default:

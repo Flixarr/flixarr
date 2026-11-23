@@ -20,14 +20,23 @@ import (
 
 // Kinds of saved answers, used for durations, counts and per-kind flushing.
 const (
-	KindTitles   = "titles"   // movie, series, season and collection pages
-	KindPeople   = "people"   // person pages
-	KindLists    = "lists"    // Discover rows, browse pages, genres
-	KindSearches = "searches" // search results
+	KindMovies      = "movies"      // movie pages
+	KindSeries      = "series"      // series pages
+	KindSeasons     = "seasons"     // season pages (episode lists)
+	KindCollections = "collections" // collection pages
+	KindPeople      = "people"      // person pages
+	KindLists       = "lists"       // Discover rows, browse pages, genres
+	KindSearches    = "searches"    // search results
 )
 
+// KindTitles flushes every title kind at once (movies, series, seasons and collections).
+const KindTitles = "titles"
+
+// TitleKinds are the kinds KindTitles stands for.
+var TitleKinds = []string{KindMovies, KindSeries, KindSeasons, KindCollections}
+
 // Kinds in display order.
-var Kinds = []string{KindTitles, KindPeople, KindLists, KindSearches}
+var Kinds = []string{KindMovies, KindSeries, KindSeasons, KindCollections, KindPeople, KindLists, KindSearches}
 
 // Config is the cache's settings (Settings → Cache).
 type Config struct {
@@ -200,10 +209,16 @@ func kindOf(p string) string {
 		return KindPeople
 	case strings.HasPrefix(p, "search"):
 		return KindSearches
-	case strings.HasPrefix(p, "lists/"), strings.HasPrefix(p, "discover/"), strings.HasPrefix(p, "genres/"):
+	case strings.HasPrefix(p, "lists/"), strings.HasPrefix(p, "discover/"), strings.HasPrefix(p, "genres/"), strings.HasPrefix(p, "contributors"):
 		return KindLists
+	case strings.HasPrefix(p, "collection/"):
+		return KindCollections
+	case strings.HasPrefix(p, "series/") && strings.Contains(p, "/season/"):
+		return KindSeasons
+	case strings.HasPrefix(p, "series/"):
+		return KindSeries
 	}
-	return KindTitles
+	return KindMovies
 }
 
 // keep is how long to save an answer of this kind. fresh is how long the API says its copy stays

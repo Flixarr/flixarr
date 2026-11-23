@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -14,7 +15,7 @@ type CacheEntry struct {
 	Expires time.Time
 }
 
-// CacheKind is the saved-result count and size for one kind (titles, people, lists, searches).
+// CacheKind is the saved-result count and size for one kind (movies, series, seasons, collections, people, lists).
 type CacheKind struct {
 	Kind  string `json:"kind"`
 	Count int    `json:"count"`
@@ -63,15 +64,16 @@ func (s *Store) CacheStats() ([]CacheKind, error) {
 	return out, rows.Err()
 }
 
-// CacheFlush deletes every saved answer of one kind, or all of them when kind is "".
-func (s *Store) CacheFlush(kind string) (int64, error) {
-	var res sql.Result
-	var err error
-	if kind == "" {
-		res, err = s.db.Exec(`DELETE FROM cache`)
-	} else {
-		res, err = s.db.Exec(`DELETE FROM cache WHERE kind = ?`, kind)
+// CacheFlush deletes every saved answer of the given kinds, or all of them when no kind is given.
+func (s *Store) CacheFlush(kinds ...string) (int64, error) {
+	q, args := `DELETE FROM cache`, make([]any, len(kinds))
+	if len(kinds) > 0 {
+		q += ` WHERE kind IN (?` + strings.Repeat(`, ?`, len(kinds)-1) + `)`
+		for i, k := range kinds {
+			args[i] = k
+		}
 	}
+	res, err := s.db.Exec(q, args...)
 	if err != nil {
 		return 0, err
 	}
