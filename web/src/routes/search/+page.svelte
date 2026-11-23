@@ -219,6 +219,8 @@
 		const c = top?.type === 'movie' && topItem?.id === top.id && 'collection' in topItem ? topItem.collection : null;
 		return c ? { id: c.id, name: c.name } : null;
 	});
+	// "Part of the Toy Story Collection", but "Part of The Avengers Collection".
+	const theName = (name: string) => (name.toLowerCase().startsWith('the ') ? '' : 'the ');
 	let topParts = $state<Card[] | null>(null);
 	$effect(() => {
 		const id = topColl?.id;
@@ -330,7 +332,7 @@
 									</div>
 									{#if top.overview}<p class="line-clamp-2 max-w-2xl text-sm text-gray-400">{top.overview}</p>{/if}
 									{#if top.type === 'movie' && topColl && topParts && topParts.length > 1 && partsMissing !== undefined}
-										<p class="text-sm text-gray-400">Part of {/^the /i.test(topColl.name) ? '' : 'the '}<a href="/collection/{topColl.id}" class="text-gray-200 hover:text-primary-light">{topColl.name}</a>
+										<p class="text-sm text-gray-400">Part of {theName(topColl.name)}<a href="/collection/{topColl.id}" class="text-gray-200 hover:text-primary-light">{topColl.name}</a>
 											{#if partsMissing && can('requestMovies')} · <a href="/collection/{topColl.id}?request=1" class="font-medium text-primary-light hover:text-white">Request {partsMissing} missing</a>
 											{:else if partsMissing === 0} · <span class="text-green-300">All in your library</span>{/if}</p>
 									{/if}
