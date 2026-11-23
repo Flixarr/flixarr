@@ -274,6 +274,7 @@
 		<div use:tilt class="relative aspect-[2/3] w-full overflow-hidden rounded-xl border border-gray-700/40 bg-gray-800/40 shadow-xl">
 			{#if h.poster}<Img path={h.poster} kind="poster" sizes="(min-width: 640px) 144px, 112px" class="h-full w-full {tilting ? '' : 'transition duration-300 group-hover:scale-105'}" />{:else}<div class="grid h-full place-items-center text-3xl text-gray-600">{h.title.charAt(0)}</div>{/if}
 			{#if tilting}<div data-glare class="pointer-events-none absolute inset-0 opacity-0 mix-blend-soft-light"></div>{/if}
+			<div class="absolute left-1.5 top-1.5 z-10"><span class="rounded-md bg-violet-600/85 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">Collection</span></div>
 		</div>
 		<div class="relative">
 			<div class="mt-2 truncate text-[13px] font-medium">{h.title}</div>
