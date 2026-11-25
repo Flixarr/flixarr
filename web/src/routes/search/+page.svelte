@@ -17,7 +17,7 @@
 	import { can } from '#lib/session.svelte.ts';
 	import { statusOf } from '#lib/availability.svelte.ts';
 	import Img from '#lib/components/Img.svelte';
-	import { tilt, tiltEnabled } from '#lib/tilt.ts';
+	import TiltFrame from '#lib/components/TiltFrame.svelte';
 	import RequestButton from '#lib/components/RequestButton.svelte';
 	import LoadingMore from '#lib/components/LoadingMore.svelte';
 	import { infinite } from '#lib/infinite.ts';
@@ -244,8 +244,6 @@
 		const y = Number(h.year) || 0;
 		return !y ? '' : y > thisYear ? `Coming ${y}` : y === thisYear ? 'New' : '';
 	};
-	// Collections and the Top result's poster get the same mouse-following hover as every other poster (#263).
-	const tilting = tiltEnabled();
 	const KIND_NAME = { movie: 'Movie', series: 'Series', person: 'Person', collection: 'Collection' };
 	// A person as the Top result: what the API says they're best known for (#258), the same while their name is typed.
 	const knownFor = $derived<{ id: number; type: 'movie' | 'series'; title: string }[]>(top?.type === 'person' ? (top.known ?? []) : []);
@@ -259,22 +257,23 @@
 </script>
 
 {#snippet person(h: SearchHit, cls: string)}
-	<a href="/person/{h.id}" class="group block {cls}">
-		<div class="aspect-[2/3] w-full overflow-hidden rounded-xl border border-gray-700/40 bg-gray-800/40 shadow-xl">
+	<a href="/person/{h.id}" class="group relative block {cls}">
+		<TiltFrame class="aspect-[2/3] w-full rounded-xl border border-gray-700/40 bg-gray-800/40 shadow-xl">
 			{#if h.poster}<Img path={h.poster} kind="profile" sizes="(min-width: 640px) 144px, 112px" class="h-full w-full" />{:else}<div class="grid h-full place-items-center text-3xl text-gray-600">{h.title.charAt(0)}</div>{/if}
+		</TiltFrame>
+		<div class="relative">
+			<div class="mt-2 truncate text-[13px] font-medium">{h.title}</div>
+			<div class="truncate text-xs text-gray-400">{h.dept ?? ''}</div>
 		</div>
-		<div class="mt-2 truncate text-[13px] font-medium">{h.title}</div>
-		<div class="truncate text-xs text-gray-400">{h.dept ?? ''}</div>
 	</a>
 {/snippet}
 
 {#snippet collection(h: SearchHit, cls: string)}
 	<a href="/collection/{h.id}" class="group relative block {cls}">
-		<div use:tilt class="relative aspect-[2/3] w-full overflow-hidden rounded-xl border border-gray-700/40 bg-gray-800/40 shadow-xl">
-			{#if h.poster}<Img path={h.poster} kind="poster" sizes="(min-width: 640px) 144px, 112px" class="h-full w-full {tilting ? '' : 'transition duration-300 group-hover:scale-105'}" />{:else}<div class="grid h-full place-items-center text-3xl text-gray-600">{h.title.charAt(0)}</div>{/if}
-			{#if tilting}<div data-glare class="pointer-events-none absolute inset-0 opacity-0 mix-blend-soft-light"></div>{/if}
+		<TiltFrame class="aspect-[2/3] w-full rounded-xl border border-gray-700/40 bg-gray-800/40 shadow-xl">
+			{#if h.poster}<Img path={h.poster} kind="poster" sizes="(min-width: 640px) 144px, 112px" class="h-full w-full" />{:else}<div class="grid h-full place-items-center text-3xl text-gray-600">{h.title.charAt(0)}</div>{/if}
 			<div class="absolute left-1.5 top-1.5 z-10"><span class="rounded-md bg-violet-600/85 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">Collection</span></div>
-		</div>
+		</TiltFrame>
 		<div class="relative">
 			<div class="mt-2 truncate text-[13px] font-medium">{h.title}</div>
 			<div class="truncate text-xs text-gray-400">Collection</div>
@@ -309,10 +308,9 @@
 							<div class="absolute inset-0 bg-gradient-to-r from-gray-950 via-gray-950/80 to-transparent"></div>
 							<div class="relative flex gap-4 p-4 tablet:gap-5 tablet:p-5 laptop:p-7">
 								<a href={href(top)} class="group w-24 shrink-0 self-start tablet:w-32 laptop:w-40">
-									<div use:tilt class="relative aspect-[2/3] rounded-xl overflow-hidden bg-gray-800 shadow-2xl ring-1 ring-white/10">
-										{#if top.poster}<Img path={top.poster} kind={top.type === 'person' ? 'profile' : 'poster'} sizes="160px" class="h-full w-full {tilting ? '' : 'transition duration-300 group-hover:scale-105'}" />{:else}<div class="grid h-full place-items-center text-3xl text-gray-600">{top.title.charAt(0)}</div>{/if}
-										{#if tilting}<div data-glare class="pointer-events-none absolute inset-0 opacity-0 mix-blend-soft-light"></div>{/if}
-									</div>
+									<TiltFrame class="aspect-[2/3] rounded-xl bg-gray-800 shadow-2xl ring-1 ring-white/10">
+										{#if top.poster}<Img path={top.poster} kind={top.type === 'person' ? 'profile' : 'poster'} sizes="160px" class="h-full w-full" />{:else}<div class="grid h-full place-items-center text-3xl text-gray-600">{top.title.charAt(0)}</div>{/if}
+									</TiltFrame>
 								</a>
 								<div class="min-w-0 space-y-2 self-center">
 									<div class="text-[11px] font-bold uppercase tracking-wider text-primary">Top result</div>

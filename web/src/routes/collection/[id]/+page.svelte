@@ -6,6 +6,7 @@
 	import Poster from '#lib/components/Poster.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import Img, { BACKDROP_SIZES } from '#lib/components/Img.svelte';
+	import TiltFrame from '#lib/components/TiltFrame.svelte';
 	import Modal from '#lib/components/Modal.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import { statusOf, remember } from '#lib/availability.svelte.ts';
@@ -83,7 +84,7 @@
 			<div class="absolute inset-0 bg-linear-to-r from-gray-950/90 via-gray-950/40 to-transparent"></div>
 		</div>
 		<div class="relative mx-auto flex max-w-[1600px] flex-row items-end gap-4 px-4 pt-[24dvh] tablet:gap-5 laptop:px-10 laptop:pt-[28dvh]">
-			{#if c.poster}<Img path={c.poster} kind="poster" sizes="(min-width: 640px) 176px, 96px" eager class="aspect-[2/3] w-24 shrink-0 self-start rounded-xl border border-gray-700/40 bg-gray-800/40 shadow-2xl tablet:w-44 tablet:self-end" />{/if}
+			{#if c.poster}<div class="w-24 shrink-0 self-start tablet:w-44 tablet:self-end"><TiltFrame class="aspect-[2/3] rounded-xl border border-gray-700/40 bg-gray-800/40 shadow-2xl"><Img path={c.poster} kind="poster" sizes="(min-width: 640px) 176px, 96px" eager class="h-full w-full" /></TiltFrame></div>{/if}
 			<div class="min-w-0 space-y-3">
 				<span class="rounded-md bg-primary/90 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">Collection</span>
 				<h1 class="text-2xl font-bold tablet:text-3xl laptop:text-4xl">{c.name}</h1>

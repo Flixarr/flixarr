@@ -8,6 +8,7 @@
 	import Poster from '#lib/components/Poster.svelte';
 	import Chips from '#lib/components/Chips.svelte';
 	import Img from '#lib/components/Img.svelte';
+	import TiltFrame from '#lib/components/TiltFrame.svelte';
 	import { infinite } from '#lib/infinite.ts';
 
 	let p = $state<Person | null>(null);
@@ -102,9 +103,9 @@
 	{:else if p}
 		<section class="flex flex-col gap-6 px-4 tablet:flex-row laptop:px-0">
 			<div class="mx-auto w-40 shrink-0 tablet:mx-0 tablet:w-52">
-				<div class="aspect-[2/3] overflow-hidden rounded-xl border border-gray-700/40 bg-gray-800/40 shadow-2xl">
+				<TiltFrame class="aspect-[2/3] rounded-xl border border-gray-700/40 bg-gray-800/40 shadow-2xl">
 					{#if p.profile}<Img path={p.profile} kind="profile" sizes="(min-width: 640px) 208px, 160px" eager class="h-full w-full" />{:else}<div class="grid h-full place-items-center text-5xl text-gray-600">{p.name.charAt(0)}</div>{/if}
-				</div>
+				</TiltFrame>
 			</div>
 			<div class="min-w-0 space-y-3">
 				<div class="text-xs text-gray-400">{p.dept ?? ''}</div>
