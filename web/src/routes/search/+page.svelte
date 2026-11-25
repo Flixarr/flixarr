@@ -246,7 +246,19 @@
 	};
 	const KIND_NAME = { movie: 'Movie', series: 'Series', person: 'Person', collection: 'Collection' };
 	// A person as the Top result: what the API says they're best known for (#258), the same while their name is typed.
-	const knownFor = $derived<{ id: number; type: 'movie' | 'series'; title: string }[]>(top?.type === 'person' ? (top.known ?? []) : []);
+	// The person page's pick (it counts lead TV roles like The Office). The search's own list only if that fails, so
+	// the line never changes under the same person.
+	type Known = { id: number; type: 'movie' | 'series'; title: string };
+	let pageKnown = $state<{ id: number; known: Known[] } | null>(null);
+	$effect(() => {
+		const id = top?.type === 'person' ? top.id : 0;
+		if (!id || pageKnown?.id === id) return;
+		let alive = true;
+		const own = top?.known ?? [];
+		meta<{ known?: Known[] }>(`person/${id}`).then((d) => alive && (pageKnown = { id, known: d.known?.length ? d.known : own })).catch(() => alive && (pageKnown = { id, known: own }));
+		return () => { alive = false; };
+	});
+	const knownFor = $derived<Known[]>(top?.type === 'person' && pageKnown?.id === top.id ? pageKnown.known : []);
 	// What a browse or like search is showing, for the line above the results (#258).
 	const reading = $derived.by(() => {
 		const p = tab === 'all' ? parsed : kind.term === q.trim() && kind.tab === tab ? kind.parsed : undefined;
