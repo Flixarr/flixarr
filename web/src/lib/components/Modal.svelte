@@ -53,19 +53,21 @@
 			else shown = false;
 			return;
 		}
-		if (!anims.length) {
-			page = stacked ? null : document.querySelector<HTMLElement>('[data-page]');
-			anims = cinemaMotion(backdrop!, win!, page);
-		}
-		for (const a of anims) {
-			a.playbackRate = want ? 1 : -1.25; // closing runs a little quicker
-			a.play();
-		}
-		Promise.all(anims.map((a) => a.finished)).then(
+		// A fresh animation each way, picking up where the last one was (the end of opening, or halfway if it turns
+		// around). Playing the finished opening backwards made some browsers (Safari) flash the window away first.
+		const old = anims;
+		if (!old.length) page = stacked ? null : document.querySelector<HTMLElement>('[data-page]');
+		const mine = (anims = cinemaMotion(backdrop!, win!, page, !want));
+		old.forEach((a, i) => {
+			const end = Number(a.effect?.getComputedTiming().endTime ?? 0);
+			if (mine[i]) mine[i].currentTime = end - Number(a.currentTime ?? end);
+			a.cancel();
+		});
+		Promise.all(mine.map((a) => a.finished)).then(
 			() => {
-				if (open !== want) return; // turned around halfway
+				if (anims !== mine) return; // turned around halfway
 				if (want) return onopened?.();
-				for (const a of anims) a.cancel();
+				for (const a of mine) a.cancel();
 				anims = [];
 				if (page) page.style.transformOrigin = '';
 				shown = false;
