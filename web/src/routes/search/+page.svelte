@@ -190,8 +190,17 @@
 		const seen = new Set<string>([topKey]);
 		const out: SearchHit[] = [];
 		// A browse or like search isn't a title, so the library's name matches don't belong in it.
-		const own = parsed?.browse || parsed?.like ? [] : (mine as SearchHit[]);
-		for (const h of [...own, ...rest]) {
+		const plainSearch = !parsed?.browse && !parsed?.like;
+		const own = plainSearch ? (mine as SearchHit[]) : [];
+		// The Top result's franchise first: the collection, then its movies in release order (#273), so a search
+		// like fast furious lists the films in order instead of mixed in with every title that shares the words.
+		const franchise: SearchHit[] = [];
+		if (plainSearch && topColl && topParts && topParts.length > 1) {
+			const card = hits.find((h) => h.type === 'collection' && h.id === topColl.id);
+			if (card) franchise.push(card);
+			franchise.push(...([...topParts].sort((a, b) => (a.year || '9999').localeCompare(b.year || '9999')) as SearchHit[]));
+		}
+		for (const h of [...franchise, ...own, ...rest]) {
 			const k = h.type + h.id;
 			if (!seen.has(k)) { seen.add(k); out.push(h); }
 		}
