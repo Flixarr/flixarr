@@ -1,5 +1,6 @@
 <script lang="ts" module>
-	export type Option<V> = { value: V; label: string; hint?: string };
+	// hint: small grey text beside the label; sub: a second line under it, in the open list only.
+	export type Option<V> = { value: V; label: string; hint?: string; sub?: string };
 </script>
 
 <script lang="ts" generics="T extends string | number">
@@ -142,7 +143,7 @@
 				<li data-i={i} role="option" aria-selected={o.value === value}>
 					<button type="button" tabindex="-1" onclick={() => choose(o)} onpointermove={() => (active = i)}
 						class="flex w-full items-center gap-2 px-3 py-2 text-left {size === 'sm' ? 'text-xs' : 'text-sm'} {i === active ? 'bg-white/5' : ''} {o.value === value ? 'text-white' : 'text-gray-300'}">
-						<span class="min-w-0 flex-1 truncate">{o.label}</span>
+						<span class="min-w-0 flex-1 truncate">{o.label}{#if o.sub}<span class="block truncate text-xs text-gray-400">{o.sub}</span>{/if}</span>
 						{#if o.hint}<span class="shrink-0 text-xs text-gray-500">{o.hint}</span>{/if}
 						<span class="size-4 shrink-0 text-primary-light">{#if o.value === value}<Icon name="check" class="size-4" />{/if}</span>
 					</button>

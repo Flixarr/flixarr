@@ -15,7 +15,7 @@
 
 	let { open = $bindable(false), item, asked, onrequested }: { open?: boolean; item: Movie | Series; asked?: { whole: boolean; seasons: number[] }; onrequested?: (r: Request) => void } = $props();
 
-	type Options = { connected: boolean; server: string; approval: boolean; usage: { limit: number; used: number }; defaultProfileId?: number; defaultProfileName?: string; profiles: { id: number; name: string }[];
+	type Options = { connected: boolean; server: string; approval: boolean; usage: { limit: number; used: number }; defaultProfileId?: number; defaultProfileName?: string; profiles: { id: number; name: string; resolution?: string; mbPerMin?: number }[];
 		tvModes: { whole: boolean; seasons: boolean; episodes: boolean; default: Mode } };
 	type Mode = 'whole' | 'seasons' | 'episodes';
 	let opts = $state<Options | null>(null);
@@ -106,6 +106,13 @@
 	const release = $derived(item.type === 'movie' ? (item as Movie).release : null);
 	const notOut = $derived(!!release && release > today);
 	const releaseDay = $derived(release ? new Date(release + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '');
+	// What a profile gives, in the Quality menu (#280): "1080p, about 8 GB", series per episode.
+	const minutes = $derived(item.runtime || (series ? 45 : 110));
+	function gives(p: { resolution?: string; mbPerMin?: number }) {
+		const mb = (p.mbPerMin ?? 0) * minutes;
+		const size = !mb ? '' : mb >= 1000 ? `about ${Math.round(mb / 100) / 10} GB` : `about ${Math.round(mb / 50) * 50 || 50} MB`;
+		return [p.resolution, size && (series ? `${size} an episode` : size)].filter(Boolean).join(', ');
+	}
 	const ready = $derived(!series || mode === 'whole' || (mode === 'seasons' ? seasons.length > 0 : episodes.length > 0));
 	const MODES: [Mode, string][] = [['whole', 'Whole show'], ['seasons', 'Seasons'], ['episodes', 'Episodes']];
 </script>
@@ -135,7 +142,7 @@
 			{#if opts.profiles.length}
 				<div>
 					<label for="req-quality" class="block text-sm">Quality</label>
-					<Select id="req-quality" bind:value={profileId} options={opts.profiles.map((p) => ({ value: p.id, label: p.name, hint: p.id === opts!.defaultProfileId ? 'default' : '' }))} />
+					<Select id="req-quality" bind:value={profileId} options={opts.profiles.map((p) => ({ value: p.id, label: p.name, hint: p.id === opts!.defaultProfileId ? 'default' : '', sub: gives(p) }))} />
 				</div>
 			{/if}
 			{#if series}

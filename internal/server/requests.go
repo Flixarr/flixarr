@@ -347,21 +347,24 @@ func (s *Server) requestOptions(w http.ResponseWriter, r *http.Request, u *store
 	}
 	out["connected"], out["server"], out["defaultProfileId"], out["defaultProfileName"] = true, v.Name, v.QualityProfileID, v.QualityProfileName
 	type prof struct {
-		ID   int    `json:"id"`
-		Name string `json:"name"`
+		ID         int     `json:"id"`
+		Name       string  `json:"name"`
+		Resolution string  `json:"resolution,omitempty"` // what it aims for, e.g. "1080p" (#280)
+		MBPerMin   float64 `json:"mbPerMin,omitempty"`   // that quality's usual size in MB per minute
 	}
 	list := []prof{}
 	if u.Can("advanced") {
-		var all []prof
-		if err := (&arr.Client{Kind: v.Kind, URL: v.URL, APIKey: v.APIKey}).Get(r.Context(), "qualityprofile", &all); err == nil {
-			for _, p := range all {
-				if profiles.IsFlixarrName(p.Name) {
-					list = append(list, p)
-				}
-			}
-			for _, p := range all {
-				if !profiles.IsFlixarrName(p.Name) {
-					list = append(list, p)
+		c := &arr.Client{Kind: v.Kind, URL: v.URL, APIKey: v.APIKey}
+		var all []arrProfile
+		if err := c.Get(r.Context(), "qualityprofile", &all); err == nil {
+			var defs []arrQualityDef
+			_ = c.Get(r.Context(), "qualitydefinition", &defs) // sizes are a bonus: the menu works without them
+			for _, flixarrFirst := range []bool{true, false} {
+				for _, p := range all {
+					if profiles.IsFlixarrName(p.Name) == flixarrFirst {
+						res, mb := profileGives(p, defs)
+						list = append(list, prof{ID: p.ID, Name: p.Name, Resolution: res, MBPerMin: mb})
+					}
 				}
 			}
 		}
