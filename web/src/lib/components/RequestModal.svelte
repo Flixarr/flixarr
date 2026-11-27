@@ -113,7 +113,7 @@
 <Modal bind:open title="Request {item.title}">
 	{#snippet top()}
 		<div class="relative overflow-hidden rounded-t-xl">
-			{#if item.backdrop}<Img path={item.backdrop} kind="backdrop" sizes="(min-width: 640px) 768px, 100vw" eager class="absolute inset-0 h-full w-full" imgClass="object-[center_25%]" />{/if}
+			{#if item.backdrop}<div class="absolute inset-0"><Img path={item.backdrop} kind="backdrop" sizes="(min-width: 640px) 768px, 100vw" eager class="h-full w-full" imgClass="object-[center_25%]" /></div>{/if}
 			<div class="absolute inset-0 bg-linear-to-t from-gray-900 via-gray-900/75 to-gray-900/45"></div>
 			<div class="relative flex items-center gap-4 p-5 pr-12">
 				<div class="w-16 shrink-0 overflow-hidden rounded-lg shadow-lg ring-1 ring-white/10">{#if item.poster}<Img path={item.poster} kind="poster" sizes="64px" eager class="aspect-[2/3] w-full" />{/if}</div>
@@ -171,7 +171,7 @@
 					{/if}
 				</div>
 			{/if}
-			{#if over && left > 0}<p class="text-xs text-red-300">That's {wants} {series ? 'seasons' : 'movies'} and you have {left} left this week.</p>{/if}
+			{#if over && left > 0}<p class="-mt-3 text-xs text-red-300">That's {wants} {series ? 'seasons' : 'movies'} and you have {left} left this week.</p>{/if}
 		{/if}
 	</div>
 	{#snippet footer()}
