@@ -2,7 +2,7 @@
 	// The Request button on movie and series pages. Once requested it shows where the request is
 	// (waiting, requested, downloading, available) instead, and titles already in Plex link straight to it.
 	import { api } from '#lib/api.ts';
-	import type { Movie, Series, RequestBrief } from '#lib/types.ts';
+	import type { Movie, Series, RequestBrief, Request } from '#lib/types.ts';
 	import Icon from './Icon.svelte';
 	import PlexMark from './PlexMark.svelte';
 	import { can } from '#lib/session.svelte.ts';
@@ -13,6 +13,7 @@
 	import { loadSeasons, noSeasons, episodeCount, type PlexSeasons } from '#lib/seasons.ts';
 	import RequestModal from './RequestModal.svelte';
 	import RequestDetail from './RequestDetail.svelte';
+	import { oneTap, quickRequest } from '#lib/quickrequest.ts';
 
 	// req: undefined while loading, null when never requested and not in Plex. Bindable so the page can show "In your library".
 	let { item, req = $bindable() }: { item: Movie | Series; req?: RequestBrief | null } = $props();
@@ -60,6 +61,23 @@
 		return (item as Series).seasons.some((s) => s.n > 0 && episodeCount(counts, s) > 0 && (!s.air || s.air <= today) && (counts.inPlex[s.n] ?? 0) < episodeCount(counts, s) && !(asked?.seasons ?? []).includes(s.n));
 	});
 
+
+	// Request: a movie with nothing to choose or show is sent in one tap with Undo (#283); anything else opens the window.
+	let checking = $state(false);
+	const brief = (r: Request): RequestBrief => ({ id: r.id, status: r.status, progress: r.progress, plex: req?.plex });
+	async function start() {
+		if (item.type !== 'movie') return void (open = true);
+		checking = true;
+		const ok = await oneTap(item as Movie).catch(() => null);
+		checking = false;
+		if (!ok) return void (open = true);
+		const before = req;
+		req = { id: 0, status: 'approved', progress: 0, plex: req?.plex };
+		quickRequest(item as Movie, ok.profileId, (r) => {
+			req = r && r.status !== 'failed' ? brief(r) : before;
+			remember(key, req ?? null);
+		});
+	}
 </script>
 
 {#snippet pill(r: RequestBrief)}
@@ -90,7 +108,7 @@
 	<span class="btn-ghost act cursor-default text-gray-400">You can't request {item.type === 'series' ? 'series' : 'movies'}</span>
 {:else if req !== undefined}
 	{#if req && (req.status === 'failed' || req.status === 'declined')}{@render pill(req)}{/if}
-	<button class="btn act" onclick={() => (open = true)}><Icon name="plus" class="size-4" />{req && ['failed', 'declined', 'expired', 'removed'].includes(req.status) ? 'Request again' : 'Request'}</button>
+	<button class="btn act" disabled={checking} onclick={start}><Icon name="plus" class="size-4" />{req && ['failed', 'declined', 'expired', 'removed'].includes(req.status) ? 'Request again' : 'Request'}</button>
 {/if}
 <RequestModal bind:open {item} asked={req?.asked} onrequested={(r) => {
 	// The live update brings the title's full state (all its requests) right after; this is the stopgap.

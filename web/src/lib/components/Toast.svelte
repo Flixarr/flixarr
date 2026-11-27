@@ -11,10 +11,17 @@
 				<span class="mt-0.5 text-primary-light"><Icon name="bell" class="size-4" /></span>
 				<span class="min-w-0"><span class="block font-medium">{t.text}</span>{#if t.sub}<span class="block text-xs text-gray-400">{t.sub}</span>{/if}</span>
 			</a>
+		{:else if t.tone === 'undo'}
+			<div class="toast-in pointer-events-auto relative flex w-full max-w-sm items-center gap-3 overflow-hidden rounded-xl border border-gray-700/60 bg-gray-900 px-4 py-3 text-sm shadow-2xl transition-opacity duration-300 {t.leaving ? 'opacity-0' : 'opacity-100'}">
+				<span class="text-green-400"><Icon name="check" class="size-4" /></span>
+				<span class="min-w-0 flex-1 font-medium">{t.text}</span>
+				<button class="shrink-0 rounded-md px-2 py-1 font-semibold text-primary-light hover:bg-white/5" onclick={() => (t.open?.(), dismiss(t.id))}>Undo</button>
+				<span class="undo-bar absolute bottom-0 left-0 h-0.5 w-full bg-gray-500" style="animation-duration:{t.ms}ms"></span>
+			</div>
 		{:else}
 		<button class="toast-in pointer-events-auto flex items-center gap-2 rounded-xl border border-gray-700/60 bg-gray-900 px-4 py-3 text-left text-sm shadow-2xl transition-opacity duration-300 {t.leaving ? 'opacity-0' : 'opacity-100'}"
 			onclick={() => dismiss(t.id)} aria-label="{t.text} (dismiss)">
-			<span class={t.tone === 'green' ? 'text-green-400' : 'text-primary-light'}><Icon name={t.tone === 'green' ? 'check' : 'info'} class="size-4" /></span>{t.text}
+			<span class={t.tone === 'green' ? 'text-green-400' : t.tone === 'gray' ? 'text-gray-400' : 'text-primary-light'}><Icon name={t.tone === 'orange' ? 'info' : 'check'} class="size-4" /></span>{t.text}
 		</button>
 		{/if}
 	{/each}

@@ -1,17 +1,22 @@
 // Toasts stack at the bottom of the screen: a new one joins the stack instead of replacing the
 // last. Each fades out on its own after a few seconds; at most 4 show at once (oldest go first).
-export type Toast = { id: number; text: string; tone: 'green' | 'orange' | 'alert'; leaving: boolean; sub?: string; href?: string; open?: () => void };
+export type Toast = { id: number; text: string; tone: 'green' | 'orange' | 'gray' | 'alert' | 'undo'; leaving: boolean; sub?: string; href?: string; open?: () => void; ms?: number };
 export const toasts = $state<Toast[]>([]);
 let next = 1;
 const MAX = 4;
 
-export function notify(text: string, tone: 'green' | 'orange' = 'green') {
+export function notify(text: string, tone: 'green' | 'orange' | 'gray' = 'green') {
 	add({ id: next++, text, tone, leaving: false }, 2800);
 }
 
 // A new alert in the bell, shown as a toast too (#121): its title and detail; tapping it opens the alert.
 export function alertToast(text: string, sub: string, href: string, open: () => void) {
 	add({ id: next++, text, tone: 'alert', leaving: false, sub, href, open }, 6000);
+}
+
+// Done, with an Undo button for `ms` (a thin bar counts down); `undo` runs if it's pressed in time (#283).
+export function undoToast(text: string, ms: number, undo: () => void) {
+	add({ id: next++, text, tone: 'undo', leaving: false, ms, open: undo }, ms);
 }
 
 function add(t: Toast, ms: number) {

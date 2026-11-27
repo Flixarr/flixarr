@@ -138,6 +138,9 @@ html.modal-open body { overscroll-behavior: none; }
 .toast-in { animation: toast-in 0.2s ease-out; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(6px); } }
 @media (prefers-reduced-motion: reduce) { .toast-in { animation: none; } }
+/* The Undo toast's countdown bar (#283). */
+.undo-bar { animation: undo-bar linear forwards; }
+@keyframes undo-bar { to { width: 0; } }
 
 /* Grows a hidden block open (height and fade), e.g. the connection window's settings once connected. */
 .reveal { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 0.3s ease, opacity 0.3s ease; }
