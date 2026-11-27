@@ -8,6 +8,9 @@
 	import Select from './Select.svelte';
 	import Img from './Img.svelte';
 	import EpisodePicker from './EpisodePicker.svelte';
+	import Alert from './Alert.svelte';
+	import LimitRing from './LimitRing.svelte';
+	import Icon from './Icon.svelte';
 	import { loadSeasons, noSeasons, episodeCount } from '#lib/seasons.ts';
 
 	let { open = $bindable(false), item, asked, onrequested }: { open?: boolean; item: Movie | Series; asked?: { whole: boolean; seasons: number[] }; onrequested?: (r: Request) => void } = $props();
@@ -21,6 +24,7 @@
 	let seasons = $state<number[]>([]);
 	let episodes = $state<[number, number][]>([]);
 	let sending = $state(false);
+	let done = $state(false); // the Requested moment (#281): shown a moment before the window closes
 	let plex = $state(noSeasons()); // episodes in Plex per season, and each season's count
 	const inPlex = $derived(plex.inPlex);
 	const eps = (s: { n: number; episodes: number }) => episodeCount(plex, s);
@@ -42,6 +46,7 @@
 	$effect(() => {
 		if (!open) return;
 		opts = null;
+		done = false;
 		mode = 'whole';
 		seasons = [];
 		episodes = [];
@@ -67,12 +72,15 @@
 				body: JSON.stringify({ type: item.type, tmdbId: item.id, title: item.title, year: item.year, poster: item.poster ?? '', backdrop: item.backdrop ?? '',
 					seasons: series && mode === 'seasons' && !allLeft ? seasons : [], episodes: series && mode === 'episodes' ? episodes : [], profileId, genres: item.genres, language: series ? series.language : '', seasonCount: list.length })
 			});
-			open = false;
 			onrequested?.(r);
-			if (r.status === 'failed') notify(r.detail || `Unable to add ${item.title}`, 'orange');
-			else if (r.status === 'pending') notify('Requested. It waits for an admin to approve it.');
-			else if (r.status === 'available') notify(`${item.title} is already in your library.`);
-			else notify(`Requested. You'll see it here as it downloads.`);
+			if (r.status === 'failed' || r.status === 'available') {
+				open = false;
+				if (r.status === 'failed') notify(r.detail || `Unable to add ${item.title}`, 'orange');
+				else notify(`${item.title} is already in your library.`);
+			} else {
+				done = true;
+				setTimeout(() => (open = false), 1600);
+			}
 		} catch (e) {
 			notify(e instanceof Error ? e.message : `Unable to request ${item.title}`, 'orange');
 		} finally {
@@ -85,26 +93,45 @@
 		: mode === 'seasons' ? (allLeft ? (more ? 'Request the rest' : 'Request the whole show') : seasons.length ? `Request ${seasons.length} season${seasons.length === 1 ? '' : 's'}` : 'Pick seasons')
 		: episodes.length ? `Request ${episodes.length} episode${episodes.length === 1 ? '' : 's'}` : 'Pick episodes'
 	);
+	// How many requests this uses against a weekly limit, the way the server counts it: 1 movie, or seasons.
+	const wants = $derived(
+		!series ? 1
+		: mode === 'whole' ? Math.max(list.length - (asked?.seasons.length ?? 0), 1)
+		: mode === 'seasons' ? seasons.length
+		: new Set(episodes.map(([sn]) => sn)).size
+	);
+	const left = $derived(opts?.usage?.limit ? Math.max(0, opts.usage.limit - opts.usage.used) : Infinity);
+	const over = $derived(wants > left);
+	// Not out yet (#279): the release date is still ahead.
+	const release = $derived(item.type === 'movie' ? (item as Movie).release : null);
+	const notOut = $derived(!!release && release > today);
+	const releaseDay = $derived(release ? new Date(release + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '');
 	const ready = $derived(!series || mode === 'whole' || (mode === 'seasons' ? seasons.length > 0 : episodes.length > 0));
 	const MODES: [Mode, string][] = [['whole', 'Whole show'], ['seasons', 'Seasons'], ['episodes', 'Episodes']];
 </script>
 
 <Modal bind:open title="Request {item.title}">
-	<div class="space-y-5 p-5">
-		<div class="flex gap-4">
-			<div class="w-20 shrink-0 overflow-hidden rounded-lg ring-1 ring-gray-700/50">{#if item.poster}<Img path={item.poster} kind="poster" sizes="80px" class="aspect-[2/3] w-full" />{/if}</div>
-			<div class="min-w-0 text-sm">
-				<div class="font-semibold">{item.title} <span class="font-normal text-gray-400">{item.year}</span></div>
-				<p class="mt-1 line-clamp-4 text-xs text-gray-400">{item.overview}</p>
+	{#snippet top()}
+		<div class="relative overflow-hidden rounded-t-xl">
+			{#if item.backdrop}<Img path={item.backdrop} kind="backdrop" sizes="(min-width: 640px) 768px, 100vw" eager class="absolute inset-0 h-full w-full" imgClass="object-[center_25%]" />{/if}
+			<div class="absolute inset-0 bg-linear-to-t from-gray-900 via-gray-900/75 to-gray-900/45"></div>
+			<div class="relative flex items-center gap-4 p-5 pr-12">
+				<div class="w-16 shrink-0 overflow-hidden rounded-lg shadow-lg ring-1 ring-white/10">{#if item.poster}<Img path={item.poster} kind="poster" sizes="64px" eager class="aspect-[2/3] w-full" />{/if}</div>
+				<div class="min-w-0">
+					<div class="text-lg leading-tight font-bold text-white">{item.title}</div>
+					<div class="mt-0.5 text-sm text-gray-400">{[item.year, series ? `Series · ${list.length} season${list.length === 1 ? '' : 's'}` : 'Movie'].filter(Boolean).join(' · ')}</div>
+				</div>
 			</div>
 		</div>
-
+	{/snippet}
+	<div class="space-y-5 px-5 pt-1 pb-5">
 		{#if !opts}
 			<p class="text-sm text-gray-400">Loading…</p>
 		{:else if !opts.connected}
-			<p class="rounded-lg bg-yellow-500/10 px-3 py-2 text-sm text-yellow-300 ring-1 ring-yellow-500/30">{item.type === 'series' ? 'Series' : 'Movie'} requests aren't set up yet (Settings, Services).</p>
+			<Alert tone="yellow" icon="warning">{item.type === 'series' ? 'Series' : 'Movie'} requests aren't set up yet (Settings, Services).</Alert>
 		{:else}
-			<p class="text-xs text-gray-400">{opts.approval ? 'An admin approves it first.' : 'It starts right away.'}{#if opts.usage?.limit}{@const left = Math.max(0, opts.usage.limit - opts.usage.used)} You have {left} {series ? 'season' : 'movie'}{left === 1 ? '' : 's'} left this week (of {opts.usage.limit}).{/if}</p>
+			{#if notOut}<Alert tone="gray" icon="calendar">Not out yet. Your download will start when it comes out on {releaseDay}.</Alert>{/if}
+			{#if opts.approval}<Alert tone="yellow">Your download will start once an admin approves your request</Alert>{/if}
 			{#if opts.profiles.length}
 				<div>
 					<label for="req-quality" class="block text-sm">Quality</label>
@@ -121,7 +148,7 @@
 						</div>
 					{/if}
 					{#if mode === 'whole'}
-						<p class="text-xs text-gray-500">Every season, including new ones as they air.{anyInPlex || more ? ' Episodes already there or on the way are skipped.' : ''}</p>
+						<p class="text-xs text-gray-400">Every season, including new ones as they air.{anyInPlex || more ? ' Episodes already there or on the way are skipped.' : ''}</p>
 					{:else if mode === 'seasons'}
 						<div class="max-h-64 divide-y divide-gray-700/40 overflow-y-auto rounded-lg border border-gray-700/50 bg-gray-900/40">
 							{#each list as s (s.n)}
@@ -133,21 +160,28 @@
 									{#if done}<span class="text-xs text-green-400">In Plex</span>
 									{:else if onWay}<span class="text-xs text-blue-300">Requested</span>
 									{:else if inPlex[s.n]}<span class="text-xs text-green-300">{inPlex[s.n]} of {eps(s)} in Plex</span>
-									{:else}<span class="text-xs text-gray-500">{eps(s)} episode{eps(s) === 1 ? '' : 's'}</span>{/if}
+									{:else}<span class="text-xs text-gray-400">{eps(s)} episode{eps(s) === 1 ? '' : 's'}</span>{/if}
 								</label>
 							{/each}
 						</div>
-						<p class="mt-2 text-xs {allLeft ? 'text-green-300' : 'text-gray-500'}">{allLeft ? "That's every season, so new ones will come in as they air." : 'Only the seasons you pick. Seasons that air later are not added.'}</p>
+						<p class="mt-2 text-xs {allLeft ? 'text-green-300' : 'text-gray-400'}">{allLeft ? "That's every season, so new ones will come in as they air." : 'Only the seasons you pick. Seasons that air later are not added.'}</p>
 					{:else}
 						<EpisodePicker {series} bind:picked={episodes} done={inPlex} />
-						<p class="mt-2 text-xs text-gray-500">Open a season to pick its episodes, or tick the season for all of them.</p>
+						<p class="mt-2 text-xs text-gray-400">Open a season to pick its episodes, or tick the season for all of them.</p>
 					{/if}
 				</div>
 			{/if}
+			{#if over && left > 0}<p class="text-xs text-red-300">That's {wants} {series ? 'seasons' : 'movies'} and you have {left} left this week.</p>{/if}
 		{/if}
 	</div>
 	{#snippet footer()}
-		<button class="btn-ghost" onclick={() => (open = false)}>Cancel</button>
-		<button class="btn px-6" disabled={!opts?.connected || sending || !ready} onclick={send}>{sending ? 'Sending…' : label}</button>
+		{#if done}
+			<a href="/requests" class="mr-auto inline-flex items-center gap-1 self-center text-sm text-primary-light hover:underline" onclick={() => (open = false)}>See it on Requests <Icon name="arrow" class="size-4" /></a>
+			<span class="inline-flex items-center gap-2 rounded-lg bg-green-600 px-5 py-2 font-medium text-white"><Icon name="check" class="size-4" />Requested</span>
+		{:else}
+			{#if opts?.usage?.limit}<LimitRing class="mr-auto" limit={opts.usage.limit} used={opts.usage.used} unit={series ? 'season' : 'movie'} />{/if}
+			<button class="btn-ghost" onclick={() => (open = false)}>Cancel</button>
+			<button class="btn px-6 disabled:cursor-not-allowed disabled:opacity-40 disabled:saturate-0" disabled={!opts?.connected || sending || !ready || over} onclick={send}>{sending ? 'Sending…' : label}</button>
+		{/if}
 	{/snippet}
 </Modal>
