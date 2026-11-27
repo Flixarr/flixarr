@@ -3,6 +3,7 @@
 	import { api, meta } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import type { Collection } from '#lib/types.ts';
+	import Alert from '#lib/components/Alert.svelte';
 	import Poster from '#lib/components/Poster.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import Img, { BACKDROP_SIZES } from '#lib/components/Img.svelte';
@@ -116,7 +117,7 @@
 		{#if !opts}
 			<p class="text-sm text-gray-400">Loading…</p>
 		{:else if !opts.connected}
-			<p class="rounded-lg bg-yellow-500/10 px-3 py-2 text-sm text-yellow-300 ring-1 ring-yellow-500/30">Movie requests aren't set up yet (Settings, Services).</p>
+			<Alert tone="yellow" icon="warning">Movie requests aren't set up yet (Settings, Services).</Alert>
 		{:else}
 			<p class="text-xs text-gray-400">{opts.approval ? 'An admin approves them first.' : 'They start right away.'}{#if opts.usage?.limit}{@const left = Math.max(0, opts.usage.limit - opts.usage.used)} You have {left} movie{left === 1 ? '' : 's'} left this week.{/if}</p>
 			{#if opts.profiles.length}

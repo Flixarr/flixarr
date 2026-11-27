@@ -6,6 +6,7 @@
 	import { api, fmtNum, fmtDate } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import { on } from '#lib/live.svelte.ts';
+	import Alert from '#lib/components/Alert.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 
 	let { setup = false }: { setup?: boolean } = $props();
@@ -201,7 +202,7 @@
 				{#if st.result.plan}<button class="text-xs text-primary-light hover:underline" onclick={() => (summary = true)}>See the summary</button>{/if}
 			</div>
 		{/if}
-		{#if st?.error}<p class="rounded-xl bg-red-500/10 p-3 text-xs text-red-300 ring-1 ring-red-500/30">The last import stopped: {st.error}</p>{/if}
+		{#if st?.error}<Alert tone="red">The last import stopped: {st.error}</Alert>{/if}
 		<div>
 			{#if !setup}{@render heading('Seerr, Overseerr or Jellyseerr')}{/if}
 			<div class="card divide-y divide-gray-700/40 px-4">

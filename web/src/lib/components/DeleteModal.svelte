@@ -7,6 +7,7 @@
 	import { can } from '#lib/session.svelte.ts';
 	import { remember } from '#lib/availability.svelte.ts';
 	import type { Movie, Series } from '#lib/types.ts';
+	import Alert from './Alert.svelte';
 	import Modal from './Modal.svelte';
 
 	type Title = { inArr: boolean; server: string; size: number; downloading: boolean; plex: boolean; kept: boolean; requests: number; issues: number };
@@ -62,7 +63,7 @@
 		{#if hasData}{@render option(data, (v) => (data = v), 'Clear its data in Flixarr', `${dataText}, with ${t.requests + t.issues > 1 ? 'their' : 'its'} history and comments.`)}{/if}
 		{#if !canFiles && !hasData}<p class="text-gray-400">There's nothing Flixarr can delete for it.</p>{/if}
 		{#if t.kept && files && canFiles}<p class="text-xs text-gray-400">Maintainerr keeps this {what}; that keep is let go too.</p>{/if}
-		{#if !files && data && canFiles}<p class="rounded-lg bg-yellow-500/10 px-3 py-2 text-xs text-yellow-300 ring-1 ring-yellow-500/30">The {what} and its files stay in {t.server}{t.plex ? ' and Plex' : ''}; only Flixarr forgets its requests and issues.</p>{/if}
+		{#if !files && data && canFiles}<Alert tone="yellow" icon="info">The {what} and its files stay in {t.server}{t.plex ? ' and Plex' : ''}; only Flixarr forgets its requests and issues.</Alert>{/if}
 		<p class="text-xs text-gray-500">This can't be undone.</p>
 	</div>
 	{#snippet footer()}

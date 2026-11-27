@@ -3,6 +3,7 @@
 	// libraries show as available, whoever added them.
 	import { api, fmtDate } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
+	import Alert from '#lib/components/Alert.svelte';
 	import Toggle from '#lib/components/Toggle.svelte';
 	import Modal from '#lib/components/Modal.svelte';
 	import PlexMark from '#lib/components/PlexMark.svelte';
@@ -160,7 +161,7 @@
 				<button class="btn-ghost px-3 py-1.5 text-xs" onclick={findServers}>Change</button>
 			</div>
 		</div>
-		{#if st.error}<p class="rounded-lg bg-yellow-500/10 px-3 py-2 text-sm text-yellow-300 ring-1 ring-yellow-500/30">{st.error}</p>{/if}
+		{#if st.error}<Alert tone="red">{st.error}</Alert>{/if}
 
 		{#if st.sections.length}
 			<div>

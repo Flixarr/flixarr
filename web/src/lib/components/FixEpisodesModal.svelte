@@ -5,6 +5,7 @@
 	import { api } from '#lib/api.ts';
 	import { notify } from '#lib/toast.svelte.ts';
 	import type { Series } from '#lib/types.ts';
+	import Alert from './Alert.svelte';
 	import Modal from './Modal.svelte';
 	import Icon from './Icon.svelte';
 
@@ -90,7 +91,7 @@
 	<div class="space-y-4 p-5 text-sm">
 		<p class="text-gray-400">Pick what's missing or bad. Missing episodes are searched for again. Episodes with a file are redownloaded: the file is deleted and the release it came from is blocked, so it isn't downloaded again.</p>
 		{#if error}
-			<p class="rounded-lg bg-red-500/10 px-3 py-2 text-red-200 ring-1 ring-red-500/30">{error}</p>
+			<Alert tone="red">{error}</Alert>
 		{:else if !eps}
 			<p class="text-gray-400">Loading episodes…</p>
 		{:else}

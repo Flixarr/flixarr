@@ -8,6 +8,7 @@
 	import { session } from '#lib/session.svelte.ts';
 	import { goto, snapshot } from '$app/navigation';
 	import type { User } from '#lib/types.ts';
+	import Alert from '#lib/components/Alert.svelte';
 	import Avatar from '#lib/components/Avatar.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import Modal from '#lib/components/Modal.svelte';
@@ -292,7 +293,7 @@
 <Modal bind:open={importOpen} title="Import Plex users" sub="People your Plex server is shared with">
 	<div class="p-5">
 		{#if importError}
-			<p class="rounded-lg bg-yellow-500/10 px-3 py-2 text-sm text-yellow-300 ring-1 ring-yellow-500/30">{importError}</p>
+			<Alert tone="red">{importError}</Alert>
 		{:else if !friends}
 			<p class="text-sm text-gray-400">Asking Plex who your server is shared with…</p>
 		{:else if !friends.length}

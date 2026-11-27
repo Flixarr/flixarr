@@ -6,6 +6,7 @@
 	import { notify } from '#lib/toast.svelte.ts';
 	import { on } from '#lib/live.svelte.ts';
 	import type { QueueRow, ServiceKind } from '#lib/types.ts';
+	import Alert from '#lib/components/Alert.svelte';
 	import Modal from '#lib/components/Modal.svelte';
 	import QueueItem from './QueueItem.svelte';
 	import DownloadFix from './DownloadFix.svelte';
@@ -106,7 +107,7 @@
 			Fixed {progress.total - progress.failed} of {progress.total}.{progress.failed ? ` ${progress.failed} couldn't be fixed and ${progress.failed === 1 ? 'is' : 'are'} still on the list.` : ''} New copies are being searched for; they come back here once one is found.
 		</div>
 	{:else if searching}
-		<div class="mb-2 rounded-lg bg-green-500/10 px-3 py-2 text-xs text-green-300 ring-1 ring-green-500/30">Looking for a different copy of {searching} download{searching === 1 ? '' : 's'}. They come back here once a new copy is found.</div>
+		<Alert tone="blue" icon="refresh" class="mb-2">Looking for a different copy of {searching} download{searching === 1 ? '' : 's'}. They come back here once a new copy is found.</Alert>
 	{/if}
 	<div class="card px-4">
 		{#if all.length}
