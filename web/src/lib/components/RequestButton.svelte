@@ -74,7 +74,7 @@
 		const before = req;
 		req = { id: 0, status: 'approved', progress: 0, plex: req?.plex };
 		quickRequest(item as Movie, ok.profileId, (r) => {
-			req = r && r.status !== 'failed' ? brief(r) : before;
+			req = r ? brief(r) : before; // a failed one shows Failed with Request again, like the window
 			remember(key, req ?? null);
 		});
 	}
