@@ -110,7 +110,15 @@
 	}
 	.no-scrollbar { scrollbar-width: none; }
 	.no-scrollbar::-webkit-scrollbar { display: none; }
+	/* Sideways rows (Row.svelte): each end fades out while there's more row past it. Row.svelte sets the widths. */
+	.row-fade {
+		-webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-l), #000 calc(100% - var(--fade-r)), transparent 100%);
+		mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-l), #000 calc(100% - var(--fade-r)), transparent 100%);
+		transition: --fade-l 0.25s ease, --fade-r 0.25s ease;
+	}
 }
+@property --fade-l { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@property --fade-r { syntax: '<length>'; inherits: false; initial-value: 0px; }
 
 /* See all card (SeeMore.svelte): each slice crossfades to its second poster and back, one slice after another. */
 .board-swap { opacity: 0; animation: board-swap 8s infinite; }
