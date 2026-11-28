@@ -169,7 +169,7 @@
 		<!-- Search: a link to the search page (which focuses its box). Laptop+: looks like a search box. Tablet: an icon.
 		     Phone: nothing here, Search is in the bottom tabs. -->
 		<a href="/search" onclick={focusIfHere} aria-label="Search" class="ml-auto hidden w-72 items-center gap-2 rounded-xl border border-gray-700/50 bg-gray-900/60 px-3 py-2 text-sm text-gray-500 backdrop-blur transition hover:border-gray-600 hover:text-gray-400 laptop:flex">
-			<Icon name="search" class="size-4 text-gray-400" />Search movies, series, people
+			<Icon name="search" class="size-4 shrink-0 text-gray-400" /><span class="truncate">Search movies, series, people</span>
 			<!-- Tells people that / opens search from any page (#262). -->
 			<kbd class="ml-auto rounded border border-gray-600 px-1.5 text-[11px] text-gray-500">/</kbd>
 		</a>
