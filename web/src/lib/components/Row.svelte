@@ -11,8 +11,9 @@
 			<h2 class="text-base font-semibold">{#if more}<a href={more} class="hover:text-primary-light">{title}</a>{:else}{title}{/if}</h2>
 			{#if more}<a href={more} class="text-xs text-gray-400 hover:text-white">See all →</a>{/if}
 		</div>
-		<!-- Extra top/bottom room (cancelled by negative margins) so a hovered poster's lift and shadow aren't clipped. -->
-		<div data-row={title} class="no-scrollbar -mb-9 -mt-3 flex gap-3 overflow-x-auto px-4 pb-10 pt-3 laptop:px-0">
+		<!-- Extra room on every side (cancelled by negative margins) so a hovered poster's lift and shadow aren't clipped.
+		     On laptops the row pulls 1rem out into the page padding, so the first poster still lines up with the heading. -->
+		<div data-row={title} class="no-scrollbar -mb-9 -mt-3 flex gap-3 overflow-x-auto px-4 pb-10 pt-3 laptop:-mx-4">
 			{#if items.length}
 				{#each items as it, i (i)}{@render item(it)}{/each}
 				{@render end?.()}
