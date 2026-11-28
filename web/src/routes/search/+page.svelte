@@ -57,8 +57,15 @@
 	loadVocab().then((v) => (vocab = v));
 	loadTiles().then((t) => !tiles.length && (tiles = pickTiles(t)));
 
+	// Which search the results on screen answer, and a search that failed: old results only stay up while the new
+	// ones load, never after the new search failed (a MORE LIKE The Office under "inception").
+	let answered = $state('');
+	let failed = $state('');
 	const term = $derived(q.trim());
 	const plain = $derived(!!term && plainFor === term);
+	const searchKey = $derived(`${term}|${plain}`);
+	// The results on screen answer what's typed (not the last search, still showing while the new one loads).
+	const current = $derived(!!term && answered === searchKey);
 
 	$effect(() => {
 		// Three pages, so a wide screen gets several full rows. Kept to a multiple of 24 so every row is full
@@ -129,9 +136,10 @@
 	// the new ones are ready, and the API's answer and what's in Plex are shown together, so the Top result doesn't
 	// switch when one arrives after the other. Plex gets 0.4 s more; anything slower fills in after.
 	let now = $state(''); // a search asked for with Enter: no wait
+	let again = $state(0); // Enter on the same text searches again (a failed search gets retried)
 	$effect(() => {
 		const t0 = term, asPlain = plain;
-		if (!t0) { hits = []; mine = []; parsed = undefined; busy = false; return; }
+		if (!t0) { hits = []; mine = []; parsed = undefined; busy = false; answered = ''; failed = ''; return; }
 		busy = true;
 		let alive = true;
 		const run = () => {
@@ -144,12 +152,16 @@
 					hits = p.results;
 					parsed = p.parsed;
 					mine = own ?? [];
+					answered = `${t0}|${asPlain}`;
+					failed = '';
+					if (likePick && likePick.term !== t0) likePick = null; // a pick made for another search
 					if (!own) lib.then((c) => alive && (mine = c));
 				})
-				.catch(() => {})
+				.catch(() => { if (alive) failed = `${t0}|${asPlain}`; })
 				// Only the newest search may say it's done: an older one finishing late would flash "No results" (#245).
 				.finally(() => alive && (busy = false));
 		};
+		void again;
 		const t = setTimeout(run, now === t0 ? 0 : 250);
 		return () => { clearTimeout(t); alive = false; };
 	});
@@ -210,13 +222,15 @@
 	// ---------- like searches (#291, #293) ----------
 	// Which kind a like search asked for: "movies like" and "shows like" stay one kind, plain "like" gives both.
 	const likeKind = $derived(/^(movies?|films?)\s+(like|similar)/i.test(term) ? 'movie' : /^(shows?|series|tv)\b.*\b(like|similar)/i.test(term) ? 'series' : '');
-	const likeSrc = $derived<LikeSource | null>(tab === 'person' || plain ? null : likePick?.term === term ? likePick.src : (parsed?.like ?? null));
+	// The search couldn't be answered: nothing from an older search may stand in for it.
+	const failedNow = $derived(!!term && failed === searchKey && answered !== searchKey);
+	const likeSrc = $derived<LikeSource | null>(tab === 'person' || plain || failedNow ? null : likePick?.term === term ? likePick.src : current ? (parsed?.like ?? null) : null);
 	const likeType = (s: { type: string }) => (s.type === 'series' || s.type === 'tv' ? 'series' : 'movie');
 	// Titles like a title, page by page (the API ranks them).
 	const likePage = (s: { type: string; id: number }, page: number) =>
 		meta<Page<SearchHit>>(`searchhelp/like/${likeType(s)}/${s.id}`, { page, type: likeKind || undefined });
-	async function pickLike(h: { type: string; id: number }) {
-		const forTerm = term;
+	// forTerm: the search the pick belongs to (never "whatever is typed when the answer comes back").
+	async function pickLike(h: { type: string; id: number }, forTerm = term) {
 		const [d, p] = await Promise.all([meta<Movie | Series>(`${likeType(h)}/${h.id}`), likePage(h, 1)]).catch(() => [null, null] as const);
 		if (!d || !p || forTerm !== term) return;
 		likePick = { term: forTerm, src: { id: d.id, type: likeType(h), title: d.title, year: d.year, poster: d.poster, backdrop: d.backdrop, overview: d.overview, rating: d.rating }, list: p.results, pages: p.totalPages };
@@ -225,19 +239,21 @@
 	// taken instead; otherwise the page says so (#293).
 	let missChecked = $state('');
 	$effect(() => {
-		const miss = parsed?.likeMiss, forTerm = term;
+		// Only for the answer that belongs to what's typed now: while new text is being searched, `parsed` is still
+		// the last search's (typing over "like the offce" with "inception" used to pick The Office for "inception").
+		const miss = current ? parsed?.likeMiss : undefined, forTerm = term;
 		if (!miss || plain || likePick?.term === forTerm) return;
 		missChecked = '';
 		let alive = true;
 		owned(miss).then((found) => {
 			if (!alive) return;
 			const best = found.find((f) => f.score >= 40);
-			if (best) pickLike(best);
+			if (best) pickLike(best, forTerm);
 			else missChecked = forTerm;
 		});
 		return () => { alive = false; };
 	});
-	const likeMissShown = $derived(!!parsed?.likeMiss && !likeSrc && !plain && missChecked === term);
+	const likeMissShown = $derived(current && !!parsed?.likeMiss && !likeSrc && !plain && missChecked === term);
 	// "Not this one?": other titles with the same name as the one the like search found.
 	let alts = $state<SearchHit[]>([]);
 	$effect(() => {
@@ -258,6 +274,7 @@
 	// The best match. A title in Plex wins, even with a typo (#251), unless the search found the exact title,
 	// a person or collection, or read the search a special way (a nickname, a year, a season, a pasted ID).
 	const top = $derived.by<SearchHit | undefined>(() => {
+		if (failedNow) return undefined;
 		if (likeSrc || (!plain && (parsed?.like || parsed?.likeMiss))) return undefined; // a like search shows its MORE LIKE block instead
 		const best = hits[0], own = mine[0] as SearchHit | undefined;
 		if (!best || !own || parsed?.browse) return best ?? own;
@@ -269,6 +286,7 @@
 	// Everything else in one mixed grid, in ranked order (Marc: "I want them mixed in"). Titles only Plex
 	// matched (a typo like brkng bad) go first (#251); the Top result isn't repeated.
 	const mixed = $derived.by(() => {
+		if (failedNow) return [];
 		if (likeSrc) {
 			const list = likePick?.term === term ? likePick.list : hits;
 			return list.filter((h) => !(h.id === likeSrc.id && likeType(h) === likeType(likeSrc)));
@@ -361,7 +379,7 @@
 
 	// ---------- the category reading (#290) ----------
 	const kindParsed = $derived(kindFresh ? kind.parsed : undefined);
-	const browseNow = $derived(plain ? undefined : tab === 'all' ? parsed?.browse : kindParsed?.browse);
+	const browseNow = $derived(plain || failedNow ? undefined : tab === 'all' ? (current ? parsed?.browse : undefined) : kindParsed?.browse);
 	// A like reading on the Movies or Series tab keeps its plain heading (the MORE LIKE block is on All).
 	const likeHeading = $derived(!plain && !likeSrc && tab !== 'all' && kindParsed?.like ? `More like ${kindParsed.like.title}${kindParsed.like.year ? ` (${kindParsed.like.year})` : ''}` : '');
 	const boxTag = $derived(plain ? '' : browseNow ? 'Category' : likeSrc ? 'More like' : '');
@@ -382,7 +400,7 @@
 		const t = setTimeout(() => owned(m[1]).then((f) => alive && (ownedForChips = f.filter((x) => x.score >= 40))), 150);
 		return () => { alive = false; clearTimeout(t); };
 	});
-	const chips = $derived<Chip[]>(buildChips(q, vocab, { top: top ?? (likeSrc ? ({ title: likeSrc.title, type: 'movie', id: likeSrc.id, poster: null } as SearchHit) : undefined), hits, owned: ownedForChips, reading: browseNow?.label ?? '' }));
+	const chips = $derived<Chip[]>(buildChips(q, vocab, current ? { top: top ?? (likeSrc ? ({ title: likeSrc.title, type: likeType(likeSrc), id: likeSrc.id, poster: null } as SearchHit) : undefined), hits, owned: ownedForChips, reading: browseNow?.label ?? '' } : { hits: [], owned: ownedForChips, reading: '' }));
 	const CHIP_ICON: Record<Chip['kind'], string> = { Category: 'browse', 'More like': 'film', Collection: 'layers', Nickname: 'tag', Person: 'profile' };
 	function search(text: string) {
 		q = text;
@@ -396,7 +414,7 @@
 	$effect(() => {
 		if (extra.key !== moreKey) extra = { key: moreKey, list: [], page: {}, done: {}, turn: 0, busy: false };
 	});
-	const canMore = $derived(tab === 'all' && !!term && !parsed?.id && !parsed?.likeMiss && mixed.length > 0);
+	const canMore = $derived(tab === 'all' && current && !parsed?.id && !parsed?.likeMiss && mixed.length > 0);
 	async function moreAll(): Promise<boolean> {
 		if (!canMore || extra.busy || extra.key !== moreKey) return false;
 		const key = moreKey, src = likeSrc, browse = parsed?.browse;
@@ -428,7 +446,11 @@
 		}
 	}
 	const allDone = $derived(!canMore || (extra.key === moreKey && Object.keys(extra.done).length > 0 && (likeSrc ? !!extra.done.like : parsed?.browse?.type ? !!extra.done[parsed.browse.type === 'series' ? 'series' : 'movie'] : !!extra.done.movie && !!extra.done.series)));
-	const grid = $derived(extra.key === moreKey ? [...mixed, ...extra.list] : mixed);
+	// One card per title, even when the franchise or late Plex matches add one that a later page also had.
+	const grid = $derived.by(() => {
+		const seen = new Set<string>();
+		return (extra.key === moreKey ? [...mixed, ...extra.list] : mixed).filter((h) => !seen.has(h.type + h.id) && (seen.add(h.type + h.id), true));
+	});
 
 	// ---------- keyboard (#289) ----------
 	// Down from the box goes to the chips, then the Top result, then the results card by card; left and right move
@@ -470,7 +492,7 @@
 	// the extra pages and where you'd scrolled to (Rule 35).
 	snapshot({
 		id: 'search',
-		capture: () => ({ q, tab, hits: $state.snapshot(hits), mine: $state.snapshot(mine), parsed: $state.snapshot(parsed), kind: $state.snapshot(kind), tiles: $state.snapshot(tiles), plainFor, plainFrom, likePick: $state.snapshot(likePick), extra: $state.snapshot(extra), y: scrollY }),
+		capture: () => ({ q, tab, hits: $state.snapshot(hits), mine: $state.snapshot(mine), parsed: $state.snapshot(parsed), kind: $state.snapshot(kind), tiles: $state.snapshot(tiles), plainFor, plainFrom, likePick: $state.snapshot(likePick), extra: $state.snapshot(extra), answered, y: scrollY }),
 		restore: async (v) => {
 			q = v.q;
 			tab = v.tab;
@@ -484,6 +506,7 @@
 			plainFrom = v.plainFrom ?? '';
 			likePick = v.likePick ?? null;
 			if (v.extra) extra = { ...v.extra, busy: false };
+			answered = v.answered ?? '';
 			await tick();
 			restoreScroll(v.y);
 		}
@@ -524,7 +547,7 @@
 	<div class="px-4 laptop:px-0">
 		<label class="card flex items-center gap-3 px-4 py-3.5 text-gray-400 focus-within:ring-2 focus-within:ring-primary/60">
 			<Icon name="search" class="size-5 shrink-0" />
-			<input bind:this={input} bind:value={q} autocomplete="off" enterkeyhint="search" onkeydown={(e) => { if (e.key === 'Enter') { now = term; saveRecent(); input?.blur(); } }} class="min-w-0 flex-1 bg-transparent text-base text-white placeholder-gray-400 outline-none" {placeholder} />
+			<input bind:this={input} bind:value={q} autocomplete="off" enterkeyhint="search" onkeydown={(e) => { if (e.key === 'Enter') { if (now === term && failedNow) again++; now = term; saveRecent(); input?.blur(); } }} class="min-w-0 flex-1 bg-transparent text-base text-white placeholder-gray-400 outline-none" {placeholder} />
 			{#if boxTag}
 				<!-- How the search is being read; the x searches for titles instead (#290). -->
 				<span class="inline-flex shrink-0 items-center gap-1 rounded-md bg-primary/15 py-0.5 pl-2 pr-1 text-xs font-semibold text-primary-light ring-1 ring-primary/40">{boxTag}<button aria-label="Search titles instead" class="rounded p-0.5 hover:bg-primary/30" onclick={(e) => { e.preventDefault(); titlesInstead(); }}><Icon name="close" class="size-3" /></button></span>
@@ -552,7 +575,9 @@
 				{#if plain && plainFrom}
 					<p class="px-4 text-sm text-gray-400 laptop:px-0">Titles named “{term}”. <button class="text-primary-light hover:text-white" onclick={() => (plainFor = '')}>Show {plainFrom.charAt(0).toLowerCase() + plainFrom.slice(1)} instead</button></p>
 				{/if}
-				{#if likeSrc}
+				{#if failedNow}
+					<div class="px-4 laptop:px-0"><Alert tone="red">Search isn’t answering right now. Check your connection and try again in a moment.</Alert></div>
+				{:else if likeSrc}
 					<MoreLikeBlock src={likeSrc} item={topItem} {alts} onpick={pickLike} />
 				{:else if parsed?.likeMiss && likeMissShown}
 					<div class="px-4 laptop:px-0"><Alert tone="yellow">Couldn’t find a title called “{parsed.likeMiss}”. Check the spelling, or search for the title on its own.</Alert></div>
@@ -606,8 +631,8 @@
 					<h2 class="px-4 text-base font-semibold laptop:px-0">{likeHeading}</h2>
 				{/if}
 				{#if tab === 'all'}
-					{#if likeMissShown}
-						<!-- nothing to list: the yellow box above says why -->
+					{#if likeMissShown || failedNow}
+						<!-- nothing to list: the box above says why -->
 					{:else if parsed?.likeMiss && !likeSrc}
 						<LoadingMore busy={true} done={false} />
 					{:else if !grid.length && !mine.length && !busy}
