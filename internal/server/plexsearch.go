@@ -18,7 +18,23 @@ func (s *Server) plexSearch(w http.ResponseWriter, r *http.Request, _ *store.Use
 		writeJSON(w, http.StatusOK, []store.PlexTitle{})
 		return
 	}
-	writeJSON(w, http.StatusOK, matchTitles(q, all, 10))
+	writeJSON(w, http.StatusOK, scoredTitles(q, all, 10))
+}
+
+// scoredHit is a Plex match with how close it is (see titleScore), so the app can tell a real typo match (40 and
+// up) from a loose one (30, letters in order) before treating it as the title someone meant.
+type scoredHit struct {
+	store.PlexTitle
+	Score int `json:"score"`
+}
+
+func scoredTitles(q string, all []store.PlexTitle, n int) []scoredHit {
+	nq := normTitle(q)
+	out := []scoredHit{}
+	for _, t := range matchTitles(q, all, n) {
+		out = append(out, scoredHit{t, titleScore(normTitle(t.Title), nq)})
+	}
+	return out
 }
 
 // matchTitles ranks titles against what was typed and keeps the best n that match at all.

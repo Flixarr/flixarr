@@ -29,6 +29,13 @@ func TestMatchTitles(t *testing.T) {
 	if got := matchTitles("brek", all, 5); len(got) < 2 || got[0].TmdbID != 1396 || got[1].TmdbID != 50619 {
 		t.Errorf("brek: got %v, want Breaking Bad then Breaking Dawn", got)
 	}
+	// Scores come back with the matches: a typo is 40 or more, letters in order only 30.
+	if got := scoredTitles("brekaing bad", all, 5); len(got) == 0 || got[0].Score < 40 {
+		t.Errorf("brekaing bad: %v, want a typo-level score", got)
+	}
+	if got := scoredTitles("brkng bad", all, 5); len(got) == 0 || got[0].Score != 30 {
+		t.Errorf("brkng bad: %v, want 30 (letters in order)", got)
+	}
 	if got := matchTitles("zzz", all, 5); len(got) != 0 {
 		t.Errorf("zzz matched %v", got)
 	}
