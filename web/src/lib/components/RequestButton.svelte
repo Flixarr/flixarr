@@ -20,7 +20,8 @@
 	// ?request=1 (the Discover spotlight's Request) opens the window once the status says it can be requested.
 	let autoOpened = false;
 	$effect(() => {
-		if (req === null && !autoOpened && page.url.searchParams.get('request') === '1' && can(item.type === 'series' ? 'requestTv' : 'requestMovies')) {
+		const ended = req === null || (!!req && !req.plex && ['failed', 'declined', 'expired', 'removed'].includes(req.status));
+		if (ended && !autoOpened && page.url.searchParams.get('request') === '1' && can(item.type === 'series' ? 'requestTv' : 'requestMovies')) {
 			autoOpened = true;
 			open = true;
 		}

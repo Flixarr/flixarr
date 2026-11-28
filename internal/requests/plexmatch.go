@@ -2,6 +2,7 @@ package requests
 
 import (
 	"context"
+	"time"
 
 	"github.com/Flixarr/flixarr/internal/plexlib"
 	"github.com/Flixarr/flixarr/internal/store"
@@ -29,13 +30,15 @@ func (s *Service) autoMatch(ctx context.Context, r *store.Request, movie map[str
 	}
 	s.mu.Lock()
 	if s.matchTried == nil {
-		s.matchTried = map[int64]bool{}
+		s.matchTried = map[int64]time.Time{}
 	}
-	tried := s.matchTried[r.ID]
-	s.matchTried[r.ID] = true
+	at, tried := s.matchTried[r.ID]
+	if !tried {
+		s.matchTried[r.ID] = time.Now()
+	}
 	s.mu.Unlock()
 	if tried {
-		return true
+		return time.Since(at) > 10*time.Minute // Plex gets time to match it again before it counts as Stuck
 	}
 	if err := s.Plex.FixMatch(ctx, it.RatingKey, r.TmdbID); err != nil {
 		s.Log.Warn("plex match", "title", r.Title, "err", err)

@@ -93,7 +93,7 @@ func (s *Server) requestCreate(w http.ResponseWriter, r *http.Request, u *store.
 }
 
 // requestStatus answers "is this requested?" for a batch of titles: ?keys=movie:603,series:1396.
-func (s *Server) requestStatus(w http.ResponseWriter, r *http.Request, _ *store.User) {
+func (s *Server) requestStatus(w http.ResponseWriter, r *http.Request, u *store.User) {
 	var keys []string
 	for _, k := range strings.Split(r.URL.Query().Get("keys"), ",") {
 		if k = strings.TrimSpace(k); k != "" && len(keys) < 200 {
@@ -105,7 +105,7 @@ func (s *Server) requestStatus(w http.ResponseWriter, r *http.Request, _ *store.
 		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, http.StatusOK, briefsFor(out, u.Can("manageRequests")))
 }
 
 // brief is where a title stands, for buttons and poster dots.
@@ -387,6 +387,20 @@ func writeProblem(w http.ResponseWriter, code int, err error, u *store.User, fal
 		msg = requests.Plain(err, fallback)
 	}
 	writeErr(w, code, msg)
+}
+
+// briefsFor keeps the managers' line (the real reason, Radarr's own words) for people who manage
+// requests only (#301).
+func briefsFor(in map[string]brief, manager bool) map[string]brief {
+	if manager {
+		return in
+	}
+	out := make(map[string]brief, len(in))
+	for k, b := range in {
+		b.HintAdmin = ""
+		out[k] = b
+	}
+	return out
 }
 
 // notResponding names the app each kind of request depends on when it isn't responding right now

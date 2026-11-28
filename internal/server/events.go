@@ -73,16 +73,15 @@ func (s *Server) liveStream(w http.ResponseWriter, r *http.Request, u *store.Use
 func (s *Server) PublishRequest(r store.Request) {
 	key := fmt.Sprintf("%s:%d", r.Type, r.TmdbID)
 	// The title as a whole (a series can have other requests still open), not just this request.
-	var brief any
-	if got, err := s.briefs([]string{key}); err == nil {
-		if b, ok := got[key]; ok {
-			brief = b
-		}
-	}
+	got, _ := s.briefs([]string{key})
 	// Two copies: managers get the real reason in the line under it, everyone else plain words (#301).
 	down := s.notResponding()[r.Type]
 	for _, manager := range []bool{true, false} {
-		s.Live.Publish(live.Event{Type: "request", Data: map[string]any{"key": key, "brief": brief, "request": requests.ForViewer(s.Requests.View(r, manager, down), manager)},
+		var b any
+		if one, ok := briefsFor(got, manager)[key]; ok {
+			b = one
+		}
+		s.Live.Publish(live.Event{Type: "request", Data: map[string]any{"key": key, "brief": b, "request": requests.ForViewer(s.Requests.View(r, manager, down), manager)},
 			For: func(u *store.User) bool { return u.Can("manageRequests") == manager }})
 	}
 }

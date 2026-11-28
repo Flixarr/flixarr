@@ -942,8 +942,8 @@ func TestNotOut(t *testing.T) {
 		"in theaters, no digital date (Dune: Part Three)":    {map[string]any{"isAvailable": false, "year": 2026.0, "inCinemas": "2026-12-15T00:00:00Z"}, true, ""},
 		"digital date ahead (Clayface)":                      {map[string]any{"isAvailable": false, "year": 2026.0, "digitalRelease": "2026-12-08T00:00:00Z", "physicalRelease": "2027-02-24T00:00:00Z"}, true, "2026-12-08"},
 		"only a disc date ahead":                             {map[string]any{"isAvailable": false, "year": 2026.0, "inCinemas": "2026-09-01T00:00:00Z", "physicalRelease": "2027-01-12T00:00:00Z"}, true, "2027-01-12"},
-		"every date passed":                                  {map[string]any{"isAvailable": false, "year": 2025.0, "inCinemas": "2025-09-01T00:00:00Z", "digitalRelease": "2025-10-01T00:00:00Z"}, false, ""},
-		"available":                                          {map[string]any{"isAvailable": true, "year": 2026.0}, false, ""},
+		"in theaters since, no digital date (cam window)":    {map[string]any{"isAvailable": false, "year": 2026.0, "inCinemas": "2026-11-01T00:00:00Z"}, true, ""},
+		"available": {map[string]any{"isAvailable": true, "year": 2026.0}, false, ""},
 	} {
 		out, date := notOut(x.m, now)
 		if out != x.out || date != x.date {

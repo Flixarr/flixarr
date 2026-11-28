@@ -41,7 +41,7 @@ type Service struct {
 	rescans    map[int64]int
 	checked    map[int64]time.Time                 // last follow of each active request
 	locks      map[int64]*sync.Mutex               // one per request, see lockFor
-	matchTried map[int64]bool                      // requests whose wrong Plex match was already fixed once (#171)
+	matchTried map[int64]time.Time                 // when a request's wrong Plex match was fixed (#171), tried once
 	counts     map[int]map[int]plexlib.SeasonCount // Sonarr's episode counts per series, see SeasonCounts
 	countsAt   time.Time
 }
@@ -1004,14 +1004,15 @@ func (s *Service) follow(ctx context.Context, v store.Server, r *store.Request) 
 }
 
 // notOut says whether a Radarr movie isn't out yet (#300), and the date it comes out to download (its
-// digital release, else the disc release; never the theater date). A movie with no dates at all only
-// counts as not out when its year is this year or later: Radarr calls old movies it has no dates for
-// "announced" forever (The Track Meet, 2010).
+// digital release, else the disc release; never the theater date). With any date, Radarr's own answer
+// stands (in theaters with no digital date yet is still not out). A movie with no dates at all only counts
+// as not out when its year is this year or later: Radarr calls old movies it has no dates for "announced"
+// forever (The Track Meet, 2010).
 func notOut(m map[string]any, now time.Time) (bool, string) {
 	if out, _ := m["isAvailable"].(bool); out {
 		return false, ""
 	}
-	future, dated := false, false
+	dated := false
 	day := func(k string) (time.Time, bool) {
 		v, _ := m[k].(string)
 		t, err := time.Parse(time.RFC3339, v)
@@ -1019,9 +1020,6 @@ func notOut(m map[string]any, now time.Time) (bool, string) {
 			return time.Time{}, false
 		}
 		dated = true
-		if t.After(now) {
-			future = true
-		}
 		return t, true
 	}
 	day("inCinemas")
@@ -1037,7 +1035,7 @@ func notOut(m map[string]any, now time.Time) (bool, string) {
 	if !dated {
 		return num(m["year"]) >= now.Year(), ""
 	}
-	return future, date
+	return true, date
 }
 
 func (s *Service) followArr(ctx context.Context, v store.Server, r *store.Request) error {
