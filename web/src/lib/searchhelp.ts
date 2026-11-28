@@ -4,7 +4,7 @@
 import { meta } from '#lib/api.ts';
 import type { SearchHit } from '#lib/types.ts';
 
-type Entry = { words: string[]; label: string; phrase: string; movie?: boolean; series?: boolean };
+type Entry = { words: string[]; label: string; phrase: string; movie?: boolean; series?: boolean; decades?: string[] };
 export interface Vocab {
 	genres: Entry[];
 	themes: Entry[];
@@ -97,12 +97,16 @@ export function buildChips(raw: string, v: Vocab | null, ctx: { top?: SearchHit;
 		const last = words.pop() ?? '';
 		const before = words.join(' ');
 		if (last.length >= 2 && words.every((w) => known(v, w))) {
-			for (const e of [...cats, ...v.places]) {
-				if (!e.words.some((w) => w.startsWith(last))) continue;
-				const phrase = before ? `${before} ${e.phrase}` : e.phrase;
-				add(phrase, 'Category');
-				if (!before) add(`90s ${e.phrase}`, 'Category');
+			const found = [...cats, ...v.places].filter((e) => e.words.some((w) => w.startsWith(last)));
+			// The best match gets its strongest decades from the API ("westerns": 60s, 50s, 70s westerns) and a
+			// "new" one; other matches just their own chip.
+			const best = found[0];
+			if (best && !before) {
+				add(best.phrase, 'Category');
+				for (const d of (best.decades ?? []).slice(0, 3)) add(`${d} ${best.phrase}`, 'Category');
+				add(`new ${best.phrase}`, 'Category');
 			}
+			for (const e of found) add(before ? `${before} ${e.phrase}` : e.phrase, 'Category');
 		}
 	}
 

@@ -400,11 +400,12 @@
 		const key = moreKey, src = likeSrc, browse = parsed?.browse;
 		// A like search goes on through its ranked list; a category in its own kind; a title search takes turns
 		// between more movies and more series.
-		const kinds = src ? ['like'] : browse ? [browse.type === 'series' ? 'series' : 'movie'] : ['movie', 'series'];
+		// A category with no movies or shows word has both (type ''), first pages already shown.
+		const kinds = src ? ['like'] : browse && browse.type ? [browse.type === 'series' ? 'series' : 'movie'] : ['movie', 'series'];
 		const open = kinds.filter((k) => !extra.done[k]);
 		if (!open.length) return false;
 		const k = open[extra.turn % open.length];
-		const first = src ? (likePick?.term === term ? 2 : 3) : browse ? 3 : 2;
+		const first = src ? (likePick?.term === term ? 2 : 3) : browse && browse.type ? 3 : 2;
 		const page = extra.page[k] ?? first;
 		extra.busy = true;
 		try {
@@ -424,7 +425,7 @@
 			extra.busy = false;
 		}
 	}
-	const allDone = $derived(!canMore || (extra.key === moreKey && Object.keys(extra.done).length > 0 && (likeSrc ? !!extra.done.like : parsed?.browse ? !!extra.done[parsed.browse.type === 'series' ? 'series' : 'movie'] : !!extra.done.movie && !!extra.done.series)));
+	const allDone = $derived(!canMore || (extra.key === moreKey && Object.keys(extra.done).length > 0 && (likeSrc ? !!extra.done.like : parsed?.browse?.type ? !!extra.done[parsed.browse.type === 'series' ? 'series' : 'movie'] : !!extra.done.movie && !!extra.done.series)));
 	const grid = $derived(extra.key === moreKey ? [...mixed, ...extra.list] : mixed);
 
 	// ---------- keyboard (#289) ----------
@@ -475,7 +476,8 @@
 			mine = v.mine ?? [];
 			parsed = v.parsed;
 			if (v.kind) kind = { ...v.kind, busy: false };
-			if (v.tiles?.length) tiles = v.tiles;
+			// Back keeps the same tiles; a reload gets a fresh 10 (#286).
+			if (v.tiles?.length && cameBack()) tiles = v.tiles;
 			plainFor = v.plainFor ?? '';
 			plainFrom = v.plainFrom ?? '';
 			likePick = v.likePick ?? null;
