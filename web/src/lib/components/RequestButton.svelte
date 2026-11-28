@@ -109,7 +109,7 @@
 	<button class="btn act" disabled={checking} onclick={start}><Icon name="plus" class="size-4" />{req && ['failed', 'declined', 'expired', 'removed'].includes(req.status) ? 'Request again' : 'Request'}</button>
 	<!-- Removed (#302): when it left, and for managers how. -->
 	{#if req && (req.status === 'expired' || req.status === 'removed') && (can('manageRequests') ? req.hintAdmin : req.hint)}
-		<div class="flex w-full items-center gap-1.5 text-sm text-gray-400"><Icon name="info" class="size-4 shrink-0" />{can('manageRequests') ? req.hintAdmin : req.hint}</div>
+		<div class="order-last flex w-full items-center gap-1.5 text-sm text-gray-400"><Icon name="info" class="size-4 shrink-0" />{can('manageRequests') ? req.hintAdmin : req.hint}</div>
 	{/if}
 {/if}
 <RequestModal bind:open {item} asked={req?.asked} onrequested={(r) => {
