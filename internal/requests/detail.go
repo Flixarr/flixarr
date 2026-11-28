@@ -296,7 +296,7 @@ func queue(ctx context.Context, c *arr.Client, path string, seasons map[int]bool
 		}
 		if d.State == "failed" || d.State == "warning" {
 			d.QueueID = num(it["id"])
-			d.Problem = "There was an issue downloading this file"
+			d.Problem = "The download hit a problem"
 			if admin {
 				d.Detail = statusMessages(it)
 			}

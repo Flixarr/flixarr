@@ -199,9 +199,9 @@
 									<span class="font-medium text-gray-200">{q.season ? `S${q.season}${q.episode ? 'E' + q.episode : ''}` : r.title}<span class="font-normal text-gray-500">{q.state === 'importing' ? ' · adding to Plex' : q.state === 'queued' ? ' · waiting its turn' : ''}</span></span>
 									<span class="shrink-0 tabular-nums text-gray-400">{q.percent}%{q.timeLeft && q.state === 'downloading' ? ` · ${timeLeft(q.timeLeft)}` : ''}{q.size ? ` · ${fmtBytes(q.size)}` : ''}</span>
 								</div>
-								<div class="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-700/60"><div class="h-full rounded-full {q.state === 'warning' || q.state === 'failed' ? 'bg-yellow-500' : 'bg-blue-500'}" style="width:{q.percent}%"></div></div>
-								{#if q.problem}<p class="mt-1.5 text-xs text-yellow-200">{q.problem}</p>{/if}
-								{#if q.detail}<p class="mt-1 text-[11px] text-gray-500">{q.detail}</p>{/if}
+								<div class="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-700/60"><div class="h-full rounded-full {q.state === 'warning' || q.state === 'failed' ? 'bg-red-400' : 'bg-blue-400'}" style="width:{q.percent}%"></div></div>
+								<!-- A problem (red, #299): managers read what Radarr / Sonarr said, everyone else that it hit a problem. -->
+								{#if q.detail}<p class="mt-1.5 text-xs text-red-300">{q.detail}</p>{:else if q.problem}<p class="mt-1.5 text-xs text-red-300">{q.problem}</p>{/if}
 								{#if admin && q.release}<p class="mt-1 truncate font-mono text-[10px] text-gray-500">{q.release}</p>{/if}
 							</div>
 						{/each}
