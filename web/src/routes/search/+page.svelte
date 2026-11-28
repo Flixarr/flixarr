@@ -43,7 +43,7 @@
 	let trending = $state<Card[]>([]);
 	let input = $state<HTMLInputElement>();
 	// One kind on its own, page by page (#249): the search it was loaded for, its pages so far, and how many there are.
-	let kind = $state<{ term: string; tab: Tab; list: SearchHit[]; page: number; pages: number; busy: boolean; parsed?: Page<SearchHit>['parsed'] }>({ term: '', tab: 'all', list: [], page: 0, pages: 1, busy: false });
+	let kind = $state<{ term: string; tab: Tab; mode: string; list: SearchHit[]; page: number; pages: number; busy: boolean; parsed?: Page<SearchHit>['parsed'] }>({ term: '', tab: 'all', mode: '', list: [], page: 0, pages: 1, busy: false });
 	// "Search for titles named X instead" (#290): the search it was asked for, and what the category was called.
 	let plainFor = $state('');
 	let plainFrom = $state('');
@@ -164,16 +164,22 @@
 		if (url !== location.pathname + location.search) replaceState(url, {});
 	});
 
-	// A kind's next page. Starts over when the search or the kind changed.
+	// A kind's next page. Starts over when the search, the kind, titles instead or a picked like title changed.
+	const kindMode = $derived(plain ? 'plain' : likePick?.term === term ? `like:${likePick.src.type}:${likePick.src.id}` : '');
+	const kindFresh = $derived(kind.term === term && kind.tab === tab && kind.mode === kindMode);
 	async function more(): Promise<boolean> {
 		if (!term || tab === 'all') return false;
-		if (kind.term !== term || kind.tab !== tab) kind = { term, tab, list: [], page: 0, pages: 1, busy: false };
+		if (!kindFresh) kind = { term, tab, mode: kindMode, list: [], page: 0, pages: 1, busy: false };
 		if (kind.busy || kind.page >= kind.pages) return false;
-		const want = { term, tab, page: kind.page + 1 };
+		const want = { term, tab, mode: kindMode, page: kind.page + 1 };
 		kind.busy = true;
 		try {
-			const p = await meta<Page<SearchHit>>('search', { q: term, type: tab, page: want.page, plain: plain ? 1 : undefined });
-			if (kind.term !== want.term || kind.tab !== want.tab) return false; // the search moved on meanwhile
+			// A like title picked with "Not this one?" (or found in Plex) lists titles like it on the tabs too.
+			const pick = likePick?.term === term && tab !== 'person' ? likePick.src : null;
+			const p = pick
+				? await meta<Page<SearchHit>>(`searchhelp/like/${likeType(pick)}/${pick.id}`, { page: want.page, type: tab })
+				: await meta<Page<SearchHit>>('search', { q: term, type: tab, page: want.page, plain: plain ? 1 : undefined });
+			if (kind.term !== want.term || kind.tab !== want.tab || kind.mode !== want.mode) return false; // the search moved on meanwhile
 			const seen = new Set(kind.list.map((h) => h.type + h.id));
 			kind.list = [...kind.list, ...p.results.filter((h) => !seen.has(h.type + h.id))];
 			kind.page = want.page;
@@ -188,7 +194,7 @@
 	}
 	$effect(() => {
 		// A kind's first page loads as soon as it's opened (the scroll watcher fetches the rest).
-		if (tab !== 'all' && term && (kind.term !== term || kind.tab !== tab)) {
+		if (tab !== 'all' && term && !kindFresh) {
 			const t = setTimeout(more, 250);
 			return () => clearTimeout(t);
 		}
@@ -204,7 +210,7 @@
 	// ---------- like searches (#291, #293) ----------
 	// Which kind a like search asked for: "movies like" and "shows like" stay one kind, plain "like" gives both.
 	const likeKind = $derived(/^(movies?|films?)\s+(like|similar)/i.test(term) ? 'movie' : /^(shows?|series|tv)\b.*\b(like|similar)/i.test(term) ? 'series' : '');
-	const likeSrc = $derived<LikeSource | null>(tab !== 'all' || plain ? null : likePick?.term === term ? likePick.src : (parsed?.like ?? null));
+	const likeSrc = $derived<LikeSource | null>(tab === 'person' || plain ? null : likePick?.term === term ? likePick.src : (parsed?.like ?? null));
 	const likeType = (s: { type: string }) => (s.type === 'series' || s.type === 'tv' ? 'series' : 'movie');
 	// Titles like a title, page by page (the API ranks them).
 	const likePage = (s: { type: string; id: number }, page: number) =>
@@ -220,7 +226,7 @@
 	let missChecked = $state('');
 	$effect(() => {
 		const miss = parsed?.likeMiss, forTerm = term;
-		if (!miss || tab !== 'all' || plain || likePick?.term === forTerm) return;
+		if (!miss || plain || likePick?.term === forTerm) return;
 		missChecked = '';
 		let alive = true;
 		owned(miss).then((found) => {
@@ -231,7 +237,7 @@
 		});
 		return () => { alive = false; };
 	});
-	const likeMissShown = $derived(!!parsed?.likeMiss && !likeSrc && missChecked === term);
+	const likeMissShown = $derived(!!parsed?.likeMiss && !likeSrc && !plain && missChecked === term);
 	// "Not this one?": other titles with the same name as the one the like search found.
 	let alts = $state<SearchHit[]>([]);
 	$effect(() => {
@@ -252,7 +258,7 @@
 	// The best match. A title in Plex wins, even with a typo (#251), unless the search found the exact title,
 	// a person or collection, or read the search a special way (a nickname, a year, a season, a pasted ID).
 	const top = $derived.by<SearchHit | undefined>(() => {
-		if (likeSrc || parsed?.likeMiss) return undefined; // a like search shows its MORE LIKE block instead
+		if (likeSrc || (!plain && (parsed?.like || parsed?.likeMiss))) return undefined; // a like search shows its MORE LIKE block instead
 		const best = hits[0], own = mine[0] as SearchHit | undefined;
 		if (!best || !own || parsed?.browse) return best ?? own;
 		const special = parsed?.id || parsed?.nick || parsed?.year || parsed?.season;
@@ -288,8 +294,8 @@
 		return out;
 	});
 	const ROW_NAME = { movie: 'Movies', series: 'Series', person: 'People' };
-	const kindList = $derived(kind.term === term && kind.tab === tab ? kind.list.filter((h) => h.type + h.id !== topKey) : []);
-	const kindDone = $derived(kind.term === term && kind.tab === tab && kind.page >= kind.pages);
+	const kindList = $derived(kindFresh ? kind.list.filter((h) => h.type + h.id !== topKey && !(likeSrc && h.id === likeSrc.id && likeType(h) === likeType(likeSrc))) : []);
+	const kindDone = $derived(kindFresh && kind.page >= kind.pages);
 
 	// The title page of the Top result or the like search's title, for its Request or Play button (#248).
 	let topItem = $state<Movie | Series | null>(null);
@@ -352,10 +358,10 @@
 	const knownFor = $derived<Known[]>(top?.type === 'person' && pageKnown?.id === top.id ? pageKnown.known : []);
 
 	// ---------- the category reading (#290) ----------
-	const kindParsed = $derived(kind.term === term && kind.tab === tab ? kind.parsed : undefined);
+	const kindParsed = $derived(kindFresh ? kind.parsed : undefined);
 	const browseNow = $derived(plain ? undefined : tab === 'all' ? parsed?.browse : kindParsed?.browse);
 	// A like reading on the Movies or Series tab keeps its plain heading (the MORE LIKE block is on All).
-	const likeHeading = $derived(!plain && tab !== 'all' && kindParsed?.like ? `More like ${kindParsed.like.title}${kindParsed.like.year ? ` (${kindParsed.like.year})` : ''}` : '');
+	const likeHeading = $derived(!plain && !likeSrc && tab !== 'all' && kindParsed?.like ? `More like ${kindParsed.like.title}${kindParsed.like.year ? ` (${kindParsed.like.year})` : ''}` : '');
 	const boxTag = $derived(plain ? '' : browseNow ? 'Category' : likeSrc ? 'More like' : '');
 	function titlesInstead() {
 		plainFrom = browseNow?.label ?? (likeSrc ? `titles like ${likeSrc.title}` : '');
@@ -483,7 +489,7 @@
 {#snippet person(h: SearchHit, cls: string)}
 	<a href="/person/{h.id}" class="group relative block {cls}">
 		<TiltFrame class="aspect-[2/3] w-full rounded-xl border border-gray-700/40 bg-gray-800/40 shadow-xl">
-			{#if h.poster}<Img path={h.poster} kind="profile" sizes="(min-width: 640px) 144px, 112px" class="h-full w-full" />{:else}<div class="grid h-full place-items-center text-3xl text-gray-600">{h.title.charAt(0)}</div>{/if}
+			{#if h.poster}<Img path={h.poster} kind="profile" sizes="(min-width: 640px) 144px, 112px" class="h-full w-full" />{:else}<div class="grid h-full place-items-center text-3xl text-gray-400">{h.title.charAt(0)}</div>{/if}
 		</TiltFrame>
 		<div class="relative">
 			<div class="mt-2 truncate text-[13px] font-medium">{h.title}</div>
@@ -495,7 +501,7 @@
 {#snippet collection(h: SearchHit, cls: string)}
 	<a href="/collection/{h.id}" class="group relative block {cls}">
 		<TiltFrame class="aspect-[2/3] w-full rounded-xl border border-gray-700/40 bg-gray-800/40 shadow-xl">
-			{#if h.poster}<Img path={h.poster} kind="poster" sizes="(min-width: 640px) 144px, 112px" class="h-full w-full" />{:else}<div class="grid h-full place-items-center text-3xl text-gray-600">{h.title.charAt(0)}</div>{/if}
+			{#if h.poster}<Img path={h.poster} kind="poster" sizes="(min-width: 640px) 144px, 112px" class="h-full w-full" />{:else}<div class="grid h-full place-items-center text-3xl text-gray-400">{h.title.charAt(0)}</div>{/if}
 			<div class="absolute left-1.5 top-1.5 z-10"><span class="rounded-md bg-violet-600/85 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">Collection</span></div>
 		</TiltFrame>
 		<div class="relative">
@@ -514,13 +520,13 @@
 	<div class="px-4 laptop:px-0">
 		<label class="card flex items-center gap-3 px-4 py-3.5 text-gray-400 focus-within:ring-2 focus-within:ring-primary/60">
 			<Icon name="search" class="size-5 shrink-0" />
-			<input bind:this={input} bind:value={q} autocomplete="off" enterkeyhint="search" onkeydown={(e) => { if (e.key === 'Enter') { now = term; saveRecent(); input?.blur(); } }} class="min-w-0 flex-1 bg-transparent text-base text-white placeholder-gray-500 outline-none" {placeholder} />
+			<input bind:this={input} bind:value={q} autocomplete="off" enterkeyhint="search" onkeydown={(e) => { if (e.key === 'Enter') { now = term; saveRecent(); input?.blur(); } }} class="min-w-0 flex-1 bg-transparent text-base text-white placeholder-gray-400 outline-none" {placeholder} />
 			{#if boxTag}
 				<!-- How the search is being read; the x searches for titles instead (#290). -->
 				<span class="inline-flex shrink-0 items-center gap-1 rounded-md bg-primary/15 py-0.5 pl-2 pr-1 text-xs font-semibold text-primary-light ring-1 ring-primary/40">{boxTag}<button aria-label="Search titles instead" class="rounded p-0.5 hover:bg-primary/30" onclick={(e) => { e.preventDefault(); titlesInstead(); }}><Icon name="close" class="size-3" /></button></span>
 			{/if}
 			{#if q}<button class="shrink-0 text-xs text-gray-400 hover:text-white" onclick={() => { q = ''; tab = 'all'; plainFor = ''; likePick = null; input?.focus(); }}>Clear</button>
-			{:else}<kbd class="hidden rounded border border-gray-600 px-1.5 text-[11px] text-gray-500 laptop:inline">/</kbd>{/if}
+			{:else}<kbd class="hidden rounded border border-gray-600 px-1.5 text-[11px] text-gray-400 laptop:inline">/</kbd>{/if}
 		</label>
 		{#if term && chips.length}
 			<!-- Search chips: the smart searches that finish what's typed (#287). -->
@@ -542,9 +548,9 @@
 				{#if plain && plainFrom}
 					<p class="px-4 text-sm text-gray-400 laptop:px-0">Titles named “{term}”. <button class="text-primary-light hover:text-white" onclick={() => (plainFor = '')}>Show {plainFrom.charAt(0).toLowerCase() + plainFrom.slice(1)} instead</button></p>
 				{/if}
-				{#if likeSrc && tab === 'all'}
+				{#if likeSrc}
 					<MoreLikeBlock src={likeSrc} item={topItem} {alts} onpick={pickLike} />
-				{:else if parsed?.likeMiss && tab === 'all' && likeMissShown}
+				{:else if parsed?.likeMiss && likeMissShown}
 					<div class="px-4 laptop:px-0"><Alert tone="yellow">Couldn’t find a title called “{parsed.likeMiss}”. Check the spelling, or search for the title on its own.</Alert></div>
 				{:else if top}
 					<!-- The best match, big, with its button (#248). -->
@@ -555,23 +561,23 @@
 							<div class="relative flex gap-4 p-4 tablet:gap-5 tablet:p-5 laptop:p-7">
 								<a href={href(top)} data-top-link class="group w-24 shrink-0 self-start rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-primary tablet:w-32 laptop:w-40">
 									<TiltFrame class="aspect-[2/3] rounded-xl bg-gray-800 shadow-2xl ring-1 ring-white/10">
-										{#if top.poster}<Img path={top.poster} kind={top.type === 'person' ? 'profile' : 'poster'} sizes="160px" class="h-full w-full" />{:else}<div class="grid h-full place-items-center text-3xl text-gray-600">{top.title.charAt(0)}</div>{/if}
+										{#if top.poster}<Img path={top.poster} kind={top.type === 'person' ? 'profile' : 'poster'} sizes="160px" class="h-full w-full" />{:else}<div class="grid h-full place-items-center text-3xl text-gray-400">{top.title.charAt(0)}</div>{/if}
 									</TiltFrame>
 								</a>
 								<div class="min-w-0 space-y-2 self-center">
 									<div class="text-[11px] font-bold uppercase tracking-wider text-primary">Top result</div>
 									<a href={href(top)} class="block text-xl font-bold hover:text-primary-light tablet:text-2xl laptop:text-4xl">{top.title}</a>
-									<div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-300">
+									<div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-400">
 										{#if top.type === 'person'}{top.dept ?? 'Person'}{:else if top.type === 'collection'}Collection{:else}{top.year || 'TBA'} · {KIND_NAME[top.type]}{#if top.rating} · ★ {top.rating}{/if}{/if}
 										{#if label(top)}<span class="rounded px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-gray-950 {label(top) === 'New' ? 'bg-green-400' : 'bg-amber-400'}">{label(top)}</span>{/if}
 									</div>
 									{#if top.overview}<p class="line-clamp-2 max-w-2xl text-sm text-gray-400">{top.overview}</p>{/if}
 									{#if top.type === 'movie' && topColl && topParts && topParts.length > 1 && partsMissing !== undefined}
-										<p class="text-sm text-gray-400">Part of {theName(topColl.name)}<a href="/collection/{topColl.id}" class="text-gray-200 hover:text-primary-light">{topColl.name}</a>
+										<p class="text-sm text-gray-400">Part of {theName(topColl.name)}<a href="/collection/{topColl.id}" class="text-white hover:text-primary-light">{topColl.name}</a>
 											{#if partsMissing && can('requestMovies')} · <a href="/collection/{topColl.id}?request=1" class="font-medium text-primary-light hover:text-white">Request {partsMissing} missing</a>
 											{:else if partsMissing === 0} · <span class="text-green-300">All in your library</span>{/if}</p>
 									{/if}
-									{#if knownFor.length}<p class="line-clamp-2 max-w-2xl text-sm text-gray-400">Known for {#each knownFor as k, i (k.type + k.id)}{i ? (i === knownFor.length - 1 ? ' and ' : ', ') : ''}<a href={href(k)} class="text-gray-200 hover:text-primary-light">{k.title}</a>{/each}</p>{/if}
+									{#if knownFor.length}<p class="line-clamp-2 max-w-2xl text-sm text-gray-400">Known for {#each knownFor as k, i (k.type + k.id)}{i ? (i === knownFor.length - 1 ? ' and ' : ', ') : ''}<a href={href(k)} class="text-white hover:text-primary-light">{k.title}</a>{/each}</p>{/if}
 									<div class="flex flex-wrap gap-2 pt-1">
 										{#if topItem && topItem.id === top.id}<RequestButton item={topItem} />{/if}
 										{#if top.type === 'collection' && partsMissing && can('requestMovies')}<a href="/collection/{top.id}?request=1" class="btn act"><Icon name="plus" class="size-4" />Request {partsMissing} missing</a>
@@ -608,6 +614,8 @@
 						</div>
 						{#if canMore}<div use:infinite={moreAll}><LoadingMore busy={extra.busy} done={allDone} /></div>{/if}
 					{/if}
+				{:else if likeMissShown}
+					<!-- the yellow box above says why there's nothing to list -->
 				{:else if !kindList.length && kindDone}
 					<p class="px-4 py-20 text-center text-sm text-gray-400">No {ROW_NAME[tab].toLowerCase()} for “{term}”.</p>
 				{:else}
@@ -623,7 +631,7 @@
 			<section class="space-y-3 px-4 laptop:px-0">
 				<div class="flex items-center justify-between"><h2 class="text-base font-semibold">Recent searches</h2><button class="text-xs text-gray-400 hover:text-white" onclick={clearRecent}>Clear</button></div>
 				<div class="flex flex-wrap gap-2">
-					{#each recent as r (r)}<button class="rounded-full border border-gray-700/60 bg-gray-800/40 px-3 py-1 text-sm text-gray-300 hover:text-white" onclick={() => (q = r)}>{r}</button>{/each}
+					{#each recent as r (r)}<button class="rounded-full border border-gray-700/60 bg-gray-800/40 px-3 py-1 text-sm text-gray-400 hover:text-white" onclick={() => (q = r)}>{r}</button>{/each}
 				</div>
 			</section>
 		{/if}
