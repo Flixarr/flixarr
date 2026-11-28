@@ -36,19 +36,24 @@ type Request struct {
 	UpdatedAt   string   `json:"updatedAt"`
 	Source      string   `json:"source"`               // "" (someone asked) or "redownload"
 	Detail      string   `json:"detail,omitempty"`     // the stored reason as Radarr / Sonarr gave it (people who manage requests); not a column
-	Trouble     bool     `json:"trouble,omitempty"`    // its download is stuck in Radarr / Sonarr right now (#129); not a column
 	Unreleased  bool     `json:"unreleased,omitempty"` // what was asked for isn't out yet, so it can't download (#151)
+	OutDate     string   `json:"outDate,omitempty"`    // when it's out to download (YYYY-MM-DD), '' when unknown (#300)
+	SomeReady   bool     `json:"someReady,omitempty"`  // stuck, but some of the series is in Plex already (#299)
+	State       string   `json:"state,omitempty"`      // the status as shown, decided by the server (#301); not a column
+	Hint        string   `json:"hint,omitempty"`       // the one line under it (#301); not a column
+	HintTone    string   `json:"hintTone,omitempty"`   // "" (muted grey), "yellow" or "red"; not a column
+	BrokeAt     string   `json:"brokeAt,omitempty"`    // Stuck or Failed: where it broke, "send", "download" or "import" (#299); not a column
 }
 
 // OpenStatuses are the statuses of a request still in play (one per title at a time).
-var OpenStatuses = []string{"pending", "approved", "sent", "grabbed", "downloading", "importing", "partial", "available"}
+var OpenStatuses = []string{"pending", "approved", "sent", "grabbed", "downloading", "importing", "stuck", "partial", "available"}
 
-const requestCols = `r.id, r.type, r.tmdb_id, r.title, r.year, r.poster, r.backdrop, r.user_id, COALESCE(u.username, ''), r.status, COALESCE(r.server_id, 0), r.arr_id, r.profile_id, r.profile_name, r.mode, r.seasons, r.progress, r.error, r.anime, r.created_at, r.updated_at, r.episodes, r.source, COALESCE(u.avatar, ''), r.unreleased`
+const requestCols = `r.id, r.type, r.tmdb_id, r.title, r.year, r.poster, r.backdrop, r.user_id, COALESCE(u.username, ''), r.status, COALESCE(r.server_id, 0), r.arr_id, r.profile_id, r.profile_name, r.mode, r.seasons, r.progress, r.error, r.anime, r.created_at, r.updated_at, r.episodes, r.source, COALESCE(u.avatar, ''), r.unreleased, r.out_date, r.some_ready`
 
 func scanRequest(row interface{ Scan(...any) error }) (Request, error) {
 	var r Request
 	var seasons, episodes string
-	err := row.Scan(&r.ID, &r.Type, &r.TmdbID, &r.Title, &r.Year, &r.Poster, &r.Backdrop, &r.UserID, &r.UserName, &r.Status, &r.ServerID, &r.ArrID, &r.ProfileID, &r.ProfileName, &r.Mode, &seasons, &r.Progress, &r.Error, &r.Anime, &r.CreatedAt, &r.UpdatedAt, &episodes, &r.Source, &r.UserAvatar, &r.Unreleased)
+	err := row.Scan(&r.ID, &r.Type, &r.TmdbID, &r.Title, &r.Year, &r.Poster, &r.Backdrop, &r.UserID, &r.UserName, &r.Status, &r.ServerID, &r.ArrID, &r.ProfileID, &r.ProfileName, &r.Mode, &seasons, &r.Progress, &r.Error, &r.Anime, &r.CreatedAt, &r.UpdatedAt, &episodes, &r.Source, &r.UserAvatar, &r.Unreleased, &r.OutDate, &r.SomeReady)
 	if err == nil {
 		r.Seasons, r.Episodes = []int{}, [][2]int{}
 		json.Unmarshal([]byte(seasons), &r.Seasons)
@@ -116,7 +121,7 @@ func (s *Store) RetryRequest(r Request) (Request, error) {
 		server = r.ServerID
 	}
 	_, err := s.db.Exec(`UPDATE requests SET title = ?, year = ?, poster = ?, backdrop = ?, status = ?, server_id = ?, arr_id = 0, profile_id = ?, profile_name = ?,
-		mode = ?, seasons = ?, episodes = ?, anime = ?, season_count = ?, progress = 0, error = '', unreleased = 0, decided_by = NULL, created_at = ?, updated_at = ? WHERE id = ?`,
+		mode = ?, seasons = ?, episodes = ?, anime = ?, season_count = ?, progress = 0, error = '', unreleased = 0, out_date = '', some_ready = 0, decided_by = NULL, created_at = ?, updated_at = ? WHERE id = ?`,
 		r.Title, r.Year, r.Poster, r.Backdrop, r.Status, server, r.ProfileID, r.ProfileName, r.Mode, string(seasons), string(episodes), r.Anime, r.SeasonCount, t, t, r.ID)
 	if err != nil {
 		return Request{}, err
@@ -227,7 +232,7 @@ func coverageOf(list []Request) Coverage {
 
 // ActiveRequests lists requests that went to a Radarr/Sonarr and aren't available yet (the request follow loop watches them).
 func (s *Store) ActiveRequests() ([]Request, error) {
-	return s.queryRequests(`SELECT ` + requestCols + ` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.status IN ('sent', 'grabbed', 'downloading', 'importing', 'partial') AND r.arr_id != 0`)
+	return s.queryRequests(`SELECT ` + requestCols + ` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.status IN ('sent', 'grabbed', 'downloading', 'importing', 'stuck', 'partial') AND r.arr_id != 0`)
 }
 
 func (s *Store) queryRequests(q string, args ...any) ([]Request, error) {
@@ -258,8 +263,8 @@ func (s *Store) RequestStatusFor(keys []string) (map[string]Request, error) {
 		want[k] = true
 	}
 	// Open requests first; a title with none shows its newest failed or declined one (so pages can say
-	// so and offer Request again). Expired ones don't count: the title is simply requestable again.
-	rows, err := s.db.Query(`SELECT ` + requestCols + ` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.status IN (` + inList(append(append([]string{}, OpenStatuses...), "failed", "declined", "removed")) + `) ORDER BY r.id`)
+	// so and offer Request again). Expired ones count too: the page says when it left (#302).
+	rows, err := s.db.Query(`SELECT ` + requestCols + ` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.status IN (` + inList(append(append([]string{}, OpenStatuses...), "failed", "declined", "removed", "expired")) + `) ORDER BY r.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -309,8 +314,8 @@ func (s *Store) UpdateRequest(r Request) error {
 	var was string
 	s.db.QueryRow(`SELECT status FROM requests WHERE id = ?`, r.ID).Scan(&was)
 	t := now()
-	_, err := s.db.Exec(`UPDATE requests SET status = ?, server_id = ?, arr_id = ?, profile_id = ?, profile_name = ?, progress = ?, error = ?, unreleased = ?, updated_at = ? WHERE id = ?`,
-		r.Status, server, r.ArrID, r.ProfileID, r.ProfileName, r.Progress, r.Error, r.Unreleased, t, r.ID)
+	_, err := s.db.Exec(`UPDATE requests SET status = ?, server_id = ?, arr_id = ?, profile_id = ?, profile_name = ?, progress = ?, error = ?, unreleased = ?, out_date = ?, some_ready = ?, updated_at = ? WHERE id = ?`,
+		r.Status, server, r.ArrID, r.ProfileID, r.ProfileName, r.Progress, r.Error, r.Unreleased, r.OutDate, r.SomeReady, t, r.ID)
 	if err == nil && was != "" && was != r.Status {
 		s.addEvent(r.ID, r.Status, r.Error, t)
 	}
@@ -380,7 +385,7 @@ func (s *Store) RequestsIn(statuses ...string) ([]Request, error) {
 
 // ActiveRequestsFor lists the active requests for one Radarr/Sonarr item (a webhook names it by its own ID).
 func (s *Store) ActiveRequestsFor(typ string, arrID int) ([]Request, error) {
-	return s.queryRequests(`SELECT `+requestCols+` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.type = ? AND r.arr_id = ? AND r.status IN ('sent', 'grabbed', 'downloading', 'importing', 'partial')`, typ, arrID)
+	return s.queryRequests(`SELECT `+requestCols+` FROM requests r LEFT JOIN users u ON u.id = r.user_id WHERE r.type = ? AND r.arr_id = ? AND r.status IN ('sent', 'grabbed', 'downloading', 'importing', 'stuck', 'partial')`, typ, arrID)
 }
 
 // AvailableRequests lists the available requests for these titles ("movie:603" keys); with series set it

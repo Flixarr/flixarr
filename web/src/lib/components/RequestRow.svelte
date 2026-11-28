@@ -5,12 +5,12 @@
 </script>
 
 <script lang="ts">
-	// One request on the Requests page: the title (with the year, what was asked, and a line for a failure,
-	// a decline, a release that isn't out yet, a stuck download or open issues), who asked and when, the
+	// One request on the Requests page: the title (with the year, what was asked, the one line the server
+	// wrote for it (#301), and open issues), who asked and when, the
 	// quality for people who manage requests, and where it is. Tapping it opens the request window.
 	import { ago } from '#lib/api.ts';
 	import type { IssueBrief, Request } from '#lib/types.ts';
-	import { askedFor, NOT_RELEASED, waitingRelease } from '#lib/requeststatus.ts';
+	import { askedFor, hintClass, stateOf } from '#lib/requeststatus.ts';
 	import { issueWhat, issueWhere } from '#lib/issuetext.ts';
 	import Img from './Img.svelte';
 	import Icon from './Icon.svelte';
@@ -38,10 +38,7 @@
 	<div class="min-w-0">
 		<div class="flex min-w-0 items-baseline gap-1.5"><span class="truncate text-sm font-semibold">{r.title}</span>{#if r.year}<span class="shrink-0 text-xs text-gray-500">{r.year}</span>{/if}</div>
 		<div class="mt-0.5 truncate text-xs text-gray-400">{asked}<span class="laptop:hidden"> · {who} · {ago(r.createdAt)}</span></div>
-		{#if r.status === 'failed' && r.error}<div class="mt-1 truncate text-xs text-red-300">{r.error}</div>{/if}
-		{#if r.status === 'declined' && r.error}<div class="mt-1 truncate text-xs text-gray-400">Declined: {r.error}</div>{/if}
-		{#if waitingRelease(r)}<div class="mt-1 truncate text-xs text-yellow-200">{NOT_RELEASED}</div>{/if}
-		{#if r.trouble && r.status !== 'failed'}<div class="mt-1 truncate text-xs text-yellow-200">{manager ? 'The download is stuck. Open it to fix it.' : 'The download hit a problem. Someone who manages requests can sort it out.'}</div>{/if}
+		{#if r.hint}<div class="mt-1 truncate text-xs {hintClass(r.hintTone)}">{r.hint}</div>{/if}
 		{#if first}
 			<div class="mt-1.5 flex min-w-0 items-center gap-1.5 text-xs text-amber-300">
 				<Icon name="issues" class="size-3.5 shrink-0" />
@@ -56,7 +53,7 @@
 	{#if manager}<div class="hidden truncate text-xs text-gray-400 laptop:block">{r.profileName || 'Default'}</div>{/if}
 
 	<div class="flex flex-col items-end gap-1.5 laptop:items-start">
-		<StatusPill status={r.status} progress={r.progress} series={r.type === 'series'} />
+		<StatusPill state={stateOf(r)} progress={r.progress} series={r.type === 'series'} exact={manager} />
 		{#if moving}
 			<div class="flex w-24 items-center gap-1.5 laptop:w-full"><div class="h-1 flex-1 overflow-hidden rounded-full bg-gray-700/70"><div class="h-full rounded-full bg-blue-400" style="width:{r.progress}%"></div></div>{#if r.type !== 'series'}<span class="text-[10px] tabular-nums text-blue-300">{r.progress}%</span>{/if}</div>
 		{/if}

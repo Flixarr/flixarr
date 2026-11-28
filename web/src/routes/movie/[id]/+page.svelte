@@ -44,7 +44,7 @@
 	});
 	// Report issue: on what's in the library, or on a request that hasn't arrived ("Didn't download").
 	const inLib = $derived(!!brief?.plex || brief?.status === 'available');
-	const waiting = $derived(!!brief && ['approved', 'sent', 'grabbed', 'downloading', 'importing', 'failed'].includes(brief.status));
+	const waiting = $derived(!!brief && ['approved', 'sent', 'grabbed', 'downloading', 'importing', 'stuck', 'failed'].includes(brief.status));
 	let issueOpen = $state(false);
 	let fixOpen = $state(false);
 	let adminOpen = $state(false);

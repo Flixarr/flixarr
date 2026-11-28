@@ -148,10 +148,10 @@ export interface ArrInfo {
 
 export interface Request {
 	id: number; type: 'movie' | 'series'; tmdbId: number; title: string; year: string; poster: string; backdrop: string;
-	userId: number; userName: string; status: 'pending' | 'approved' | 'declined' | 'sent' | 'grabbed' | 'downloading' | 'importing' | 'partial' | 'available' | 'failed' | 'expired' | 'removed';
+	userId: number; userName: string; status: 'pending' | 'approved' | 'declined' | 'sent' | 'grabbed' | 'downloading' | 'importing' | 'stuck' | 'partial' | 'available' | 'failed' | 'expired' | 'removed';
 	serverId: number; arrId: number; profileId: number; profileName: string; mode: 'all' | 'seasons' | 'episodes'; seasons: number[]; episodes: [number, number][]; progress: number; error: string; anime: boolean; source?: string; detail?: string; userAvatar?: string;
 	createdAt: string; updatedAt: string;
-	trouble?: boolean; // its download is stuck in Radarr / Sonarr right now
+	state?: string; hint?: string; hintTone?: string; brokeAt?: string; outDate?: string; someReady?: boolean; // how it shows, decided by the server (#301)
 	unreleased?: boolean; // not out yet, so it can't download
 }
 // An open issue as the Requests page and the request window show it (the note is blank unless the viewer may read it).
@@ -164,7 +164,7 @@ export interface UserProfile {
 	user: User; stats: { requests: number; available: number; waiting: number; inProgress: number; openIssues: number }; requests: Card[];
 	roles: Record<string, string[]>; admin: boolean; canChange: boolean; approvalRequired: boolean;
 }
-export type RequestBrief = { id: number; status: Request['status'] | 'blocked'; progress: number; plex?: string; blocked?: boolean; episodes?: [number, number]; unreleased?: boolean; asked?: { whole: boolean; seasons: number[] } };
+export type RequestBrief = { id: number; status: Request['status'] | 'blocked'; progress: number; plex?: string; blocked?: boolean; episodes?: [number, number]; unreleased?: boolean; asked?: { whole: boolean; seasons: number[] }; state?: string; hint?: string; hintAdmin?: string; hintTone?: string };
 
 // Whether a title's files have reached the quality its profile aims for.
 export interface TitleQuality {

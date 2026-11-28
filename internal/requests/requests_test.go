@@ -835,10 +835,8 @@ func TestPlainWordsForUsers(t *testing.T) {
 	if got := PlainError(store.Request{Status: "declined", Error: "Not out in good quality yet"}); got != "Not out in good quality yet" {
 		t.Fatalf("declined keeps the admin's words: %q", got)
 	}
-	for _, l := range []Live{{Error: "couldn't reach it"}, {InArr: false}, {InArr: true, Monitored: false}} {
-		if h := hintFor(store.Request{Type: "movie", Status: "sent"}, l, false); strings.Contains(h, "Radarr") || strings.Contains(h, "Fix") {
-			t.Fatalf("hint for a user: %q", h)
-		}
+	if got := PlainError(store.Request{Status: "stuck", Error: "Radarr: Not an upgrade for existing movie file"}); got != "The download hit a problem" {
+		t.Fatalf("stuck: %q", got)
 	}
 }
 
@@ -879,11 +877,138 @@ func TestPlainProblems(t *testing.T) {
 	if got := sentences([]string{"It wasn't monitored in Radarr; now it is.", "Search started"}); got != "It wasn't monitored in Radarr; now it is. Search started." {
 		t.Fatalf("notes: %q", got)
 	}
-	if h := hintFor(store.Request{Type: "movie", Status: "importing"}, Live{InArr: true, Monitored: true}, false); h != "Downloaded, almost ready to watch" {
-		t.Fatalf("user hint: %q", h)
+}
+
+func TestStatusView(t *testing.T) {
+	s, _, _, _, _, _ := setup(t)
+	type c struct {
+		r                      store.Request
+		admin                  bool
+		down                   string
+		state, hint, tone, brk string
 	}
-	if h := hintFor(store.Request{Type: "movie", Status: "importing"}, Live{InArr: true, Monitored: true}, true); h != "Downloaded, waiting for Plex" {
-		t.Fatalf("admin hint: %q", h)
+	thisYear := time.Now().Year()
+	for _, x := range []c{
+		{r: store.Request{Type: "movie", Status: "importing"}, state: "importing", hint: "Downloaded, almost ready to watch"},
+		{r: store.Request{Type: "movie", Status: "importing"}, admin: true, state: "importing", hint: "Downloaded, waiting for Plex"},
+		{r: store.Request{Type: "movie", Status: "sent", Unreleased: true, OutDate: fmt.Sprintf("%d-12-08", thisYear)}, state: "notout", hint: "Out to download Dec 8th"},
+		{r: store.Request{Type: "movie", Status: "sent", Unreleased: true}, state: "notout", hint: "No release date yet"},
+		{r: store.Request{Type: "movie", Status: "sent"}, state: "requested", hint: "Looking for a download"},
+		{r: store.Request{Type: "movie", Status: "stuck", Progress: 100, Error: "Radarr: Not an upgrade for existing movie file"}, state: "stuck", hint: "The download hit a problem", tone: "red", brk: "import"},
+		{r: store.Request{Type: "movie", Status: "stuck", Progress: 100, Error: "Radarr: Not an upgrade for existing movie file"}, admin: true, state: "stuck", hint: "Radarr: Not an upgrade for existing movie file", tone: "red", brk: "import"},
+		{r: store.Request{Type: "series", Status: "stuck", Progress: 40, SomeReady: true, Error: "Sonarr: No video files found"}, state: "stuck", hint: "Some episodes are ready. A download hit a problem.", tone: "red", brk: "download"},
+		{r: store.Request{Type: "movie", Status: "failed", Error: "Radarr didn't add it"}, state: "failed", hint: "Couldn't be requested", tone: "red", brk: "send"},
+		{r: store.Request{Type: "movie", Status: "available"}, state: "available", hint: "Ready to watch on Plex"},
+		{r: store.Request{Type: "movie", Status: "expired", Error: "Removed by Maintainerr (Movies leaving).", UpdatedAt: fmt.Sprintf("%d-11-02T15:00:00Z", thisYear)}, state: "expired", hint: "Removed from Plex on Nov 2nd"},
+		{r: store.Request{Type: "movie", Status: "expired", Error: "Removed by Maintainerr (Movies leaving).", UpdatedAt: fmt.Sprintf("%d-11-02T15:00:00Z", thisYear)}, admin: true, state: "expired", hint: "Removed from Plex on Nov 2nd by Maintainerr"},
+		{r: store.Request{Type: "series", Status: "removed", Error: "Removed from Sonarr outside Flixarr", UpdatedAt: fmt.Sprintf("%d-11-02T15:00:00Z", thisYear)}, admin: true, state: "removed", hint: "Removed from Sonarr on Nov 2nd, outside Flixarr"},
+		{r: store.Request{Type: "series", Status: "downloading", Progress: 42}, down: "Sonarr", state: "downloading", hint: "Problem getting the latest status"},
+		{r: store.Request{Type: "series", Status: "downloading", Progress: 42}, admin: true, down: "Sonarr", state: "downloading", hint: "Can't get status (Sonarr isn't responding)"},
+		{r: store.Request{Type: "movie", Status: "available"}, down: "Radarr", state: "available", hint: "Ready to watch on Plex"},
+	} {
+		got := s.View(x.r, x.admin, x.down)
+		if got.State != x.state || got.Hint != x.hint || got.HintTone != x.tone || got.BrokeAt != x.brk {
+			t.Errorf("%s admin=%v down=%q: got %q %q %q %q", x.r.Status, x.admin, x.down, got.State, got.Hint, got.HintTone, got.BrokeAt)
+		}
+	}
+}
+
+func TestDayAndTimeLeft(t *testing.T) {
+	y := time.Now().Year()
+	for in, want := range map[string]string{
+		fmt.Sprintf("%d-11-01", y): "Nov 1st", fmt.Sprintf("%d-11-02", y): "Nov 2nd", fmt.Sprintf("%d-11-03", y): "Nov 3rd",
+		fmt.Sprintf("%d-11-11", y): "Nov 11th", fmt.Sprintf("%d-11-12", y): "Nov 12th", fmt.Sprintf("%d-11-22", y): "Nov 22nd", "2025-03-21": "Mar 21st, 2025",
+	} {
+		if got := Day(in); got != want {
+			t.Errorf("Day(%s) = %q, want %q", in, got, want)
+		}
+	}
+	for in, want := range map[string]string{"00:06:12": "About 6 minutes left", "01:10:00": "About an hour left", "05:00:00": "About 5 hours left", "1.02:00:00": "About 26 hours left", "00:00:40": "Almost done"} {
+		if got := TimeLeft(in); got != want {
+			t.Errorf("TimeLeft(%s) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestNotOut(t *testing.T) {
+	now := time.Date(2026, 11, 28, 12, 0, 0, 0, time.UTC)
+	for name, x := range map[string]struct {
+		m    map[string]any
+		out  bool
+		date string
+	}{
+		"old movie Radarr has no dates for (The Track Meet)": {map[string]any{"isAvailable": false, "year": 2010.0}, false, ""},
+		"new movie with no dates yet":                        {map[string]any{"isAvailable": false, "year": 2027.0}, true, ""},
+		"in theaters, no digital date (Dune: Part Three)":    {map[string]any{"isAvailable": false, "year": 2026.0, "inCinemas": "2026-12-15T00:00:00Z"}, true, ""},
+		"digital date ahead (Clayface)":                      {map[string]any{"isAvailable": false, "year": 2026.0, "digitalRelease": "2026-12-08T00:00:00Z", "physicalRelease": "2027-02-24T00:00:00Z"}, true, "2026-12-08"},
+		"only a disc date ahead":                             {map[string]any{"isAvailable": false, "year": 2026.0, "inCinemas": "2026-09-01T00:00:00Z", "physicalRelease": "2027-01-12T00:00:00Z"}, true, "2027-01-12"},
+		"every date passed":                                  {map[string]any{"isAvailable": false, "year": 2025.0, "inCinemas": "2025-09-01T00:00:00Z", "digitalRelease": "2025-10-01T00:00:00Z"}, false, ""},
+		"available":                                          {map[string]any{"isAvailable": true, "year": 2026.0}, false, ""},
+	} {
+		out, date := notOut(x.m, now)
+		if out != x.out || date != x.date {
+			t.Errorf("%s: got %v %q", name, out, date)
+		}
+	}
+}
+
+func TestStuckDownload(t *testing.T) {
+	s, st, radarr, _, admin, _ := setup(t)
+	ctx := context.Background()
+	r, _ := s.Create(ctx, admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix", Year: "1999"})
+	// Downloaded, but Radarr won't import it: Stuck, not Almost ready (Jack Frost, #299).
+	radarr.queue = `[{"size":1000,"sizeleft":0,"status":"completed","trackedDownloadState":"importPending","trackedDownloadStatus":"warning","statusMessages":[{"title":"x","messages":["Not an upgrade for existing movie file."]}]}]`
+	s.checked = nil
+	s.Refresh(ctx)
+	r, _ = st.Request(r.ID)
+	if r.Status != "stuck" || r.Error != "Radarr: Not an upgrade for existing movie file" || r.Progress != 100 {
+		t.Fatalf("stuck: %+v", r)
+	}
+	if v := s.View(r, false, ""); v.BrokeAt != "import" || v.Hint != "The download hit a problem" {
+		t.Fatalf("view: %+v", v)
+	}
+	// Fix got a different release: the stuck one left the queue, so it's looking again, and the reason goes.
+	radarr.queue = `[]`
+	s.checked = nil
+	s.Refresh(ctx)
+	r, _ = st.Request(r.ID)
+	if r.Status != "sent" || r.Error != "" {
+		t.Fatalf("after the stuck download left: %+v", r)
+	}
+	radarr.queue = `[{"size":1000,"sizeleft":400,"status":"downloading","trackedDownloadState":"downloading"}]`
+	s.checked = nil
+	s.Refresh(ctx)
+	if r, _ = st.Request(r.ID); r.Status != "downloading" {
+		t.Fatalf("new download: %+v", r)
+	}
+	events, _ := st.RequestEvents(r.ID)
+	var steps []string
+	for _, e := range events {
+		steps = append(steps, e.Status)
+	}
+	if got := strings.Join(steps, " "); got != "requested sent stuck sent downloading" {
+		t.Fatalf("timeline: %s", got)
+	}
+}
+
+func TestNudgeNotHeldUp(t *testing.T) {
+	// A webhook nudge for one request doesn't wait behind another request's follow up (#298).
+	s, st, radarr, _, admin, _ := setup(t)
+	ctx := context.Background()
+	r, _ := s.Create(ctx, admin, New{Type: "movie", TmdbID: 603, Title: "The Matrix", Year: "1999"})
+	other := s.lockFor(r.ID + 1000)
+	other.Lock() // a long follow up of some other request
+	defer other.Unlock()
+	radarr.queue = `[{"size":1000,"sizeleft":400,"status":"downloading","trackedDownloadState":"downloading"}]`
+	done := make(chan struct{})
+	go func() { s.Nudge(ctx, "movie", 42); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the nudge waited behind another request")
+	}
+	if r, _ = st.Request(r.ID); r.Status != "downloading" {
+		t.Fatalf("nudged: %+v", r)
 	}
 }
 

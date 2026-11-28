@@ -10,7 +10,7 @@
 	import { can, session } from '#lib/session.svelte.ts';
 	import { on } from '#lib/live.svelte.ts';
 	import type { IssueBrief, Movie, Request, Series, User } from '#lib/types.ts';
-	import { EVENT_TEXT, askedFor, eventDot } from '#lib/requeststatus.ts';
+	import { EVENT_TEXT, askedFor, eventDot, hintClass, stateOf } from '#lib/requeststatus.ts';
 	import Modal from './Modal.svelte';
 	import Img from './Img.svelte';
 	import Avatar from './Avatar.svelte';
@@ -68,14 +68,8 @@
 	const fixable = $derived(!!r && !['declined', 'expired', 'removed', 'pending', 'failed'].includes(r.status));
 	let redoOpen = $state(false);
 	const asItem = $derived(r ? ({ id: r.tmdbId, type: r.type, title: r.title, year: r.year, poster: r.poster } as unknown as Movie & Series) : null);
-	// Who decided, and how long it took to arrive.
+	// Who decided.
 	const decided = $derived(d?.events.findLast((e) => (e.status === 'approved' || e.status === 'declined') && e.note));
-	const took = $derived.by(() => {
-		const from = d?.events[0]?.at, to = d?.events.findLast((e) => e.status === 'available')?.at;
-		if (!from || !to) return '';
-		const m = Math.round((Date.parse(to) - Date.parse(from)) / 60000);
-		return m < 60 ? `${Math.max(1, m)} min` : m < 2880 ? `${Math.round(m / 60)} hr` : `${Math.round(m / 1440)} days`;
-	});
 	const episodes = $derived(d?.live.seasons?.reduce((n, s) => n + Math.max(s.have, s.inPlex), 0) ?? 0);
 	const steps = $derived(
 		(d?.events ?? []).map((e) => ({
@@ -138,11 +132,11 @@
 						<div class="text-[11px] text-gray-400">{facts.join(' · ')}</div>
 						<a href="/{r.type}/{r.tmdbId}" class="text-xl font-bold leading-tight hover:underline">{r.title}</a>
 						<div class="mt-2 flex flex-wrap items-center gap-2">
-							<StatusPill status={r.status} progress={r.progress} series={r.type === 'series'} exact={admin} class="px-2.5 py-1 text-xs" />
+							<StatusPill state={stateOf(r)} progress={r.progress} series={r.type === 'series'} exact={admin} class="px-2.5 py-1 text-xs" />
+							{#if d?.hint}<span class="text-xs {hintClass(r.hintTone)}">{d.hint}</span>{/if}
 							{#if d?.issues?.length}<span class="inline-flex items-center gap-1 rounded-lg bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-300 ring-1 ring-amber-500/40"><Icon name="issues" class="size-3.5" />{d.issues.length === 1 ? '1 open issue' : `${d.issues.length} open issues`}</span>{/if}
-							{#if took}<span class="text-xs text-gray-400">Arrived in {took}</span>{/if}
 						</div>
-						<StepBar status={r.status} progress={r.progress} full={admin} labels class="mt-auto max-w-md pt-3" />
+						<StepBar state={stateOf(r)} progress={r.progress} brokeAt={r.brokeAt} full={admin} labels class="mt-auto max-w-md pt-3" />
 					{:else}
 						<div class="h-5 w-40 animate-pulse rounded bg-gray-800"></div>
 					{/if}
@@ -153,12 +147,6 @@
 	{#if d && r}
 		<div class="space-y-5 p-5 text-sm">
 			{#if d.live.orderMismatch}<EpisodesMismatch tmdbId={r.tmdbId} ondone={load} />{/if}
-			{#if d.hint || (admin && r.detail)}
-				<div class="rounded-lg px-3 py-2 ring-1 {r.status === 'failed' ? 'bg-red-500/10 text-red-200 ring-red-500/30' : 'bg-gray-800/60 text-gray-300 ring-gray-700/60'}">
-					{#if d.hint}<p>{d.hint}</p>{/if}
-					{#if admin && r.detail}<p class="mt-0.5 text-xs opacity-70">{r.detail}</p>{/if}
-				</div>
-			{/if}
 
 			<!-- Who asked for what -->
 			<section>

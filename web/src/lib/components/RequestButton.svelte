@@ -8,7 +8,7 @@
 	import { can } from '#lib/session.svelte.ts';
 	import { page } from '$app/state';
 	import { remember } from '#lib/availability.svelte.ts';
-	import { simple, waitingRelease, isActive } from '#lib/requeststatus.ts';
+	import { pill as pillOf, stateOf, isActive } from '#lib/requeststatus.ts';
 	import { on } from '#lib/live.svelte.ts';
 	import { loadSeasons, noSeasons, episodeCount, type PlexSeasons } from '#lib/seasons.ts';
 	import RequestModal from './RequestModal.svelte';
@@ -81,12 +81,10 @@
 </script>
 
 {#snippet pill(r: RequestBrief)}
-	{@const st = simple(r.status, r.progress, item.type === 'series')}
-	{#if st}
-		<button class="act inline-flex items-center rounded-lg font-medium ring-1 {st.tone}" onclick={() => (detailOpen = true)}>
-			{#if r.status === 'available' || r.status === 'partial'}<Icon name="check" class="size-4" />{/if}{st.label}{#if waitingRelease(r)} · not released yet{/if}
-		</button>
-	{/if}
+	{@const st = pillOf(stateOf(r), r.progress, item.type === 'series')}
+	<button class="act inline-flex items-center rounded-lg font-medium ring-1 {st.tone}" onclick={() => (detailOpen = true)}>
+		{#if r.status === 'available' || r.status === 'partial'}<Icon name="check" class="size-4" />{/if}{st.label}
+	</button>
 {/snippet}
 
 {#snippet more()}
@@ -109,6 +107,10 @@
 {:else if req !== undefined}
 	{#if req && (req.status === 'failed' || req.status === 'declined')}{@render pill(req)}{/if}
 	<button class="btn act" disabled={checking} onclick={start}><Icon name="plus" class="size-4" />{req && ['failed', 'declined', 'expired', 'removed'].includes(req.status) ? 'Request again' : 'Request'}</button>
+	<!-- Removed (#302): when it left, and for managers how. -->
+	{#if req && (req.status === 'expired' || req.status === 'removed') && (can('manageRequests') ? req.hintAdmin : req.hint)}
+		<div class="flex w-full items-center gap-1.5 text-sm text-gray-400"><Icon name="info" class="size-4 shrink-0" />{can('manageRequests') ? req.hintAdmin : req.hint}</div>
+	{/if}
 {/if}
 <RequestModal bind:open {item} asked={req?.asked} onrequested={(r) => {
 	// The live update brings the title's full state (all its requests) right after; this is the stopgap.

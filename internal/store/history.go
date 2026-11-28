@@ -164,6 +164,20 @@ func SeasonsText(list []int) string {
 	return s
 }
 
+// TitleEventBy is who did the newest title event of this kind ("deleted"), ” when nobody in particular.
+func (s *Store) TitleEventBy(typ string, tmdbID int, kind string) string {
+	var who string
+	s.db.QueryRow(`SELECT COALESCE(u.username, '') FROM title_events e LEFT JOIN users u ON u.id = e.user_id WHERE e.type = ? AND e.tmdb_id = ? AND e.kind = ? ORDER BY e.id DESC LIMIT 1`, typ, tmdbID, kind).Scan(&who)
+	return who
+}
+
+// WasAvailable says whether a request ever reached Plex (an "available" or "partial" step).
+func (s *Store) WasAvailable(requestID int64) bool {
+	var n int
+	s.db.QueryRow(`SELECT COUNT(*) FROM request_events WHERE request_id = ? AND status IN ('available', 'partial')`, requestID).Scan(&n)
+	return n > 0
+}
+
 // TitleEventSince says whether a title had an event of this kind after a time.
 func (s *Store) TitleEventSince(typ string, tmdbID int, kind, after string) bool {
 	var n int

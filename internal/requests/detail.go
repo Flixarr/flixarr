@@ -90,10 +90,24 @@ func (s *Service) Detail(ctx context.Context, r store.Request, admin bool) Detai
 		}
 	}
 	d.Live = s.LiveFor(ctx, r.Type, r.TmdbID, r.ArrID, seasons, admin)
-	d.Hint = hintFor(r, d.Live, admin)
+	down := ""
+	if d.Live.Error != "" {
+		down = arr.Kinds[kindOf(r.Type)]
+	}
+	r = s.View(r, admin, down)
+	if r.State == "downloading" && down == "" {
+		for _, q := range d.Live.Queue {
+			if q.State == "downloading" && q.TimeLeft != "" {
+				r.Hint = TimeLeft(q.TimeLeft)
+				break
+			}
+		}
+	}
+	d.Hint = r.Hint
 	d.Request = ForViewer(r, admin)
 	for i := range d.Events {
-		if st := d.Events[i].Status; st == "failed" || st == "expired" || st == "removed" {
+		st := d.Events[i].Status
+		if st == "failed" || st == "expired" || st == "removed" || (st == "stuck" && !admin) {
 			d.Events[i].Note = PlainError(store.Request{Status: st, Error: d.Events[i].Note})
 		}
 	}
@@ -322,60 +336,6 @@ func statusMessages(it map[string]any) string {
 	return strings.Join(parts, " ")
 }
 
-// NotReleased is the warning on a request for something that isn't out yet (#151).
-const NotReleased = "Not released yet. It won't download until it's out."
-
-// hintFor says what's going on with a request, in plain words; people who manage requests get the app names.
-func hintFor(r store.Request, l Live, admin bool) string {
-	switch r.Status {
-	case "pending":
-		return "Waiting for approval"
-	case "declined":
-		if r.Error != "" {
-			return "Declined: " + r.Error
-		}
-		return "Declined"
-	case "failed", "expired", "removed":
-		return PlainError(r)
-	case "available":
-		return ""
-	}
-	if l.Error != "" {
-		return "Unable to check on this request right now"
-	}
-	if l.PlexMatch != nil {
-		if admin {
-			return "Plex matched the file to the wrong movie"
-		}
-		return "There was an issue adding this to the library"
-	}
-	for _, d := range l.Queue {
-		if d.Problem != "" {
-			return d.Problem
-		}
-	}
-	switch {
-	case !l.InArr || !l.Monitored && len(l.Queue) == 0 && (r.Status == "sent" || r.Status == "approved"):
-		// Ends as Removed on the next follow-up pass (refresh).
-		if admin {
-			return "Removed from " + arr.Kinds[kindOf(r.Type)] + " outside Flixarr"
-		}
-		return RemovedOutside
-	case len(l.Queue) == 0 && r.Unreleased && (r.Status == "sent" || r.Status == "approved"):
-		return NotReleased
-	case len(l.Queue) == 0 && (r.Status == "sent" || r.Status == "approved"):
-		return "Looking for a download"
-	case r.Status == "grabbed":
-		return "Download found, starting soon"
-	case r.Status == "importing" && len(l.Queue) == 0:
-		if admin {
-			return "Downloaded, waiting for Plex"
-		}
-		return "Downloaded, almost ready to watch"
-	}
-	return ""
-}
-
 func containsInt(list []int, n int) bool {
 	for _, x := range list {
 		if x == n {
@@ -454,6 +414,8 @@ func PlainError(r store.Request) string {
 			return RemovedOutside // it never reached the library
 		}
 		return "Removed from the library"
+	case "stuck":
+		return "The download hit a problem"
 	case "failed":
 		return "Unable to add this request"
 	case "expired":

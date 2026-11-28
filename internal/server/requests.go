@@ -25,10 +25,9 @@ func (s *Server) requestList(w http.ResponseWriter, r *http.Request, u *store.Us
 		return
 	}
 	admin := u.Can("manageRequests")
-	stuck := s.stuckDownloads()
+	down := s.notResponding()
 	for i := range list {
-		list[i] = requests.ForViewer(list[i], admin)
-		list[i].Trouble = stuck[fmt.Sprintf("%s:%d", list[i].Type, list[i].ArrID)] && list[i].ArrID > 0
+		list[i] = requests.ForViewer(s.Requests.View(list[i], admin, down[list[i].Type]), admin)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"requests": list, "approvalRequired": s.Requests.ApprovalRequired(), "issues": s.openIssuesByTitle(u)})
 }
@@ -117,6 +116,11 @@ type brief struct {
 	Plex       string `json:"plex,omitempty"` // opens it in Plex
 	Blocked    bool   `json:"blocked,omitempty"`
 	Unreleased bool   `json:"unreleased,omitempty"` // not out yet, so it can't download (#151)
+	// How it shows (#301): the state, and the line under it for everyone and for managers.
+	State     string `json:"state,omitempty"`
+	Hint      string `json:"hint,omitempty"`
+	HintAdmin string `json:"hintAdmin,omitempty"`
+	HintTone  string `json:"hintTone,omitempty"`
 	// Series in Plex: episodes it has of those aired so far (#137), when known.
 	Episodes *[2]int `json:"episodes,omitempty"`
 	// Series: what open requests already ask for, so the page can offer the rest.
@@ -137,8 +141,10 @@ func (s *Server) briefs(keys []string) (map[string]brief, error) {
 	}
 	cov, _ := s.Store.SeriesCoverageFor(series) // one query for the whole page
 	out := map[string]brief{}
+	down := s.notResponding()
 	for k, v := range got {
-		b := brief{ID: v.ID, Status: v.Status, Progress: v.Progress, Unreleased: v.Unreleased}
+		everyone, manager := s.Requests.View(v, false, down[v.Type]), s.Requests.View(v, true, down[v.Type])
+		b := brief{ID: v.ID, Status: v.Status, Progress: v.Progress, Unreleased: v.Unreleased, State: everyone.State, Hint: everyone.Hint, HintAdmin: manager.Hint, HintTone: everyone.HintTone}
 		if c, ok := cov[v.TmdbID]; ok && v.Type == "series" {
 			b.Asked = &c
 		}
@@ -156,7 +162,7 @@ func (s *Server) briefs(keys []string) (map[string]brief, error) {
 		for k, it := range inPlex {
 			b, requested := out[k]
 			if strings.HasPrefix(k, "movie:") || !requested || doneInPlex(b.Status) {
-				b.Status, b.Progress = "available", 100
+				b.Status, b.Progress, b.State, b.Hint, b.HintAdmin, b.HintTone = "available", 100, "available", "", "", ""
 			}
 			b.Plex = it.URL
 			if strings.HasPrefix(k, "series:") && it.Total > 0 {
@@ -381,6 +387,22 @@ func writeProblem(w http.ResponseWriter, code int, err error, u *store.User, fal
 		msg = requests.Plain(err, fallback)
 	}
 	writeErr(w, code, msg)
+}
+
+// notResponding names the app each kind of request depends on when it isn't responding right now
+// ("movie" → "Radarr"), from the last Services check (#301).
+func (s *Server) notResponding() map[string]string {
+	out := map[string]string{}
+	for typ, kind := range map[string]string{"movie": "radarr", "series": "sonarr"} {
+		v, ok, _ := s.Store.FirstServer(kind)
+		if !ok {
+			continue
+		}
+		if snap, ok := s.Arr.Get(v.ID); ok && !snap.Connected {
+			out[typ] = arr.Kinds[kind]
+		}
+	}
+	return out
 }
 
 // doneInPlex says a series' latest request has nothing left to show once the series is in Plex: it's

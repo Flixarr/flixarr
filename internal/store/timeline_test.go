@@ -47,12 +47,12 @@ func TestTimelineAndEndedStatus(t *testing.T) {
 	if got, _ = s.RequestStatusFor([]string{"movie:603"}); got["movie:603"].Status != "sent" {
 		t.Fatalf("open over ended: %+v", got)
 	}
-	// Expired is just requestable again: no status.
+	// Expired shows, so the title's page can say when it left (#302).
 	r2, _ := s.CreateRequest(Request{Type: "movie", TmdbID: 949, Title: "Heat", UserID: u.ID, Status: "sent"})
 	r2.Status = "expired"
 	s.UpdateRequest(r2)
-	if got, _ = s.RequestStatusFor([]string{"movie:949"}); len(got) != 0 {
-		t.Fatalf("expired shows: %+v", got)
+	if got, _ = s.RequestStatusFor([]string{"movie:949"}); got["movie:949"].Status != "expired" {
+		t.Fatalf("expired: %+v", got)
 	}
 }
 

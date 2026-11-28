@@ -79,5 +79,10 @@ func (s *Server) PublishRequest(r store.Request) {
 			brief = b
 		}
 	}
-	s.Live.Publish(live.Event{Type: "request", Data: map[string]any{"key": key, "brief": brief, "request": requests.ForViewer(r, false)}}) // For nil: everyone signed in
+	// Two copies: managers get the real reason in the line under it, everyone else plain words (#301).
+	down := s.notResponding()[r.Type]
+	for _, manager := range []bool{true, false} {
+		s.Live.Publish(live.Event{Type: "request", Data: map[string]any{"key": key, "brief": brief, "request": requests.ForViewer(s.Requests.View(r, manager, down), manager)},
+			For: func(u *store.User) bool { return u.Can("manageRequests") == manager }})
+	}
 }

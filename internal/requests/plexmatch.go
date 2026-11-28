@@ -18,13 +18,14 @@ func (s *Service) wrongMatch(file string, tmdbID int) (plexlib.FileItem, bool) {
 }
 
 // autoMatch fixes a movie Plex matched to the wrong title: Radarr's file and the request's TMDB ID say
-// which movie it really is. It tries once per request; if Plex still has it wrong, the request says so.
-func (s *Service) autoMatch(ctx context.Context, r *store.Request, movie map[string]any) {
+// which movie it really is. It tries once per request; if Plex still has it wrong after that, it says so
+// (wrong = true) and the request is Stuck (#299).
+func (s *Service) autoMatch(ctx context.Context, r *store.Request, movie map[string]any) (wrong bool) {
 	f, _ := movie["movieFile"].(map[string]any)
 	file, _ := f["path"].(string)
 	it, ok := s.wrongMatch(file, r.TmdbID)
 	if !ok {
-		return
+		return false
 	}
 	s.mu.Lock()
 	if s.matchTried == nil {
@@ -34,13 +35,14 @@ func (s *Service) autoMatch(ctx context.Context, r *store.Request, movie map[str
 	s.matchTried[r.ID] = true
 	s.mu.Unlock()
 	if tried {
-		return
+		return true
 	}
 	if err := s.Plex.FixMatch(ctx, it.RatingKey, r.TmdbID); err != nil {
 		s.Log.Warn("plex match", "title", r.Title, "err", err)
-		return
+		return false
 	}
 	s.Log.Info("fixed the match in plex", "title", r.Title, "was", it.Title)
 	s.Store.AddTitleEvent(r.Type, r.TmdbID, "fix", "Fixed the match in Plex", 0, "")
 	s.Store.AddFixSteps(r.Type, r.TmdbID, r.ID, "Fixed the match in Plex", 0)
+	return false
 }

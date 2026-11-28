@@ -40,6 +40,7 @@ type Service struct {
 	rescanned  map[int64]time.Time
 	rescans    map[int64]int
 	checked    map[int64]time.Time                 // last follow of each active request
+	locks      map[int64]*sync.Mutex               // one per request, see lockFor
 	matchTried map[int64]bool                      // requests whose wrong Plex match was already fixed once (#171)
 	counts     map[int]map[int]plexlib.SeasonCount // Sonarr's episode counts per series, see SeasonCounts
 	countsAt   time.Time
@@ -57,7 +58,7 @@ func (s *Service) Publish(r store.Request) {
 // seconds is as fresh as it gets; waiting for a grab is slower because the Grab webhook reports it.
 func followEvery(r store.Request) time.Duration {
 	switch r.Status {
-	case "grabbed", "downloading", "importing":
+	case "grabbed", "downloading", "importing", "stuck":
 		return 30 * time.Second
 	case "partial": // can wait weeks for the rest; webhooks report grabs and imports at once
 		if r.Progress > 0 {
@@ -636,7 +637,7 @@ func (s *Service) FollowImporting(ctx context.Context) error {
 	}
 	list := []store.Request{}
 	for _, r := range reqs {
-		if r.Status == "importing" {
+		if r.Status == "importing" || r.Status == "stuck" {
 			list = append(list, r)
 		}
 	}
@@ -655,9 +656,36 @@ func (s *Service) Nudge(ctx context.Context, typ string, arrID int) error {
 	return s.refresh(ctx, reqs)
 }
 
-func (s *Service) refresh(ctx context.Context, reqs []store.Request) error {
-	s.mu.Lock() // the loop and webhooks can overlap
+// followTimeout is how long one request's follow up may take. Each request gets its own, so a slow one
+// (or a long list) never leaves the rest without time (#298).
+const followTimeout = 20 * time.Second
+
+// lockFor is one request's own lock: the loop, webhooks, Plex messages, rechecks and Fix take turns per
+// request, never across all of them, so a nudge never waits behind a long pass (#298).
+func (s *Service) lockFor(id int64) *sync.Mutex {
+	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.locks == nil {
+		s.locks = map[int64]*sync.Mutex{}
+	}
+	l, ok := s.locks[id]
+	if !ok {
+		l = &sync.Mutex{}
+		s.locks[id] = l
+	}
+	return l
+}
+
+// stillActive: the statuses the follow up moves along.
+func stillActive(status string) bool {
+	switch status {
+	case "sent", "grabbed", "downloading", "importing", "partial", "stuck":
+		return true
+	}
+	return false
+}
+
+func (s *Service) refresh(ctx context.Context, reqs []store.Request) error {
 	servers := map[string]store.Server{}
 	for _, k := range []string{"radarr", "sonarr"} {
 		if v, ok, _ := s.Store.FirstServer(k); ok {
@@ -668,48 +696,105 @@ func (s *Service) refresh(ctx context.Context, reqs []store.Request) error {
 	for _, r := range reqs {
 		// Only without Plex's live messages, and shortly after asking Plex to scan; a title Plex never
 		// matches doesn't keep this going.
-		if r.Status == "importing" && s.Plex != nil && s.Plex.Connected() && !s.Plex.Live() && time.Since(s.lastRecent) > 25*time.Second && time.Since(s.rescanned[r.ID]) < 5*time.Minute {
-			s.lastRecent = time.Now()
-			s.Plex.RecentScan(ctx)
-			break
-		}
-	}
-	for _, r := range reqs {
-		v, ok := servers[kindOf(r.Type)]
-		if !ok {
+		if r.Status != "importing" || s.Plex == nil || !s.Plex.Connected() || s.Plex.Live() {
 			continue
 		}
-		before := r
-		if s.checked == nil {
-			s.checked = map[int64]time.Time{}
+		s.mu.Lock()
+		due := time.Since(s.lastRecent) > 25*time.Second && time.Since(s.rescanned[r.ID]) < 5*time.Minute
+		if due {
+			s.lastRecent = time.Now()
 		}
-		s.checked[r.ID] = time.Now()
-		if r.Type == "movie" && inPlex(s.Store, r.Type, r.TmdbID) {
-			r.Status, r.Progress = "available", 100 // Plex has it, however it got there
-		} else if err := s.follow(ctx, v, &r); errors.Is(err, arr.ErrNotFound) || errors.Is(err, errUnmonitored) {
-			// Taken out of Radarr/Sonarr (or unmonitored there) by someone else: the request ends, like a
-			// Maintainerr removal, and can be made again.
-			r.Status, r.Progress = "removed", 0
-			r.Error = fmt.Sprintf("Removed from %s outside Flixarr", arr.Kinds[kindOf(r.Type)])
-		} else if err != nil {
-			continue // try again on the next pass
+		s.mu.Unlock()
+		if due {
+			rctx, cancel := context.WithTimeout(ctx, followTimeout)
+			s.Plex.RecentScan(rctx)
+			cancel()
 		}
-		_, readyBefore := s.Store.LastAlertAt(readyKey(r.ID))
-		if r.Status != before.Status {
-			s.Alert(r)
-		}
-		if r.Status != before.Status || r.Progress != before.Progress || r.Unreleased != before.Unreleased {
-			s.Store.UpdateRequest(r)
-			s.Publish(r)
-		}
-		switch {
-		case r.Status == "available" && before.Status != "available":
-			s.notify("request_available", r)
-		case r.Status == "partial" && before.Status != "partial" && before.Status != "available" && !readyBefore:
-			s.notify("request_available", r) // the first episode (#216): said once, then Available when it's all there
-		}
+		break
 	}
+	// A few at a time: one slow request doesn't hold up the others.
+	work := make(chan store.Request)
+	var wg sync.WaitGroup
+	for range min(4, len(reqs)) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for r := range work {
+				if v, ok := servers[kindOf(r.Type)]; ok {
+					s.followOne(ctx, v, r)
+				}
+			}
+		}()
+	}
+	for _, r := range reqs {
+		if ctx.Err() != nil {
+			break
+		}
+		work <- r
+	}
+	close(work)
+	wg.Wait()
 	return nil
+}
+
+// followOne follows one request and saves what changed.
+func (s *Service) followOne(ctx context.Context, v store.Server, r store.Request) {
+	l := s.lockFor(r.ID)
+	l.Lock()
+	defer l.Unlock()
+	// Read it again: another follow up may have moved it while this one waited.
+	if fresh, err := s.Store.Request(r.ID); err == nil {
+		r = fresh
+	} else if errors.Is(err, store.ErrNotFound) {
+		return
+	}
+	if !stillActive(r.Status) {
+		return
+	}
+	s.mu.Lock()
+	if s.checked == nil {
+		s.checked = map[int64]time.Time{}
+	}
+	s.checked[r.ID] = time.Now()
+	s.mu.Unlock()
+	rctx, cancel := context.WithTimeout(ctx, followTimeout)
+	defer cancel()
+	start := time.Now()
+	before := r
+	if r.Type == "movie" && inPlex(s.Store, r.Type, r.TmdbID) {
+		r.Status, r.Progress, r.Error = "available", 100, "" // Plex has it, however it got there
+	} else if err := s.follow(rctx, v, &r); errors.Is(err, arr.ErrNotFound) || errors.Is(err, errUnmonitored) {
+		// Taken out of Radarr/Sonarr (or unmonitored there) by someone else: the request ends, like a
+		// Maintainerr removal, and can be made again.
+		r.Status, r.Progress = "removed", 0
+		r.Error = fmt.Sprintf("Removed from %s outside Flixarr", arr.Kinds[kindOf(r.Type)])
+	} else if err != nil {
+		s.Log.Warn("request follow", "title", r.Title, "status", r.Status, "err", err, "took", time.Since(start).Round(time.Millisecond))
+		return // tried again when it's next due
+	}
+	if took := time.Since(start); took > 5*time.Second {
+		s.Log.Info("slow request follow", "title", r.Title, "took", took.Round(time.Millisecond))
+	}
+	s.save(before, r)
+}
+
+// save stores a followed request when something changed, then tells open pages, the bell and
+// notifications.
+func (s *Service) save(before, r store.Request) {
+	_, readyBefore := s.Store.LastAlertAt(readyKey(r.ID))
+	if r.Status != before.Status {
+		s.Alert(r)
+	}
+	if r.Status != before.Status || r.Progress != before.Progress || r.Unreleased != before.Unreleased || r.Error != before.Error || r.OutDate != before.OutDate || r.SomeReady != before.SomeReady {
+		s.Store.UpdateRequest(r)
+		s.Publish(r)
+	}
+	switch {
+	case r.Status == "available" && before.Status != "available":
+		s.notify("request_available", r)
+	case r.Status == "partial" && before.Status != "partial" && before.Status != "available" && !readyBefore:
+		s.notify("request_available", r) // the first episode (#216): said once, then Available when it's all there
+	}
 }
 
 // removedFromArr says whether a title was taken out of Radarr/Sonarr on purpose: gone entirely, or left
@@ -771,47 +856,60 @@ func (s *Service) Recheck(ctx context.Context, keys []string, episodes bool) err
 	for _, k := range keys {
 		named[k] = true
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	for _, r := range reqs {
-		if r.Type == "movie" && inPlex(s.Store, r.Type, r.TmdbID) {
-			continue
-		}
-		v, ok, _ := s.Store.FirstServer(kindOf(r.Type))
-		if !ok {
-			continue
-		}
-		before := r
-		gone, err := s.removedFromArr(ctx, v, r)
-		if err == nil && !gone {
-			err = s.follow(ctx, v, &r)
-			gone = errors.Is(err, arr.ErrNotFound)
-		}
-		if gone {
-			r.Status, r.Progress = "removed", 0
-			r.Error = fmt.Sprintf("Removed from Plex and %s.", arr.Kinds[kindOf(r.Type)])
-			if l, ok := s.Store.WasLeaving(r.Type, r.TmdbID); ok {
-				// Maintainerr's doing: it reached the end of its time, not an error.
-				r.Status, r.Error = "expired", "Removed by Maintainerr ("+l.Collection+")."
-			}
-		} else if err != nil {
-			s.Log.Warn("recheck request", "title", r.Title, "err", err)
-			continue
-		}
-		if r.Status == before.Status && r.Progress == before.Progress {
-			continue
-		}
-		// Checked only because some show lost episodes: act only when Plex is missing what Sonarr has, not
-		// because new episodes aired since (Sonarr picks those up on its own).
-		if !named[r.Type+":"+fmt.Sprint(r.TmdbID)] && r.Status != "importing" && r.Status != "removed" {
-			continue
-		}
-		s.Log.Info("request no longer available", "title", r.Title, "status", r.Status)
-		s.Store.UpdateRequest(r)
-		s.Publish(r)
-		s.Alert(r)
+		s.recheckOne(ctx, r, named)
 	}
 	return nil
+}
+
+// recheckOne is Recheck for one request, under its own lock and time limit (#298).
+func (s *Service) recheckOne(ctx context.Context, r store.Request, named map[string]bool) {
+	l := s.lockFor(r.ID)
+	l.Lock()
+	defer l.Unlock()
+	fresh, err := s.Store.Request(r.ID)
+	if err != nil || fresh.Status != "available" {
+		return // moved on while waiting
+	}
+	r = fresh
+	ctx, cancel := context.WithTimeout(ctx, followTimeout)
+	defer cancel()
+	if r.Type == "movie" && inPlex(s.Store, r.Type, r.TmdbID) {
+		return
+	}
+	v, ok, _ := s.Store.FirstServer(kindOf(r.Type))
+	if !ok {
+		return
+	}
+	before := r
+	gone, err := s.removedFromArr(ctx, v, r)
+	if err == nil && !gone {
+		err = s.follow(ctx, v, &r)
+		gone = errors.Is(err, arr.ErrNotFound)
+	}
+	if gone {
+		r.Status, r.Progress = "removed", 0
+		r.Error = fmt.Sprintf("Removed from Plex and %s.", arr.Kinds[kindOf(r.Type)])
+		if lv, ok := s.Store.WasLeaving(r.Type, r.TmdbID); ok {
+			// Maintainerr's doing: it reached the end of its time, not an error.
+			r.Status, r.Error = "expired", "Removed by Maintainerr ("+lv.Collection+")."
+		}
+	} else if err != nil {
+		s.Log.Warn("recheck request", "title", r.Title, "err", err)
+		return
+	}
+	if r.Status == before.Status && r.Progress == before.Progress {
+		return
+	}
+	// Checked only because some show lost episodes: act only when Plex is missing what Sonarr has, not
+	// because new episodes aired since (Sonarr picks those up on its own).
+	if !named[r.Type+":"+fmt.Sprint(r.TmdbID)] && r.Status != "importing" && r.Status != "removed" {
+		return
+	}
+	s.Log.Info("request no longer available", "title", r.Title, "status", r.Status)
+	s.Store.UpdateRequest(r)
+	s.Publish(r)
+	s.Alert(r)
 }
 
 // plexHas says whether Plex has what a request asked for. ok=false when no Plex server is connected.
@@ -869,6 +967,7 @@ func (s *Service) someInPlex(ctx context.Context, r *store.Request, want map[int
 func (s *Service) askPlexScan(ctx context.Context, r *store.Request) {
 	// Plex didn't notice the new files on its own (yet): ask it to scan, backing off (right away, then after
 	// 2, 5, 15 and 60 minutes, then hourly) so a title Plex can't match doesn't mean scans forever.
+	s.mu.Lock()
 	if s.rescanned == nil {
 		s.rescanned, s.rescans = map[int64]time.Time{}, map[int64]int{}
 	}
@@ -877,16 +976,71 @@ func (s *Service) askPlexScan(ctx context.Context, r *store.Request) {
 	if n := s.rescans[r.ID]; n < len(gaps) {
 		gap = gaps[n]
 	}
-	if r.Status != "importing" || time.Since(s.rescanned[r.ID]) >= gap {
+	due := r.Status != "importing" || time.Since(s.rescanned[r.ID]) >= gap
+	if due {
 		s.rescanned[r.ID] = time.Now()
 		s.rescans[r.ID]++
+	}
+	s.mu.Unlock()
+	if due {
 		if err := s.Plex.Rescan(ctx, r.Type); err != nil {
 			s.Log.Warn("plex rescan", "err", err)
 		}
 	}
 }
 
+// follow reads where a request is in Radarr/Sonarr (and Plex) and moves its status along. Stuck (#299)
+// carries its reason in Error and clears it once it's moving again.
 func (s *Service) follow(ctx context.Context, v store.Server, r *store.Request) error {
+	wasStuck := r.Status == "stuck"
+	err := s.followArr(ctx, v, r)
+	if err == nil && r.Status != "stuck" {
+		r.SomeReady = false
+		if wasStuck {
+			r.Error = ""
+		}
+	}
+	return err
+}
+
+// notOut says whether a Radarr movie isn't out yet (#300), and the date it comes out to download (its
+// digital release, else the disc release; never the theater date). A movie with no dates at all only
+// counts as not out when its year is this year or later: Radarr calls old movies it has no dates for
+// "announced" forever (The Track Meet, 2010).
+func notOut(m map[string]any, now time.Time) (bool, string) {
+	if out, _ := m["isAvailable"].(bool); out {
+		return false, ""
+	}
+	future, dated := false, false
+	day := func(k string) (time.Time, bool) {
+		v, _ := m[k].(string)
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			return time.Time{}, false
+		}
+		dated = true
+		if t.After(now) {
+			future = true
+		}
+		return t, true
+	}
+	day("inCinemas")
+	digital, okD := day("digitalRelease")
+	disc, okP := day("physicalRelease")
+	date := ""
+	switch {
+	case okD && digital.After(now):
+		date = digital.UTC().Format("2006-01-02")
+	case okP && disc.After(now):
+		date = disc.UTC().Format("2006-01-02")
+	}
+	if !dated {
+		return num(m["year"]) >= now.Year(), ""
+	}
+	return future, date
+}
+
+func (s *Service) followArr(ctx context.Context, v store.Server, r *store.Request) error {
 	c := client(v)
 	if r.Type == "movie" {
 		var m map[string]any
@@ -894,12 +1048,15 @@ func (s *Service) follow(ctx context.Context, v store.Server, r *store.Request) 
 			return err
 		}
 		if b, _ := m["hasFile"].(bool); b {
-			s.autoMatch(ctx, r, m)
+			r.Unreleased, r.OutDate = false, ""
+			if s.autoMatch(ctx, r, m) {
+				r.Status, r.Progress, r.Error = "stuck", 100, "Plex matched the file to the wrong movie"
+				return nil
+			}
 			s.filesDone(ctx, r, nil)
 			return nil
 		}
-		out, _ := m["isAvailable"].(bool)
-		r.Unreleased = !out
+		r.Unreleased, r.OutDate = notOut(m, time.Now())
 		if err := s.queueProgress(ctx, c, fmt.Sprintf("queue/details?movieId=%d", r.ArrID), r, nil, 0, 0); err != nil {
 			return err
 		}
@@ -976,13 +1133,20 @@ func (s *Service) follow(ctx context.Context, v store.Server, r *store.Request) 
 	if r.Mode == "seasons" {
 		only = want
 	}
-	r.Unreleased = wanted == 0 // nothing asked for has aired yet
+	r.Unreleased, r.OutDate = wanted == 0, "" // nothing asked for has aired yet
+	if next, _ := sr["nextAiring"].(string); r.Unreleased && next != "" {
+		if t, err := time.Parse(time.RFC3339, next); err == nil {
+			r.OutDate = t.Local().Format("2006-01-02")
+		}
+	}
 	// A series' progress is only what's downloading right now (#216): episodes already there don't make a
 	// percentage, they make it Partially available.
 	if err := s.queueProgress(ctx, c, fmt.Sprintf("queue/details?seriesId=%d", r.ArrID), r, only, 0, 0); err != nil {
 		return err
 	}
-	if sum(have) > 0 {
+	if r.Status == "stuck" {
+		r.SomeReady = sum(have) > 0 && s.someInPlex(ctx, r, want) // Stuck wins over Partially available (#299)
+	} else if sum(have) > 0 {
 		if s.someInPlex(ctx, r, want) {
 			r.Status = "partial" // in Ready from the first episode on; Sonarr keeps looking for the rest
 			if r.Progress >= 100 {
@@ -1026,14 +1190,23 @@ func (s *Service) queueProgress(ctx context.Context, c *arr.Client, path string,
 			r.Status, r.Progress = "downloading", min(done*100/want, 99) // the rest is still being looked for
 			return nil
 		}
-		if r.Status == "grabbed" || r.Status == "downloading" || r.Status == "importing" {
+		if r.Status == "grabbed" || r.Status == "downloading" || r.Status == "importing" || r.Status == "stuck" {
 			r.Status = "sent" // removed from the queue without files: searching again
 		}
 		r.Progress = 0
 		return nil
 	}
 	total, left, part, importing, moving := 0.0, 0.0, 0.0, false, false
+	problem, problemDone := "", false // a download Radarr/Sonarr flagged (#299), and whether it had finished
 	for _, it := range items {
+		health, _ := it["trackedDownloadStatus"].(string)
+		if health == "warning" || health == "error" || it["trackedDownloadState"] == "importBlocked" || it["status"] == "failed" {
+			if problem == "" {
+				problem = firstMessage(it)
+				st, _ := it["trackedDownloadState"].(string)
+				problemDone = numf(it["sizeleft"]) == 0 || st == "importPending" || st == "importBlocked" || st == "importing" || st == "imported"
+			}
+		}
 		size, sizeLeft := numf(it["size"]), numf(it["sizeleft"])
 		total += size
 		left += sizeLeft
@@ -1056,6 +1229,13 @@ func (s *Service) queueProgress(ctx context.Context, c *arr.Client, path string,
 		r.Progress = int((total - left) / total * 100)
 	}
 	switch {
+	case problem != "":
+		r.Status, r.Error = "stuck", arr.Kinds[c.Kind]+": "+problem
+		if problemDone {
+			r.Progress = 100 // downloaded, it's the import that's stuck: the step bar breaks after Downloading
+		} else if r.Progress >= 100 {
+			r.Progress = 99
+		}
 	case importing && !moving && (want == 0 || done+len(items) >= want): // the last ones are being moved in
 		r.Status, r.Progress = "importing", 100
 	case moving || r.Progress > 0 || done > 0:
@@ -1064,6 +1244,26 @@ func (s *Service) queueProgress(ctx context.Context, c *arr.Client, path string,
 		r.Status = "grabbed" // queued, delayed or paused in the download client
 	}
 	return nil
+}
+
+// firstMessage is the first thing Radarr/Sonarr says is wrong with a download, as one line.
+func firstMessage(it map[string]any) string {
+	if list, ok := it["statusMessages"].([]any); ok {
+		for _, x := range list {
+			m, _ := x.(map[string]any)
+			if msgs, ok := m["messages"].([]any); ok {
+				for _, s := range msgs {
+					if t, _ := s.(string); strings.TrimSpace(t) != "" {
+						return strings.TrimSuffix(strings.TrimSpace(t), ".")
+					}
+				}
+			}
+		}
+	}
+	if msg, _ := it["errorMessage"].(string); strings.TrimSpace(msg) != "" {
+		return strings.TrimSuffix(strings.TrimSpace(msg), ".")
+	}
+	return "The download hit a problem"
 }
 
 func sum(m map[int]int) int {

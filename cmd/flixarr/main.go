@@ -166,7 +166,7 @@ func main() {
 			case <-runCtx.Done():
 				return
 			case <-t.C:
-				ctx, cancel := context.WithTimeout(runCtx, 30*time.Second)
+				ctx, cancel := context.WithTimeout(runCtx, 2*time.Minute) // each request also has its own limit (#298)
 				if err := reqs.Refresh(ctx); err != nil {
 					log.Warn("request follow", "err", err)
 				}

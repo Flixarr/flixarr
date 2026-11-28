@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -60,12 +59,11 @@ func (s *Server) queueFix(w http.ResponseWriter, r *http.Request, u *store.User)
 // downloads; for everyone else, their own failed requests and stuck downloads.
 func (s *Server) requestAttention(w http.ResponseWriter, r *http.Request, u *store.User) {
 	manage := u.Can("manageRequests")
-	list, err := s.Store.RequestsIn("failed", "pending", "sent", "grabbed", "downloading", "importing", "partial")
+	list, err := s.Store.RequestsIn("failed", "pending", "stuck")
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "Database error")
 		return
 	}
-	stuck := s.stuckDownloads()
 	n := 0
 	for _, x := range list {
 		if !manage && x.UserID != u.ID {
@@ -78,7 +76,7 @@ func (s *Server) requestAttention(w http.ResponseWriter, r *http.Request, u *sto
 			if manage {
 				n++
 			}
-		case x.ArrID > 0 && stuck[fmt.Sprintf("%s:%d", x.Type, x.ArrID)]:
+		case x.Status == "stuck":
 			n++
 		}
 	}
@@ -89,22 +87,4 @@ func (s *Server) requestAttention(w http.ResponseWriter, r *http.Request, u *sto
 		issues = len(open)
 	}
 	writeJSON(w, http.StatusOK, map[string]int{"count": n, "issues": issues})
-}
-
-// stuckDownloads lists the titles ("movie:12", by their Radarr/Sonarr ID) with a download stuck right now.
-func (s *Server) stuckDownloads() map[string]bool {
-	out := map[string]bool{}
-	servers, _ := s.Store.Servers()
-	for _, v := range servers {
-		snap, ok := s.Arr.Get(v.ID)
-		if !ok {
-			continue
-		}
-		for _, q := range snap.Queue {
-			if (q.State == "warning" || q.State == "error") && q.ArrID > 0 {
-				out[fmt.Sprintf("%s:%d", q.Type, q.ArrID)] = true
-			}
-		}
-	}
-	return out
 }
