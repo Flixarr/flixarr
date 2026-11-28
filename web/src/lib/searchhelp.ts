@@ -145,6 +145,14 @@ export function buildChips(raw: string, v: Vocab | null, ctx: { top?: SearchHit;
 		}
 		pick(v.examples.filter((x) => LIKE.test(x) && x.startsWith(like[1].split(' ')[0])), 3);
 	} else if (dec || ctx.reading) {
+		// A category already shown ("history shows"): the same search in the decades that category was biggest.
+		if (ctx.reading && !dec && out.length < 3) {
+			const all = [...v.genres, ...v.themes, ...v.places];
+			const e = all.find((x) => x.words.some((w) => ` ${t} `.includes(` ${w} `)));
+			const base = t.replace(/^(new|latest|recent) /, '');
+			for (const d of (e?.decades ?? []).slice(0, 3)) add(`${d} ${base}`, 'Category');
+			if (base === t) add(`new ${t}`, 'Category');
+		}
 		pick(v.examples.filter((x) => !LIKE.test(x) && words.some((w) => ` ${x} `.includes(` ${w}`))), 3);
 	}
 	if (!out.length) pick(v.examples, 3);
