@@ -21,8 +21,11 @@ export interface Page<T> {
 	totalPages: number;
 	results: T[];
 	// Search only: how the API read the text (round 3: a browse search, or titles like another one).
-	parsed?: { browse?: { label: string; type: string }; like?: { id: number; type: string; title: string; year: string | null }; id?: boolean; title?: string; year?: string | null; type?: string | null; season?: number | null; nick?: string | null };
+	// like: the title the recommendations are based on (MORE LIKE). likeMiss: a like search whose title wasn't found.
+	parsed?: { browse?: { label: string; type: string; total?: number }; like?: LikeSource; likeMiss?: string; id?: boolean; title?: string; year?: string | null; type?: string | null; season?: number | null; nick?: string | null };
 }
+
+export interface LikeSource { id: number; type: string; title: string; year: string | null; poster?: string | null; backdrop?: string | null; overview?: string; rating?: number }
 
 export interface CastMember { id: number; name: string; character: string; profile: string | null }
 
