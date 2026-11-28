@@ -195,7 +195,7 @@ func (c *Client) Counters() Counters {
 
 // allowed paths under /v1 (anything else is rejected before leaving the server)
 func allowed(p string) bool {
-	for _, pre := range []string{"lists/", "movie/", "series/", "person/", "collection/", "search", "discover/", "genres/", "credit/", "contributors"} {
+	for _, pre := range []string{"lists/", "movie/", "series/", "person/", "collection/", "search", "searchhelp/", "discover/", "genres/", "credit/", "contributors"} {
 		if strings.HasPrefix(p, pre) {
 			return true
 		}
@@ -207,6 +207,12 @@ func kindOf(p string) string {
 	switch {
 	case strings.HasPrefix(p, "person/"), strings.HasPrefix(p, "credit/"):
 		return KindPeople
+	// Search help: the words search understands and the Browse tiles are kept like lists; titles like a
+	// title are a search and never saved.
+	case strings.HasPrefix(p, "searchhelp/like/"):
+		return KindSearches
+	case strings.HasPrefix(p, "searchhelp/"):
+		return KindLists
 	case strings.HasPrefix(p, "search"):
 		return KindSearches
 	case strings.HasPrefix(p, "lists/"), strings.HasPrefix(p, "discover/"), strings.HasPrefix(p, "genres/"), strings.HasPrefix(p, "contributors"):

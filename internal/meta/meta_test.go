@@ -109,6 +109,7 @@ func TestKindOf(t *testing.T) {
 		"movie/603": KindMovies, "movie/603/recommendations": KindMovies, "series/1399": KindSeries, "series/1399/ids": KindSeries,
 		"series/1399/season/2": KindSeasons, "collection/86311": KindCollections, "person/1": KindPeople, "credit/651dd86d74507d00e2105e2c": KindPeople,
 		"lists/trending": KindLists, "discover/movie": KindLists, "genres/movie": KindLists, "contributors": KindLists, "search": KindSearches,
+		"searchhelp/vocab": KindLists, "searchhelp/browse": KindLists, "searchhelp/like/movie/744": KindSearches,
 	} {
 		if !allowed(p) {
 			t.Fatalf("%s refused", p)
