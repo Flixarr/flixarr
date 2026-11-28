@@ -112,12 +112,24 @@ export function buildChips(raw: string, v: Vocab | null, ctx: { top?: SearchHit;
 
 	// From the results: titles like the Top result, a collection or a person that isn't the Top result.
 	const top = ctx.top;
+	// A collection as the Top result: titles like its first movie.
+	const first = top?.type === 'collection' ? ctx.hits.find((h) => h.type === 'movie') : undefined;
+	if (!like && first) add(`movies like ${first.title.toLowerCase()}`, 'More like', `Movies like ${first.title}`);
 	if (!like && !ctx.reading && top && (top.type === 'movie' || top.type === 'series')) add(`${top.type === 'movie' ? 'movies' : 'shows'} like ${top.title.toLowerCase()}`, 'More like', `${top.type === 'movie' ? 'Movies' : 'Shows'} like ${top.title}`);
 	for (const h of ctx.hits.slice(0, 12)) {
 		if (h === top) continue;
 		if (h.type === 'collection') add(`${h.title.replace(/ collection$/i, '').toLowerCase()} collection`, 'Collection', h.title);
 		// A person only once more than their first name is typed ("tom h"), and only one: "harry" alone matches many.
 		else if (h.type === 'person' && t.includes(' ') && lower(h.title).startsWith(t) && !out.some((c) => c.kind === 'Person')) add(lower(h.title), 'Person', h.title);
+	}
+	// Always at least three (Marc, 2026-11-27): the rest are example searches from the API, the same ones for the
+	// same text so they don't change while the results load.
+	let seed = [...t].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7);
+	const pool = v.examples.filter((x) => x !== t);
+	for (let i = 0; out.length < 3 && i < pool.length; i++) {
+		seed = (seed * 1103515245 + 12345) >>> 0;
+		const x = pool[seed % pool.length];
+		add(x, LIKE.test(x) ? 'More like' : 'Category');
 	}
 	return out;
 }

@@ -342,6 +342,8 @@
 		return !y ? '' : y > thisYear ? `Coming ${y}` : y === thisYear ? 'New' : '';
 	};
 	const KIND_NAME = { movie: 'Movie', series: 'Series', person: 'Person', collection: 'Collection' };
+	// What the big block is (#294): the best match for a title, a collection, or the most popular title of a category.
+	const blockLabel = $derived(parsed?.browse && !plain ? 'Most popular' : top?.type === 'collection' ? 'Collection' : 'Top result');
 	// A person as the Top result: what they're best known for (#258), the same while their name is typed.
 	// The person page's pick (it counts lead TV roles like The Office). The search's own list only if that fails, so
 	// the line never changes under the same person.
@@ -567,7 +569,7 @@
 									</TiltFrame>
 								</a>
 								<div class="min-w-0 space-y-2 self-center">
-									<div class="text-[11px] font-bold uppercase tracking-wider text-primary">Top result</div>
+									<div class="text-[11px] font-bold uppercase tracking-wider text-primary">{blockLabel}</div>
 									<a href={href(top)} class="block text-xl font-bold hover:text-primary-light tablet:text-2xl laptop:text-4xl">{top.title}</a>
 									<div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-400">
 										{#if top.type === 'person'}{top.dept ?? 'Person'}{:else if top.type === 'collection'}Collection{:else}{top.year || 'TBA'} · {KIND_NAME[top.type]}{#if top.rating} · ★ {top.rating}{/if}{/if}
