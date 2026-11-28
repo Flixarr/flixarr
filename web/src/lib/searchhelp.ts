@@ -122,14 +122,31 @@ export function buildChips(raw: string, v: Vocab | null, ctx: { top?: SearchHit;
 		// A person only once more than their first name is typed ("tom h"), and only one: "harry" alone matches many.
 		else if (h.type === 'person' && t.includes(' ') && lower(h.title).startsWith(t) && !out.some((c) => c.kind === 'Person')) add(lower(h.title), 'Person', h.title);
 	}
-	// Always at least three (Marc, 2026-11-27): the rest are example searches from the API, the same ones for the
-	// same text so they don't change while the results load.
+	// Topped up to three with example searches from the API, but only ones like this search (Marc, 2026-11-27:
+	// "shows like the office" never gets "90s christmas movies"): more like searches of the same kind, or categories
+	// sharing a word. A search with nothing at all gets plain examples. The same picks for the same text, so they
+	// don't change while the results load.
 	let seed = [...t].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7);
-	const pool = v.examples.filter((x) => x !== t);
-	for (let i = 0; out.length < 3 && i < pool.length; i++) {
-		seed = (seed * 1103515245 + 12345) >>> 0;
-		const x = pool[seed % pool.length];
-		add(x, LIKE.test(x) ? 'More like' : 'Category');
+	const pick = (pool: string[], n: number) => {
+		for (let i = 0; out.length < n && pool.length && i < pool.length * 2; i++) {
+			seed = (seed * 1103515245 + 12345) >>> 0;
+			const x = pool[seed % pool.length];
+			add(x, LIKE.test(x) ? 'More like' : 'Category');
+		}
+	};
+	const words = t.split(' ').filter((w) => w.length > 2 && !['movies', 'shows', 'like', 'the'].includes(w));
+	if (like) {
+		// The closest: the same kind of search for the titles it found ("shows like the office" → shows like Parks
+		// and Recreation, shows like Superstore).
+		const cap = like[1].charAt(0).toUpperCase() + like[1].slice(1);
+		for (const h of ctx.hits) {
+			if (out.length >= 3) break;
+			if ((h.type === 'movie' || h.type === 'series') && h !== top) add(`${like[1]} ${h.title.toLowerCase()}`, 'More like', `${cap} ${h.title}`);
+		}
+		pick(v.examples.filter((x) => LIKE.test(x) && x.startsWith(like[1].split(' ')[0])), 3);
+	} else if (dec || ctx.reading) {
+		pick(v.examples.filter((x) => !LIKE.test(x) && words.some((w) => ` ${x} `.includes(` ${w}`))), 3);
 	}
+	if (!out.length) pick(v.examples, 3);
 	return out;
 }
